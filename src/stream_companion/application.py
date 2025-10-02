@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Iterable, List, Optional
 
+from PySide6.QtCore import QMetaObject, Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from .hotkeys import HotkeyManager
@@ -13,6 +14,12 @@ from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ShortcutSignals(QObject):
+    """Qt signals for thread-safe shortcut triggering."""
+
+    triggered = Signal(Shortcut)
 
 
 class Application:
@@ -35,6 +42,12 @@ class Application:
 
         self._sound_ids: Dict[Shortcut, str] = {}
         self._registered = False
+
+        # Create signals for thread-safe communication
+        self._signals = ShortcutSignals()
+        self._signals.triggered.connect(
+            self._handle_shortcut_in_main_thread, Qt.ConnectionType.QueuedConnection
+        )
 
     def start(self) -> None:
         """Preload assets, register shortcuts, and start the listener."""
@@ -94,7 +107,7 @@ class Application:
             try:
                 self._hotkey_manager.register_hotkey(
                     shortcut.hotkey,
-                    lambda sc=shortcut: self._handle_shortcut(sc),
+                    lambda sc=shortcut: self._signals.triggered.emit(sc),
                 )
             except ValueError as exc:
                 self._logger.warning(
@@ -103,7 +116,8 @@ class Application:
                     exc,
                 )
 
-    def _handle_shortcut(self, shortcut: Shortcut) -> None:
+    def _handle_shortcut_in_main_thread(self, shortcut: Shortcut) -> None:
+        """Handle shortcut trigger in the main Qt thread."""
         self._logger.info("Hotkey triggered: %s", shortcut.hotkey)
         sound_id = self._sound_ids.get(shortcut)
         if sound_id:
