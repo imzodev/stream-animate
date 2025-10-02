@@ -13,7 +13,7 @@ SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from stream_companion import application, registry
+from stream_companion import application, registry  # noqa: E402
 
 _LOGGER = logging.getLogger(__name__)
 
