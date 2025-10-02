@@ -1,3 +1,3 @@
 """Streaming Companion Tool core package."""
 
-__all__ = ["hotkeys", "sound"]
+__all__ = ["hotkeys", "sound", "overlay"]
