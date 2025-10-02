@@ -1,4 +1,8 @@
-"""Sound playback utilities for the Streaming Companion Tool."""
+"""Sound playback utilities for the Streaming Companion Tool.
+
+This module provides the `SoundPlayer` class for loading and playing audio
+effects with `pygame.mixer`.
+"""
 
 from __future__ import annotations
 
@@ -78,16 +82,20 @@ class SoundPlayer:
             raise ValueError("sound_id must be provided")
 
         path = Path(file_path)
-        if not path.is_file():
-            self._logger.warning("Sound file missing: %s", path)
+        if not path.exists() or not path.is_file():
+            self._logger.warning("Sound file missing or not a file: %s", path)
             return False
 
         self._ensure_initialized()
 
         try:
             sound = self._mixer.Sound(path.as_posix())
-        except Exception:  # pragma: no cover - defensive logging
-            self._logger.exception("Failed to load sound: %s", path)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self._logger.exception(
+                "Failed to load sound: %s (%s)",
+                path,
+                type(exc).__name__,
+            )
             return False
 
         self._sounds[sound_id] = sound
@@ -113,8 +121,12 @@ class SoundPlayer:
             return False
         try:
             sound.play(loops=loops)
-        except Exception:  # pragma: no cover - defensive logging
-            self._logger.exception("Failed to play sound '%s'", sound_id)
+        except Exception as exc:  # pragma: no cover - defensive logging
+            self._logger.exception(
+                "Failed to play sound '%s' (%s)",
+                sound_id,
+                type(exc).__name__,
+            )
             return False
         return True
 
