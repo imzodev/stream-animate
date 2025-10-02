@@ -263,6 +263,7 @@ class ConfiguratorWindow(QMainWindow):
         self._current_index: Optional[int] = None
         self._sound_player = SoundPlayer()
         self._overlay_window = OverlayWindow()
+        self._preview_movie: Optional[QMovie] = None
 
         self._init_ui()
         self._load_shortcuts()
@@ -456,6 +457,7 @@ class ConfiguratorWindow(QMainWindow):
         self._hotkey_capture.set_hotkey("")
         self._sound_input.setText("")
         self._overlay_input.setText("")
+        self._cleanup_preview_movie()
         self._overlay_preview.clear()
         self._overlay_preview.setText("No preview")
         self._x_input.setValue(0)
@@ -530,8 +532,18 @@ class ConfiguratorWindow(QMainWindow):
         self._x_input.setValue(x)
         self._y_input.setValue(y)
 
+    def _cleanup_preview_movie(self) -> None:
+        """Clean up the preview movie to prevent memory leaks."""
+        if self._preview_movie is not None:
+            self._preview_movie.stop()
+            self._preview_movie.deleteLater()
+            self._preview_movie = None
+
     def _on_overlay_changed(self, path: str) -> None:
         """Update overlay preview when path changes."""
+        # Clean up previous movie if any
+        self._cleanup_preview_movie()
+        
         if not path or not Path(path).exists():
             self._overlay_preview.clear()
             self._overlay_preview.setText("No preview")
@@ -555,6 +567,9 @@ class ConfiguratorWindow(QMainWindow):
                     self._overlay_preview.clear()
                     self._overlay_preview.setText("Invalid GIF")
                     return
+                
+                # Store reference to clean up later
+                self._preview_movie = movie
                 
                 scaled = pixmap.scaled(
                     200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
@@ -737,6 +752,7 @@ class ConfiguratorWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         """Handle window close event."""
+        self._cleanup_preview_movie()
         self._sound_player.shutdown()
         super().closeEvent(event)
 
