@@ -17,6 +17,7 @@ Goal: Pressing a global shortcut plays a sound and shows an overlay.
 - Define a minimal in-memory shortcut registry (hard-coded for now) that connects the manager, player, and overlay.
 - Provide a simple telemetry/logging layer to trace trigger events and errors.
 - Update `README.md` with MVP usage notes and troubleshooting.
+    - ✅ Logging wired across MVP services and README refreshed with run/troubleshooting guidance (Issue #5).
 
 ## Phase 2 – JSON Configuration Loader
 Goal: Externalize shortcut definitions and assets.

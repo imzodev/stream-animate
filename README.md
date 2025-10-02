@@ -12,47 +12,60 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 ## Quick Start
 1. **Install requirements**
    ```bash
-   pip install PySide6 pynput pygame
+   pip install -r requirements.txt
    ```
-2. **Launch the companion**
+2. **Prepare assets**
+   - Drop audio clips (WAV/MP3) and overlays (PNG/GIF) inside the `assets/` directory.
+3. **Define shortcuts**
+   - Edit `src/stream_companion/registry.py` and populate `default_shortcuts()` with your `Shortcut` definitions.
+   - Each shortcut can specify a hotkey, optional sound path, and optional overlay configuration.
+4. **Run automated checks (optional but recommended)**
    ```bash
-   python main.py
+   python run_checks.py
    ```
-3. **Trigger a shortcut**
-   - Use one of the preloaded hotkeys from the configuration file (details below).
-   - Watch the overlay pop in and the audio play instantly on your stream.
+   This formats the codebase, runs linting, and executes the test suite.
+5. **Launch the companion**
+   ```bash
+   python main.py --log-level INFO
+   ```
+6. **Trigger a shortcut**
+   - Press one of the hotkeys you configured and watch the overlay/sound fire instantly.
 
 ## Configure Your Hotkeys
-Hotkeys live in a JSON file (default: `config/shortcuts.json`). Each entry maps a key combo to both audio and overlay actions.
+Shortcuts are authored in Python (Phases 2+ will move them to JSON). The minimal structure lives in `src/stream_companion/models.py`.
 
-```json
-{
-  "shortcuts": [
-    {
-      "hotkey": "<ctrl>+<alt>+c",
-      "sound": "assets/sounds/celebration.wav",
-      "overlay": {
-        "file": "assets/overlays/celebration.gif",
-        "x": 100,
-        "y": 200,
-        "duration": 3000
-      }
-    }
-  ]
-}
+```python
+from stream_companion.models import OverlayConfig, Shortcut
+
+SHORTCUTS = [
+    Shortcut(
+        hotkey="<ctrl>+<alt>+1",
+        sound_path="assets/sounds/celebration.wav",
+        overlay=OverlayConfig(
+            file="assets/overlays/celebration.gif",
+            x=960,
+            y=540,
+            duration_ms=1500,
+        ),
+    )
+]
 ```
 
 - **`hotkey`** accepts `pynput`-style strings. Combine modifiers (`<ctrl>`, `<alt>`, `<shift>`, `<cmd>`) with letters or function keys.
-- **`sound`** points to your audio clip (WAV/MP3 recommended for near-zero latency).
-- **`overlay.file`** supports PNG or GIF (including transparency). Position via `x`/`y` pixels from the top-left corner of your primary display.
-- **`overlay.duration`** controls how long the graphic stays on screen (milliseconds).
+- **`sound_path`** points to your audio file. WAV provides the snappiest playback.
+- **`OverlayConfig`** lets you position overlays via `x`/`y` pixels from the top-left corner of the display and control visibility duration in milliseconds.
 
-On startup, the tool auto-creates a sample config if none exists so you can start tweaking immediately.
+Phase 2 will introduce a JSON loader so you can manage hotkeys outside of Python; stay tuned.
+
+## Logging & Troubleshooting
+- **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.
+- **Missing assets:** The app logs a warning if referenced files are absent. Confirm paths in `registry.py` and that assets exist under `assets/`.
+- **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
+- **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
 
 ## Power Tips
 - **Layer multiple shortcuts:** Build themed reactions (victory, defeat, raid) with unique audio/visual combos.
 - **Stay organized:** Keep assets in `assets/sounds/` and `assets/overlays/` to simplify sharing setups.
-- **Mac users:** Approve the accessibility prompt so global hotkeys can fire while other apps are active.
 - **OBS pairing:** Pin the overlay window to your stream layout or capture the transparent window directly for picture-perfect reactions.
 
 ## Contributing & Support

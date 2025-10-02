@@ -45,6 +45,11 @@ class Application:
         self._preload_sounds()
         self._register_hotkeys()
 
+        if not self._shortcuts:
+            self._logger.info(
+                "No shortcuts configured; application will idle until configuration changes"
+            )
+
         started = self._hotkey_manager.start()
         if started:
             self._registered = True
@@ -119,6 +124,14 @@ class Application:
         )
         if not success:
             self._logger.warning("Overlay failed to display: %s", config.file)
+        else:
+            self._logger.info(
+                "Overlay displayed: file=%s position=(%s,%s) duration_ms=%s",
+                config.file,
+                config.x,
+                config.y,
+                config.duration_ms,
+            )
 
 
 def run_application(shortcuts: Iterable[Shortcut]) -> None:
