@@ -1,0 +1,131 @@
+"""Utilities for loading shortcut configuration from JSON files."""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import List, Optional
+
+import jsonschema
+
+from .models import OverlayConfig, Shortcut
+
+_LOGGER = logging.getLogger(__name__)
+
+
+class ConfigError(RuntimeError):
+    """Raised when the configuration file cannot be loaded or validated."""
+
+
+def _repository_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _default_paths() -> tuple[Path, Path, Path]:
+    root = _repository_root()
+    config_path = root / "config" / "shortcuts.json"
+    schema_path = root / "config" / "schema.json"
+    sample_path = root / "config" / "shortcuts.sample.json"
+    return config_path, schema_path, sample_path
+
+
+def load_shortcuts(
+    config_path: Optional[Path] = None,
+    *,
+    schema_path: Optional[Path] = None,
+    sample_path: Optional[Path] = None,
+) -> List[Shortcut]:
+    """Load shortcuts from a JSON configuration file.
+
+    If the configuration file does not exist it is populated from the sample
+    template so streamers have a starting point.
+    """
+
+    cfg_path, sch_path, samp_path = _resolve_paths(
+        config_path, schema_path, sample_path
+    )
+    _ensure_config_exists(cfg_path, samp_path)
+
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Config file {cfg_path} is not valid JSON: {exc}") from exc
+
+    _validate_config(data, sch_path)
+    shortcuts = _hydrate_shortcuts(data)
+    _LOGGER.info("Loaded %d shortcuts from %s", len(shortcuts), cfg_path)
+    return shortcuts
+
+
+def _resolve_paths(
+    config_path: Optional[Path],
+    schema_path: Optional[Path],
+    sample_path: Optional[Path],
+) -> tuple[Path, Path, Path]:
+    defaults = _default_paths()
+    cfg_path = config_path or defaults[0]
+    sch_path = schema_path or defaults[1]
+    samp_path = sample_path or defaults[2]
+    return cfg_path, sch_path, samp_path
+
+
+def _ensure_config_exists(config_path: Path, sample_path: Path) -> None:
+    if config_path.exists():
+        return
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if sample_path.exists():
+        config_path.write_text(
+            sample_path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        _LOGGER.info("Created sample configuration at %s", config_path)
+    else:
+        config_path.write_text(
+            '{\n  "version": "1.0.0",\n  "shortcuts": []\n}\n', encoding="utf-8"
+        )
+        _LOGGER.info(
+            "Sample template missing; created empty configuration at %s", config_path
+        )
+
+
+def _validate_config(data: dict, schema_path: Path) -> None:
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ConfigError(f"Schema file {schema_path} is missing") from exc
+    except json.JSONDecodeError as exc:
+        raise ConfigError(
+            f"Schema file {schema_path} is not valid JSON: {exc}"
+        ) from exc
+
+    try:
+        jsonschema.validate(data, schema)
+    except jsonschema.ValidationError as exc:
+        raise ConfigError(f"Configuration validation error: {exc.message}") from exc
+
+
+def _hydrate_shortcuts(data: dict) -> List[Shortcut]:
+    shortcuts: List[Shortcut] = []
+    for index, raw in enumerate(data.get("shortcuts", [])):
+        try:
+            overlay = (
+                OverlayConfig(
+                    file=raw["overlay"]["file"],
+                    x=raw["overlay"].get("x", 0),
+                    y=raw["overlay"].get("y", 0),
+                    duration_ms=raw["overlay"].get("duration", 1500),
+                )
+                if "overlay" in raw and raw["overlay"] is not None
+                else None
+            )
+            shortcut = Shortcut(
+                hotkey=raw["hotkey"],
+                sound_path=raw.get("sound"),
+                overlay=overlay,
+            )
+        except KeyError as exc:
+            raise ConfigError(
+                f"Shortcut at index {index} is missing required field: {exc.args[0]}"
+            ) from exc
+        shortcuts.append(shortcut)
+    return shortcuts

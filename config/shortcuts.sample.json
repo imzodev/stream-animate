@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "shortcuts": [
+    {
+      "hotkey": "<ctrl>+<alt>+1",
+      "sound": "assets/sounds/sample.wav",
+      "overlay": {
+        "file": "assets/overlays/sample.gif",
+        "x": 960,
+        "y": 540,
+        "duration": 1500
+      }
+    }
+  ]
+}

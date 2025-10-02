@@ -21,11 +21,9 @@ Goal: Pressing a global shortcut plays a sound and shows an overlay.
 
 ## Phase 2 – JSON Configuration Loader
 Goal: Externalize shortcut definitions and assets.
-- Design configuration schema version 1.0 (`config/schema.json`).
-- Implement `ConfigLoader` that reads JSON, validates fields, and hydrates runtime models.
-- Add startup default config creation when file is missing.
-- Extend Phase 1 registry to load shortcuts dynamically from config file.
-- Add error messaging for malformed or missing assets.
+- ✅ `config/schema.json` and `config/shortcuts.sample.json` define the JSON structure.
+- ✅ `config_loader` module validates JSON, hydrates runtime models, and auto-creates configs.
+- ✅ Registry loads shortcuts dynamically with fallback logging.
 - Document configuration workflow and sample files.
 
 ## Phase 3 – Desktop Configurator UI

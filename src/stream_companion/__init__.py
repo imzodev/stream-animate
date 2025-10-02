@@ -2,6 +2,7 @@
 
 __all__ = [
     "application",
+    "config_loader",
     "hotkeys",
     "models",
     "overlay",
