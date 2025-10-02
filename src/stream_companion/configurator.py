@@ -685,6 +685,14 @@ class ConfiguratorWindow(QMainWindow):
             if self._custom_size_checkbox.isChecked():
                 width = self._width_input.value()
                 height = self._height_input.value()
+                # Validate that both width and height are set together
+                if (width is not None and height is None) or (width is None and height is not None):
+                    QMessageBox.warning(
+                        self,
+                        "Validation Error",
+                        "Both width and height must be set together for custom size",
+                    )
+                    return False
             
             overlay = OverlayConfig(
                 file=overlay_path,
