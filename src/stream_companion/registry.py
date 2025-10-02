@@ -7,33 +7,28 @@ from typing import Iterable, List
 
 from .models import OverlayConfig, Shortcut
 
+
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
 
 
 def default_shortcuts() -> List[Shortcut]:
     """Return the built-in shortcut list used for the Phase 1 MVP.
 
-    The registry references asset paths relative to the repository ``assets/``
-    directory. If an asset is missing at runtime the individual services log a
-    warning but continue operating, allowing streamers to customise the files
-    without modifying code.
+    The default registry is intentionally empty so that streamers can supply
+    their own configuration without shipping placeholder assets. Future phases
+    will populate this list from a JSON configuration file.
     """
 
-    return [
-        Shortcut(
-            hotkey="<ctrl>+<alt>+1",
-            sound_path=str(_ASSETS_DIR / "sample.wav"),
-            overlay=OverlayConfig(
-                file=str(_ASSETS_DIR / "sample.gif"),
-                x=960,
-                y=540,
-                duration_ms=1500,
-            ),
-        )
-    ]
+    return []
 
 
 def iter_shortcuts() -> Iterable[Shortcut]:
     """Convenience iterator over the default shortcuts."""
 
     yield from default_shortcuts()
+
+
+def assets_dir() -> Path:
+    """Return the canonical location for user-provided assets."""
+
+    return _ASSETS_DIR
