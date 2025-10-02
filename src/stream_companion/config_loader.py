@@ -114,6 +114,8 @@ def _hydrate_shortcuts(data: dict) -> List[Shortcut]:
                     x=raw["overlay"].get("x", 0),
                     y=raw["overlay"].get("y", 0),
                     duration_ms=raw["overlay"].get("duration", 1500),
+                    width=raw["overlay"].get("width"),
+                    height=raw["overlay"].get("height"),
                 )
                 if "overlay" in raw and raw["overlay"] is not None
                 else None
@@ -129,3 +131,48 @@ def _hydrate_shortcuts(data: dict) -> List[Shortcut]:
             ) from exc
         shortcuts.append(shortcut)
     return shortcuts
+
+
+def save_shortcuts(
+    shortcuts: List[Shortcut],
+    config_path: Optional[Path] = None,
+    *,
+    schema_path: Optional[Path] = None,
+) -> None:
+    """Save shortcuts to a JSON configuration file.
+
+    Validates the configuration against the schema before writing.
+    """
+
+    cfg_path, sch_path, _ = _resolve_paths(config_path, schema_path, None)
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+
+    data = _serialize_shortcuts(shortcuts)
+    _validate_config(data, sch_path)
+
+    cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    _LOGGER.info("Saved %d shortcuts to %s", len(shortcuts), cfg_path)
+
+
+def _serialize_shortcuts(shortcuts: List[Shortcut]) -> dict:
+    """Convert shortcuts to JSON-serializable dictionary."""
+
+    serialized = []
+    for shortcut in shortcuts:
+        entry = {"hotkey": shortcut.hotkey}
+        if shortcut.sound_path:
+            entry["sound"] = shortcut.sound_path
+        if shortcut.overlay:
+            entry["overlay"] = {
+                "file": shortcut.overlay.file,
+                "x": shortcut.overlay.x,
+                "y": shortcut.overlay.y,
+                "duration": shortcut.overlay.duration_ms,
+            }
+            if shortcut.overlay.width is not None:
+                entry["overlay"]["width"] = shortcut.overlay.width
+            if shortcut.overlay.height is not None:
+                entry["overlay"]["height"] = shortcut.overlay.height
+        serialized.append(entry)
+
+    return {"version": "1.0.0", "shortcuts": serialized}

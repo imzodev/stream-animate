@@ -15,6 +15,8 @@ class OverlayConfig:
     x: int = 0
     y: int = 0
     duration_ms: int = 1500
+    width: Optional[int] = None
+    height: Optional[int] = None
 
 
 @dataclass(frozen=True)

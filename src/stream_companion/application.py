@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Iterable, List, Optional
 
+from PySide6.QtCore import QMetaObject, Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from .hotkeys import HotkeyManager
@@ -13,6 +14,12 @@ from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ShortcutSignals(QObject):
+    """Qt signals for thread-safe shortcut triggering."""
+
+    triggered = Signal(Shortcut)
 
 
 class Application:
@@ -35,6 +42,12 @@ class Application:
 
         self._sound_ids: Dict[Shortcut, str] = {}
         self._registered = False
+
+        # Create signals for thread-safe communication
+        self._signals = ShortcutSignals()
+        self._signals.triggered.connect(
+            self._handle_shortcut_in_main_thread, Qt.ConnectionType.QueuedConnection
+        )
 
     def start(self) -> None:
         """Preload assets, register shortcuts, and start the listener."""
@@ -94,7 +107,7 @@ class Application:
             try:
                 self._hotkey_manager.register_hotkey(
                     shortcut.hotkey,
-                    lambda sc=shortcut: self._handle_shortcut(sc),
+                    lambda sc=shortcut: self._signals.triggered.emit(sc),
                 )
             except ValueError as exc:
                 self._logger.warning(
@@ -103,7 +116,8 @@ class Application:
                     exc,
                 )
 
-    def _handle_shortcut(self, shortcut: Shortcut) -> None:
+    def _handle_shortcut_in_main_thread(self, shortcut: Shortcut) -> None:
+        """Handle shortcut trigger in the main Qt thread."""
         self._logger.info("Hotkey triggered: %s", shortcut.hotkey)
         sound_id = self._sound_ids.get(shortcut)
         if sound_id:
@@ -117,31 +131,63 @@ class Application:
             self._show_overlay(shortcut.overlay)
 
     def _show_overlay(self, config: OverlayConfig) -> None:
+        size = None
+        if config.width is not None and config.height is not None:
+            size = (config.width, config.height)
+
         success = self._overlay_window.show_asset(
             config.file,
             duration_ms=config.duration_ms,
             position=(config.x, config.y),
+            size=size,
         )
         if not success:
             self._logger.warning("Overlay failed to display: %s", config.file)
         else:
+            size_str = f" size=({config.width},{config.height})" if size else ""
             self._logger.info(
-                "Overlay displayed: file=%s position=(%s,%s) duration_ms=%s",
+                "Overlay displayed: file=%s position=(%s,%s) duration_ms=%s%s",
                 config.file,
                 config.x,
                 config.y,
                 config.duration_ms,
+                size_str,
             )
 
 
 def run_application(shortcuts: Iterable[Shortcut]) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
+    from .tray_icon import TrayIcon
 
     app = QApplication.instance() or QApplication([])
     application = Application(shortcuts)
     application.start()
 
+    # Create system tray icon with quit callback
+    tray = TrayIcon(
+        on_quit=lambda: (application.stop(), app.quit()),
+        on_open_configurator=_open_configurator,
+    )
+    tray.show()
+
     try:
         app.exec()
     finally:
         application.stop()
+        tray.hide()
+
+
+def _open_configurator() -> None:
+    """Open the configurator window from the tray menu."""
+    from .configurator import ConfiguratorWindow
+
+    # Check if configurator is already open
+    for widget in QApplication.topLevelWidgets():
+        if isinstance(widget, ConfiguratorWindow):
+            widget.raise_()
+            widget.activateWindow()
+            return
+
+    # Create new configurator window
+    window = ConfiguratorWindow()
+    window.show()

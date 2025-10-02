@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
         default="INFO",
         help="Python logging level (default: INFO)",
     )
+    parser.add_argument(
+        "--config",
+        action="store_true",
+        help="Launch the desktop configurator UI instead of the runtime listener",
+    )
     return parser.parse_args()
 
 
@@ -47,8 +52,13 @@ def main() -> None:
     args = parse_args()
     configure_logging(args.log_level)
 
-    ensure_assets_exist()
-    application.run_application(registry.iter_shortcuts())
+    if args.config:
+        from stream_companion import configurator
+
+        configurator.run_configurator()
+    else:
+        ensure_assets_exist()
+        application.run_application(registry.iter_shortcuts())
 
 
 if __name__ == "__main__":
