@@ -54,9 +54,10 @@ python main.py --config
 - **Add/Edit/Delete shortcuts** with a user-friendly interface
 - **Hotkey capture widget** - click "Capture" and press your desired key combination
 - **File browsers** for selecting sounds and overlays
+- **Visual position picker** - click "Pick Position..." to select overlay location with your mouse
 - **Live preview** - test sounds and overlays before saving
 - **Validation** - automatic checks for duplicate hotkeys and missing files
-- **Position controls** - set X/Y coordinates and duration with spin boxes
+- **Position controls** - set X/Y coordinates and duration with spin boxes or visual picker
 
 ### Manual JSON Configuration
 Shortcuts are stored in `config/shortcuts.json`. You can also edit this file directly:

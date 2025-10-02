@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtGui import QPainter, QPen, QColor, QCursor
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -29,6 +30,80 @@ from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class PositionPicker(QWidget):
+    """Full-screen overlay for picking a position with the mouse."""
+
+    position_picked = Signal(int, int)
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._picked_position: Optional[tuple[int, int]] = None
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+
+    def showEvent(self, event) -> None:
+        """Make the widget full screen when shown."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            self.setGeometry(screen.geometry())
+        super().showEvent(event)
+
+    def paintEvent(self, event) -> None:
+        """Draw semi-transparent overlay with instructions."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        # Semi-transparent dark overlay
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 180))
+
+        # Draw instructions
+        painter.setPen(QPen(QColor(255, 255, 255), 2))
+        font = painter.font()
+        font.setPointSize(16)
+        painter.setFont(font)
+
+        text = "Click anywhere to set overlay position\nPress ESC to cancel"
+        painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+
+        # Draw crosshair at cursor position
+        cursor_pos = self.mapFromGlobal(QCursor.pos())
+        painter.setPen(QPen(QColor(255, 0, 0), 2))
+        # Horizontal line
+        painter.drawLine(0, cursor_pos.y(), self.width(), cursor_pos.y())
+        # Vertical line
+        painter.drawLine(cursor_pos.x(), 0, cursor_pos.x(), self.height())
+
+        # Draw coordinates
+        painter.setPen(QPen(QColor(255, 255, 255), 1))
+        font.setPointSize(12)
+        painter.setFont(font)
+        coord_text = f"X: {cursor_pos.x()}, Y: {cursor_pos.y()}"
+        painter.drawText(
+            cursor_pos.x() + 10, cursor_pos.y() - 10, coord_text
+        )
+
+    def mouseMoveEvent(self, event) -> None:
+        """Update display as mouse moves."""
+        self.update()
+
+    def mousePressEvent(self, event) -> None:
+        """Capture the clicked position."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.pos()
+            self.position_picked.emit(pos.x(), pos.y())
+            self.close()
+
+    def keyPressEvent(self, event) -> None:
+        """Handle ESC key to cancel."""
+        if event.key() == Qt.Key.Key_Escape:
+            self.close()
 
 
 class HotkeyCapture(QWidget):
@@ -247,6 +322,7 @@ class ConfiguratorWindow(QMainWindow):
         right_panel.addLayout(overlay_layout)
 
         # Overlay position
+        right_panel.addWidget(QLabel("Overlay Position:"))
         position_layout = QHBoxLayout()
         position_layout.addWidget(QLabel("X:"))
         self._x_input = QSpinBox()
@@ -256,6 +332,9 @@ class ConfiguratorWindow(QMainWindow):
         self._y_input = QSpinBox()
         self._y_input.setRange(0, 9999)
         position_layout.addWidget(self._y_input)
+        self._pick_position_btn = QPushButton("Pick Position...")
+        self._pick_position_btn.clicked.connect(self._pick_position)
+        position_layout.addWidget(self._pick_position_btn)
         right_panel.addLayout(position_layout)
 
         # Duration
@@ -397,6 +476,17 @@ class ConfiguratorWindow(QMainWindow):
         )
         if file_path:
             self._overlay_input.setText(file_path)
+
+    def _pick_position(self) -> None:
+        """Open position picker to select overlay position with mouse."""
+        picker = PositionPicker(self)
+        picker.position_picked.connect(self._on_position_picked)
+        picker.show()
+
+    def _on_position_picked(self, x: int, y: int) -> None:
+        """Handle position picked from the position picker."""
+        self._x_input.setValue(x)
+        self._y_input.setValue(y)
 
     def _preview_shortcut(self) -> None:
         """Preview the current shortcut's sound and overlay."""
