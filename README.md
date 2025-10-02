@@ -35,6 +35,10 @@ Turn your keyboard into a live-production command center. The Streaming Companio
    ```bash
    python main.py --log-level INFO
    ```
+   - The application runs in the background with a system tray icon.
+   - Right-click the tray icon to access the menu:
+     - **Open Configurator** - launch the GUI to edit shortcuts
+     - **Quit** - gracefully exit the application
 7. **Trigger a shortcut**
    - Press one of the hotkeys you configured and watch the overlay/sound fire instantly.
 
@@ -79,6 +83,13 @@ Shortcuts are stored in `config/shortcuts.json`. You can also edit this file dir
 - **`sound`** points to your audio file. WAV provides the snappiest playback.
 - **`overlay`** lets you position overlays via `x`/`y` pixels from the top-left corner of the display and control visibility duration in milliseconds.
 
+## System Tray Control
+When running in listener mode, the application displays a system tray icon for easy control:
+- **Right-click the tray icon** to access:
+  - **Open Configurator** - Edit shortcuts without restarting
+  - **Quit** - Gracefully exit the application
+- The tray icon provides a clean way to manage the background process without terminal access
+
 ## Logging & Troubleshooting
 - **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.
 - **Missing assets:** The app logs a warning if referenced files are absent. The configurator also validates files when saving and shows warnings for missing assets.
@@ -86,6 +97,7 @@ Shortcuts are stored in `config/shortcuts.json`. You can also edit this file dir
   - File paths are correct and files exist
   - Audio files are in supported formats (WAV/MP3)
   - Overlay files are in supported formats (PNG/GIF/JPG)
+- **System tray not showing:** If the tray icon doesn't appear, your desktop environment may not support system trays. You can still quit the application with `Ctrl+C` in the terminal.
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
 

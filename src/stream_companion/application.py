@@ -136,12 +136,37 @@ class Application:
 
 def run_application(shortcuts: Iterable[Shortcut]) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
+    from .tray_icon import TrayIcon
 
     app = QApplication.instance() or QApplication([])
     application = Application(shortcuts)
     application.start()
 
+    # Create system tray icon with quit callback
+    tray = TrayIcon(
+        on_quit=lambda: (application.stop(), app.quit()),
+        on_open_configurator=_open_configurator,
+    )
+    tray.show()
+
     try:
         app.exec()
     finally:
         application.stop()
+        tray.hide()
+
+
+def _open_configurator() -> None:
+    """Open the configurator window from the tray menu."""
+    from .configurator import ConfiguratorWindow
+
+    # Check if configurator is already open
+    for widget in QApplication.topLevelWidgets():
+        if isinstance(widget, ConfiguratorWindow):
+            widget.raise_()
+            widget.activateWindow()
+            return
+
+    # Create new configurator window
+    window = ConfiguratorWindow()
+    window.show()

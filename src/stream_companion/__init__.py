@@ -9,4 +9,5 @@ __all__ = [
     "overlay",
     "registry",
     "sound",
+    "tray_icon",
 ]
