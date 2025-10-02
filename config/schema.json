@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Streaming Companion Shortcuts",
+  "type": "object",
+  "required": ["shortcuts"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version identifier",
+      "default": "1.0.0"
+    },
+    "shortcuts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/shortcut"
+      }
+    }
+  },
+  "definitions": {
+    "shortcut": {
+      "type": "object",
+      "required": ["hotkey"],
+      "properties": {
+        "hotkey": {
+          "type": "string",
+          "description": "pynput-style hotkey definition"
+        },
+        "sound": {
+          "type": "string",
+          "description": "Path to audio file"
+        },
+        "overlay": {
+          "$ref": "#/definitions/overlay"
+        }
+      },
+      "additionalProperties": false
+    },
+    "overlay": {
+      "type": "object",
+      "required": ["file"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Path to overlay asset"
+        },
+        "x": {
+          "type": "integer",
+          "description": "Overlay X position",
+          "default": 0
+        },
+        "y": {
+          "type": "integer",
+          "description": "Overlay Y position",
+          "default": 0
+        },
+        "duration": {
+          "type": "integer",
+          "description": "Visibility duration in milliseconds",
+          "default": 1500,
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

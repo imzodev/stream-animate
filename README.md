@@ -17,8 +17,8 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 2. **Prepare assets**
    - Drop audio clips (WAV/MP3) and overlays (PNG/GIF) inside the `assets/` directory.
 3. **Define shortcuts**
-   - Edit `src/stream_companion/registry.py` and populate `default_shortcuts()` with your `Shortcut` definitions.
-   - Each shortcut can specify a hotkey, optional sound path, and optional overlay configuration.
+   - Copy the template: `cp config/shortcuts.sample.json config/shortcuts.json`.
+   - Edit `config/shortcuts.json` to add your hotkeys, sound paths, and overlay settings.
 4. **Run automated checks (optional but recommended)**
    ```bash
    python run_checks.py

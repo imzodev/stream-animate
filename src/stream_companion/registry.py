@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Iterable, List
 
+from .config_loader import ConfigError, load_shortcuts
 from .models import Shortcut
 
 
+_LOGGER = logging.getLogger(__name__)
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
 
 
@@ -24,8 +27,11 @@ def default_shortcuts() -> List[Shortcut]:
 
 def iter_shortcuts() -> Iterable[Shortcut]:
     """Convenience iterator over the default shortcuts."""
-
-    yield from default_shortcuts()
+    try:
+        yield from load_shortcuts()
+    except ConfigError as exc:
+        _LOGGER.warning("Falling back to built-in shortcuts: %s", exc)
+        yield from default_shortcuts()
 
 
 def assets_dir() -> Path:
