@@ -114,6 +114,8 @@ def _hydrate_shortcuts(data: dict) -> List[Shortcut]:
                     x=raw["overlay"].get("x", 0),
                     y=raw["overlay"].get("y", 0),
                     duration_ms=raw["overlay"].get("duration", 1500),
+                    width=raw["overlay"].get("width"),
+                    height=raw["overlay"].get("height"),
                 )
                 if "overlay" in raw and raw["overlay"] is not None
                 else None
@@ -167,6 +169,10 @@ def _serialize_shortcuts(shortcuts: List[Shortcut]) -> dict:
                 "y": shortcut.overlay.y,
                 "duration": shortcut.overlay.duration_ms,
             }
+            if shortcut.overlay.width is not None:
+                entry["overlay"]["width"] = shortcut.overlay.width
+            if shortcut.overlay.height is not None:
+                entry["overlay"]["height"] = shortcut.overlay.height
         serialized.append(entry)
 
     return {"version": "1.0.0", "shortcuts": serialized}

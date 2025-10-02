@@ -46,7 +46,12 @@ class FakeOverlayWindow:
         self.calls: List[OverlayConfig] = []
 
     def show_asset(
-        self, file: str, *, duration_ms: int, position: Optional[tuple[int, int]]
+        self,
+        file: str,
+        *,
+        duration_ms: int,
+        position: Optional[tuple[int, int]],
+        size: Optional[tuple[int, int]] = None,
     ) -> bool:
         self.calls.append(
             OverlayConfig(
@@ -54,6 +59,8 @@ class FakeOverlayWindow:
                 x=position[0] if position else 0,
                 y=position[1] if position else 0,
                 duration_ms=duration_ms,
+                width=size[0] if size else None,
+                height=size[1] if size else None,
             )
         )
         return self.succeed

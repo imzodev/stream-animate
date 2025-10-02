@@ -53,6 +53,7 @@ class OverlayWindow(QWidget):
         *,
         duration_ms: Optional[int] = None,
         position: Optional[Tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> bool:
         """Display an asset from disk.
 
@@ -62,6 +63,8 @@ class OverlayWindow(QWidget):
                 uses the instance default. ``0`` disables auto-hiding.
             position: Optional ``(x, y)`` coordinates for the overlay. When
                 omitted, the window is left at its current position.
+            size: Optional ``(width, height)`` to resize the overlay. When
+                omitted, uses the original asset size.
 
         Returns:
             ``True`` when the asset was successfully displayed, otherwise
@@ -75,10 +78,10 @@ class OverlayWindow(QWidget):
 
         is_gif = path.suffix.lower() == ".gif"
         if is_gif:
-            if not self._prepare_movie(path):
+            if not self._prepare_movie(path, size):
                 return False
         else:
-            if not self._prepare_pixmap(path):
+            if not self._prepare_pixmap(path, size):
                 return False
 
         self._start_timer(duration_ms)
@@ -118,22 +121,33 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
-    def _prepare_pixmap(self, path: Path) -> bool:
+    def _prepare_pixmap(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
         pixmap = QPixmap(path.as_posix())
         if pixmap.isNull():
             _LOGGER.warning("Overlay image failed to load: %s", path)
             return False
+
+        # Resize if size is specified
+        if size is not None:
+            pixmap = pixmap.scaled(
+                size[0], size[1], Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation
+            )
 
         self._stop_animation()
         self._label.setPixmap(pixmap)
         self._resize_to_pixmap(pixmap)
         return True
 
-    def _prepare_movie(self, path: Path) -> bool:
+    def _prepare_movie(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
         movie = QMovie(path.as_posix())
         if not movie.isValid():
             _LOGGER.warning("Overlay animation invalid: %s", path)
             return False
+
+        # Set scaled size if specified
+        if size is not None:
+            from PySide6.QtCore import QSize
+            movie.setScaledSize(QSize(size[0], size[1]))
 
         self._stop_animation()
         movie.setCacheMode(QMovie.CacheMode.CacheAll)

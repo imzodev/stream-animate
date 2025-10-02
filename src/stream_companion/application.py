@@ -131,20 +131,27 @@ class Application:
             self._show_overlay(shortcut.overlay)
 
     def _show_overlay(self, config: OverlayConfig) -> None:
+        size = None
+        if config.width is not None and config.height is not None:
+            size = (config.width, config.height)
+
         success = self._overlay_window.show_asset(
             config.file,
             duration_ms=config.duration_ms,
             position=(config.x, config.y),
+            size=size,
         )
         if not success:
             self._logger.warning("Overlay failed to display: %s", config.file)
         else:
+            size_str = f" size=({config.width},{config.height})" if size else ""
             self._logger.info(
-                "Overlay displayed: file=%s position=(%s,%s) duration_ms=%s",
+                "Overlay displayed: file=%s position=(%s,%s) duration_ms=%s%s",
                 config.file,
                 config.x,
                 config.y,
                 config.duration_ms,
+                size_str,
             )
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal, QPoint
-from PySide6.QtGui import QPainter, QPen, QColor, QCursor
+from PySide6.QtGui import QPainter, QPen, QColor, QCursor, QPixmap, QMovie
 from PySide6.QtWidgets import (
     QApplication,
     QFileDialog,
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QVBoxLayout,
     QWidget,
+    QCheckBox,
 )
 
 from .config_loader import ConfigError, load_shortcuts, save_shortcuts
@@ -315,11 +316,40 @@ class ConfiguratorWindow(QMainWindow):
         overlay_layout = QHBoxLayout()
         self._overlay_input = QLineEdit()
         self._overlay_input.setPlaceholderText("Path to overlay image/gif (optional)")
+        self._overlay_input.textChanged.connect(self._on_overlay_changed)
         self._overlay_browse_btn = QPushButton("Browse...")
         self._overlay_browse_btn.clicked.connect(self._browse_overlay)
         overlay_layout.addWidget(self._overlay_input)
         overlay_layout.addWidget(self._overlay_browse_btn)
         right_panel.addLayout(overlay_layout)
+
+        # Overlay preview
+        self._overlay_preview = QLabel()
+        self._overlay_preview.setFixedSize(200, 150)
+        self._overlay_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._overlay_preview.setStyleSheet("QLabel { border: 1px solid #ccc; background-color: #f0f0f0; }")
+        self._overlay_preview.setText("No preview")
+        right_panel.addWidget(self._overlay_preview)
+
+        # Overlay size
+        right_panel.addWidget(QLabel("Overlay Size (optional):"))
+        size_layout = QHBoxLayout()
+        self._custom_size_checkbox = QCheckBox("Custom size")
+        self._custom_size_checkbox.stateChanged.connect(self._on_custom_size_toggled)
+        size_layout.addWidget(self._custom_size_checkbox)
+        size_layout.addWidget(QLabel("Width:"))
+        self._width_input = QSpinBox()
+        self._width_input.setRange(1, 9999)
+        self._width_input.setValue(100)
+        self._width_input.setEnabled(False)
+        size_layout.addWidget(self._width_input)
+        size_layout.addWidget(QLabel("Height:"))
+        self._height_input = QSpinBox()
+        self._height_input.setRange(1, 9999)
+        self._height_input.setValue(100)
+        self._height_input.setEnabled(False)
+        size_layout.addWidget(self._height_input)
+        right_panel.addLayout(size_layout)
 
         # Overlay position
         right_panel.addWidget(QLabel("Overlay Position:"))
@@ -406,11 +436,18 @@ class ConfiguratorWindow(QMainWindow):
             self._x_input.setValue(shortcut.overlay.x)
             self._y_input.setValue(shortcut.overlay.y)
             self._duration_input.setValue(shortcut.overlay.duration_ms)
+            if shortcut.overlay.width is not None and shortcut.overlay.height is not None:
+                self._custom_size_checkbox.setChecked(True)
+                self._width_input.setValue(shortcut.overlay.width)
+                self._height_input.setValue(shortcut.overlay.height)
+            else:
+                self._custom_size_checkbox.setChecked(False)
         else:
             self._overlay_input.setText("")
             self._x_input.setValue(0)
             self._y_input.setValue(0)
             self._duration_input.setValue(1500)
+            self._custom_size_checkbox.setChecked(False)
 
         self._update_ui_state()
 
@@ -419,9 +456,14 @@ class ConfiguratorWindow(QMainWindow):
         self._hotkey_capture.set_hotkey("")
         self._sound_input.setText("")
         self._overlay_input.setText("")
+        self._overlay_preview.clear()
+        self._overlay_preview.setText("No preview")
         self._x_input.setValue(0)
         self._y_input.setValue(0)
         self._duration_input.setValue(1500)
+        self._custom_size_checkbox.setChecked(False)
+        self._width_input.setValue(100)
+        self._height_input.setValue(100)
 
     def _update_ui_state(self) -> None:
         """Update button enabled states."""
@@ -488,6 +530,49 @@ class ConfiguratorWindow(QMainWindow):
         self._x_input.setValue(x)
         self._y_input.setValue(y)
 
+    def _on_overlay_changed(self, path: str) -> None:
+        """Update overlay preview when path changes."""
+        if not path or not Path(path).exists():
+            self._overlay_preview.clear()
+            self._overlay_preview.setText("No preview")
+            return
+
+        # Load and display preview
+        path_obj = Path(path)
+        if path_obj.suffix.lower() == ".gif":
+            # For GIFs, show first frame
+            movie = QMovie(str(path_obj))
+            if movie.isValid():
+                movie.jumpToFrame(0)
+                pixmap = movie.currentPixmap()
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    )
+                    self._overlay_preview.setPixmap(scaled)
+                    # Set default size if not already set
+                    if not self._custom_size_checkbox.isChecked():
+                        self._width_input.setValue(pixmap.width())
+                        self._height_input.setValue(pixmap.height())
+        else:
+            # For static images
+            pixmap = QPixmap(str(path_obj))
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(
+                    200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                )
+                self._overlay_preview.setPixmap(scaled)
+                # Set default size if not already set
+                if not self._custom_size_checkbox.isChecked():
+                    self._width_input.setValue(pixmap.width())
+                    self._height_input.setValue(pixmap.height())
+
+    def _on_custom_size_toggled(self, state: int) -> None:
+        """Handle custom size checkbox toggle."""
+        enabled = state == Qt.CheckState.Checked.value
+        self._width_input.setEnabled(enabled)
+        self._height_input.setEnabled(enabled)
+
     def _preview_shortcut(self) -> None:
         """Preview the current shortcut's sound and overlay."""
         if self._current_index is None:
@@ -518,10 +603,15 @@ class ConfiguratorWindow(QMainWindow):
                     self, "Preview Error", f"Overlay file not found: {overlay_path}"
                 )
             else:
+                size = None
+                if self._custom_size_checkbox.isChecked():
+                    size = (self._width_input.value(), self._height_input.value())
+                
                 success = self._overlay_window.show_asset(
                     overlay_path,
                     duration_ms=self._duration_input.value(),
                     position=(self._x_input.value(), self._y_input.value()),
+                    size=size,
                 )
                 if not success:
                     QMessageBox.warning(
@@ -571,11 +661,19 @@ class ConfiguratorWindow(QMainWindow):
 
         overlay = None
         if overlay_path:
+            width = None
+            height = None
+            if self._custom_size_checkbox.isChecked():
+                width = self._width_input.value()
+                height = self._height_input.value()
+            
             overlay = OverlayConfig(
                 file=overlay_path,
                 x=self._x_input.value(),
                 y=self._y_input.value(),
                 duration_ms=self._duration_input.value(),
+                width=width,
+                height=height,
             )
 
         # Create new shortcut (since Shortcut is frozen)

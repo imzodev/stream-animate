@@ -58,6 +58,16 @@
           "description": "Visibility duration in milliseconds",
           "default": 1500,
           "minimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "description": "Overlay width in pixels (optional, uses original if not set)",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "description": "Overlay height in pixels (optional, uses original if not set)",
+          "minimum": 1
         }
       },
       "additionalProperties": false
