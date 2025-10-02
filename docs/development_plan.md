@@ -26,14 +26,17 @@ Goal: Externalize shortcut definitions and assets.
 - ✅ Registry loads shortcuts dynamically with fallback logging.
 - Document configuration workflow and sample files.
 
-## Phase 3 – Desktop Configurator UI
+## Phase 3 – Desktop Configurator UI (Complete)
 Goal: Allow streamers to manage shortcuts without editing JSON manually.
-- Design PySide6 UI layout (list view + detail editor) for shortcuts.
-- Implement forms for sound/image selection using native file dialogs.
-- Add hotkey capture widget to record new combinations safely.
-- Support CRUD operations (add/edit/delete) with validation and live preview.
-- Persist updates back to JSON with transactional writes.
-- Provide onboarding walkthrough or tooltip hints within the UI.
+- ✅ Design PySide6 UI layout (list view + detail editor) for shortcuts.
+- ✅ Implement forms for sound/image selection using native file dialogs.
+- ✅ Add hotkey capture widget to record new combinations safely.
+- ✅ Support CRUD operations (add/edit/delete) with validation and live preview.
+- ✅ Persist updates back to JSON with transactional writes via `save_shortcuts()`.
+- ✅ Added `--config` CLI flag to launch configurator mode.
+- ✅ Implemented validation for duplicate hotkeys and missing files.
+- ✅ Added unit tests for config save/load functionality.
+- ✅ Updated README with configurator usage instructions (Issue #13).
 
 ## Phase 4 – Cross-Platform Packaging
 Goal: Deliver installable builds for Linux, Windows, and macOS.
@@ -57,4 +60,5 @@ Future-facing improvements that can be scheduled after the core experience ships
 
 ## Issue Mapping
 - Phase 1 initial issues: `#1` Hotkey manager, `#2` Sound player service, `#3` Overlay window, `#4` Wire MVP workflow, `#5` Logging & docs refresh.
+- Phase 3 issues: `#13` Desktop configurator UI (complete).
 - Future phases will receive additional issues as design details firm up.

@@ -6,7 +6,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
 - **Instant reactions:** Fire sound bites (WAV/MP3) and animated overlays (PNG/GIF) with a tap.
 - **Configurable visuals:** Choose overlay positions, screen duration, and transparency to match your brand.
-- **Configurator in development:** A streamlined UI with file-browser selection for sounds, media, and shortcuts is on the roadmap to make setup even easier.
+- **Desktop configurator:** A streamlined UI with file-browser selection, live preview, and hotkey capture makes setup effortless—no manual JSON editing required.
 - **Low footprint:** Runs quietly in the background so you can focus on the show.
 
 ## Quick Start
@@ -16,50 +16,76 @@ Turn your keyboard into a live-production command center. The Streaming Companio
    ```
 2. **Prepare assets**
    - Drop audio clips (WAV/MP3) and overlays (PNG/GIF) inside the `assets/` directory.
-3. **Define shortcuts**
+3. **Configure shortcuts (GUI method - recommended)**
+   ```bash
+   python main.py --config
+   ```
+   - Use the desktop configurator to add, edit, and preview shortcuts with a user-friendly interface.
+   - Click "Add" to create new shortcuts, use "Browse..." buttons to select files, and "Preview" to test them.
+   - Click "Save Changes" when done.
+4. **Alternative: Manual JSON configuration**
    - Copy the template: `cp config/shortcuts.sample.json config/shortcuts.json`.
    - Edit `config/shortcuts.json` to add your hotkeys, sound paths, and overlay settings.
-4. **Run automated checks (optional but recommended)**
+5. **Run automated checks (optional but recommended)**
    ```bash
    python run_checks.py
    ```
    This formats the codebase, runs linting, and executes the test suite.
-5. **Launch the companion**
+6. **Launch the companion**
    ```bash
    python main.py --log-level INFO
    ```
-6. **Trigger a shortcut**
+7. **Trigger a shortcut**
    - Press one of the hotkeys you configured and watch the overlay/sound fire instantly.
 
 ## Configure Your Hotkeys
-Shortcuts are authored in Python (Phases 2+ will move them to JSON). The minimal structure lives in `src/stream_companion/models.py`.
 
-```python
-from stream_companion.models import OverlayConfig, Shortcut
+### Desktop Configurator (Recommended)
+Launch the visual configurator to manage shortcuts without editing files:
+```bash
+python main.py --config
+```
 
-SHORTCUTS = [
-    Shortcut(
-        hotkey="<ctrl>+<alt>+1",
-        sound_path="assets/sounds/celebration.wav",
-        overlay=OverlayConfig(
-            file="assets/overlays/celebration.gif",
-            x=960,
-            y=540,
-            duration_ms=1500,
-        ),
-    )
-]
+**Features:**
+- **Add/Edit/Delete shortcuts** with a user-friendly interface
+- **Hotkey capture widget** - click "Capture" and press your desired key combination
+- **File browsers** for selecting sounds and overlays
+- **Live preview** - test sounds and overlays before saving
+- **Validation** - automatic checks for duplicate hotkeys and missing files
+- **Position controls** - set X/Y coordinates and duration with spin boxes
+
+### Manual JSON Configuration
+Shortcuts are stored in `config/shortcuts.json`. You can also edit this file directly:
+
+```json
+{
+  "version": "1.0.0",
+  "shortcuts": [
+    {
+      "hotkey": "<ctrl>+<alt>+1",
+      "sound": "assets/sounds/celebration.wav",
+      "overlay": {
+        "file": "assets/overlays/celebration.gif",
+        "x": 960,
+        "y": 540,
+        "duration": 1500
+      }
+    }
+  ]
+}
 ```
 
 - **`hotkey`** accepts `pynput`-style strings. Combine modifiers (`<ctrl>`, `<alt>`, `<shift>`, `<cmd>`) with letters or function keys.
-- **`sound_path`** points to your audio file. WAV provides the snappiest playback.
-- **`OverlayConfig`** lets you position overlays via `x`/`y` pixels from the top-left corner of the display and control visibility duration in milliseconds.
-
-Phase 2 will introduce a JSON loader so you can manage hotkeys outside of Python; stay tuned.
+- **`sound`** points to your audio file. WAV provides the snappiest playback.
+- **`overlay`** lets you position overlays via `x`/`y` pixels from the top-left corner of the display and control visibility duration in milliseconds.
 
 ## Logging & Troubleshooting
 - **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.
-- **Missing assets:** The app logs a warning if referenced files are absent. Confirm paths in `registry.py` and that assets exist under `assets/`.
+- **Missing assets:** The app logs a warning if referenced files are absent. The configurator also validates files when saving and shows warnings for missing assets.
+- **Configurator preview issues:** If sound or overlay previews fail, check that:
+  - File paths are correct and files exist
+  - Audio files are in supported formats (WAV/MP3)
+  - Overlay files are in supported formats (PNG/GIF/JPG)
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
 
