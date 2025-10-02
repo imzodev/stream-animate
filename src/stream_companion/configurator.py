@@ -32,6 +32,13 @@ from .sound import SoundPlayer
 
 _LOGGER = logging.getLogger(__name__)
 
+# UI Constants
+PREVIEW_WIDTH = 200
+PREVIEW_HEIGHT = 150
+MAX_OVERLAY_SIZE = 9999
+MIN_OVERLAY_SIZE = 1
+MAX_DURATION_MS = 60000
+
 
 class PositionPicker(QWidget):
     """Full-screen overlay for picking a position with the mouse."""
@@ -326,7 +333,7 @@ class ConfiguratorWindow(QMainWindow):
 
         # Overlay preview
         self._overlay_preview = QLabel()
-        self._overlay_preview.setFixedSize(200, 150)
+        self._overlay_preview.setFixedSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)
         self._overlay_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._overlay_preview.setStyleSheet("QLabel { border: 1px solid #ccc; background-color: #f0f0f0; }")
         self._overlay_preview.setText("No preview")
@@ -340,13 +347,13 @@ class ConfiguratorWindow(QMainWindow):
         size_layout.addWidget(self._custom_size_checkbox)
         size_layout.addWidget(QLabel("Width:"))
         self._width_input = QSpinBox()
-        self._width_input.setRange(1, 9999)
+        self._width_input.setRange(MIN_OVERLAY_SIZE, MAX_OVERLAY_SIZE)
         self._width_input.setValue(100)
         self._width_input.setEnabled(False)
         size_layout.addWidget(self._width_input)
         size_layout.addWidget(QLabel("Height:"))
         self._height_input = QSpinBox()
-        self._height_input.setRange(1, 9999)
+        self._height_input.setRange(MIN_OVERLAY_SIZE, MAX_OVERLAY_SIZE)
         self._height_input.setValue(100)
         self._height_input.setEnabled(False)
         size_layout.addWidget(self._height_input)
@@ -357,11 +364,11 @@ class ConfiguratorWindow(QMainWindow):
         position_layout = QHBoxLayout()
         position_layout.addWidget(QLabel("X:"))
         self._x_input = QSpinBox()
-        self._x_input.setRange(0, 9999)
+        self._x_input.setRange(0, MAX_OVERLAY_SIZE)
         position_layout.addWidget(self._x_input)
         position_layout.addWidget(QLabel("Y:"))
         self._y_input = QSpinBox()
-        self._y_input.setRange(0, 9999)
+        self._y_input.setRange(0, MAX_OVERLAY_SIZE)
         position_layout.addWidget(self._y_input)
         self._pick_position_btn = QPushButton("Pick Position...")
         self._pick_position_btn.clicked.connect(self._pick_position)
@@ -372,7 +379,7 @@ class ConfiguratorWindow(QMainWindow):
         duration_layout = QHBoxLayout()
         duration_layout.addWidget(QLabel("Duration (ms):"))
         self._duration_input = QSpinBox()
-        self._duration_input.setRange(0, 60000)
+        self._duration_input.setRange(0, MAX_DURATION_MS)
         self._duration_input.setValue(1500)
         duration_layout.addWidget(self._duration_input)
         right_panel.addLayout(duration_layout)
@@ -572,7 +579,7 @@ class ConfiguratorWindow(QMainWindow):
                 self._preview_movie = movie
                 
                 scaled = pixmap.scaled(
-                    200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    PREVIEW_WIDTH, PREVIEW_HEIGHT, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                 )
                 self._overlay_preview.setPixmap(scaled)
                 # Set default size if not already set
@@ -589,7 +596,7 @@ class ConfiguratorWindow(QMainWindow):
                     return
                 
                 scaled = pixmap.scaled(
-                    200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    PREVIEW_WIDTH, PREVIEW_HEIGHT, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                 )
                 self._overlay_preview.setPixmap(scaled)
                 # Set default size if not already set
