@@ -108,15 +108,18 @@ class HotkeyCapture(QWidget):
 
     def _qt_key_to_name(self, key: int, modifiers) -> Optional[str]:
         """Convert Qt key code to readable name."""
-        # Map modifiers
-        if modifiers & Qt.ControlModifier:
-            return "ctrl"
-        if modifiers & Qt.AltModifier:
-            return "alt"
-        if modifiers & Qt.ShiftModifier:
-            return "shift"
-        if modifiers & Qt.MetaModifier:
-            return "cmd"
+        # First check if the key itself is a modifier key
+        modifier_keys = {
+            Qt.Key_Control: "ctrl",
+            Qt.Key_Alt: "alt",
+            Qt.Key_Shift: "shift",
+            Qt.Key_Meta: "cmd",
+            Qt.Key_Super_L: "cmd",
+            Qt.Key_Super_R: "cmd",
+        }
+
+        if key in modifier_keys:
+            return modifier_keys[key]
 
         # Map regular keys
         key_map = {
