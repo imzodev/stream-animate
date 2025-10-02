@@ -5,7 +5,7 @@ from typing import Callable, List
 
 import pytest
 
-from stream_animate.hotkeys import HotkeyManager
+from stream_companion.hotkeys import HotkeyManager
 
 
 class FakeListener:
