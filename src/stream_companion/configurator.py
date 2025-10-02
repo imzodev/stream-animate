@@ -539,25 +539,23 @@ class ConfiguratorWindow(QMainWindow):
 
         # Load and display preview
         path_obj = Path(path)
-        if path_obj.suffix.lower() == ".gif":
-            # For GIFs, show first frame
-            movie = QMovie(str(path_obj))
-            if movie.isValid():
+        try:
+            if path_obj.suffix.lower() == ".gif":
+                # For GIFs, show first frame
+                movie = QMovie(str(path_obj))
+                if not movie.isValid():
+                    self._overlay_preview.clear()
+                    self._overlay_preview.setText("Invalid GIF")
+                    _LOGGER.warning("Failed to load GIF preview: %s", path_obj)
+                    return
+                
                 movie.jumpToFrame(0)
                 pixmap = movie.currentPixmap()
-                if not pixmap.isNull():
-                    scaled = pixmap.scaled(
-                        200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
-                    )
-                    self._overlay_preview.setPixmap(scaled)
-                    # Set default size if not already set
-                    if not self._custom_size_checkbox.isChecked():
-                        self._width_input.setValue(pixmap.width())
-                        self._height_input.setValue(pixmap.height())
-        else:
-            # For static images
-            pixmap = QPixmap(str(path_obj))
-            if not pixmap.isNull():
+                if pixmap.isNull():
+                    self._overlay_preview.clear()
+                    self._overlay_preview.setText("Invalid GIF")
+                    return
+                
                 scaled = pixmap.scaled(
                     200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
                 )
@@ -566,6 +564,27 @@ class ConfiguratorWindow(QMainWindow):
                 if not self._custom_size_checkbox.isChecked():
                     self._width_input.setValue(pixmap.width())
                     self._height_input.setValue(pixmap.height())
+            else:
+                # For static images
+                pixmap = QPixmap(str(path_obj))
+                if pixmap.isNull():
+                    self._overlay_preview.clear()
+                    self._overlay_preview.setText("Invalid image")
+                    _LOGGER.warning("Failed to load image preview: %s", path_obj)
+                    return
+                
+                scaled = pixmap.scaled(
+                    200, 150, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                )
+                self._overlay_preview.setPixmap(scaled)
+                # Set default size if not already set
+                if not self._custom_size_checkbox.isChecked():
+                    self._width_input.setValue(pixmap.width())
+                    self._height_input.setValue(pixmap.height())
+        except Exception as exc:
+            self._overlay_preview.clear()
+            self._overlay_preview.setText("Error loading preview")
+            _LOGGER.error("Error loading overlay preview for %s: %s", path_obj, exc)
 
     def _on_custom_size_toggled(self, state: int) -> None:
         """Handle custom size checkbox toggle."""
