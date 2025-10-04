@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import List, Optional
+import re
 
 from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QPainter, QPen, QColor, QCursor, QPixmap, QMovie
@@ -18,15 +19,17 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QRadioButton,
     QPushButton,
     QSpinBox,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
     QCheckBox,
 )
 
-from .config_loader import ConfigError, load_shortcuts, save_shortcuts
-from .models import OverlayConfig, Shortcut
+from .config_loader import ConfigError, load_config, save_config
+from .models import ActivatorConfig, OverlayConfig, Shortcut
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
@@ -258,6 +261,64 @@ class HotkeyCapture(QWidget):
         return key_map.get(key)
 
 
+class SingleKeyCapture(QWidget):
+    """Widget to capture a single key (no modifiers) for chord suffix."""
+
+    key_captured = Signal(str)
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._capturing = False
+        layout = QHBoxLayout()
+        self._display = QLineEdit()
+        # Allow manual entry for multi-key sequences (space/comma separated)
+        self._display.setReadOnly(False)
+        self._display.setPlaceholderText("Enter keys (space/comma separated) or click Capture for one key")
+        self._capture_btn = QPushButton("Capture")
+        self._capture_btn.clicked.connect(self._toggle_capture)
+        layout.addWidget(self._display)
+        layout.addWidget(self._capture_btn)
+        self.setLayout(layout)
+
+    def set_key(self, key: str) -> None:
+        self._display.setText(key)
+
+    def get_key(self) -> str:
+        return self._display.text()
+
+    def _toggle_capture(self) -> None:
+        if self._capturing:
+            self._capturing = False
+            self._capture_btn.setText("Capture")
+            return
+        self._capturing = True
+        # Do not overwrite existing content; user may be building a sequence
+        if not self._display.text().strip():
+            self._display.setText("Press a key...")
+        self._capture_btn.setText("Stop")
+        self.setFocus()
+
+    def keyPressEvent(self, event) -> None:
+        if not self._capturing:
+            super().keyPressEvent(event)
+            return
+        # Disallow modifier-only keys
+        mods = event.modifiers()
+        if mods & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier):
+            self._display.setText("No modifiers allowed")
+            return
+        name = HotkeyCapture._qt_key_to_name(self, event.key(), event.modifiers())
+        if name:
+            existing = self._display.text().strip()
+            if existing and existing not in ("Press a key...", "No modifiers allowed"):
+                self._display.setText(existing + " " + name)
+            else:
+                self._display.setText(name)
+            self._capturing = False
+            self._capture_btn.setText("Capture")
+            self.key_captured.emit(name)
+
+
 class ConfiguratorWindow(QMainWindow):
     """Main window for the desktop configurator."""
 
@@ -267,6 +328,7 @@ class ConfiguratorWindow(QMainWindow):
         self.resize(900, 600)
 
         self._shortcuts: List[Shortcut] = []
+        self._activator: Optional[ActivatorConfig] = None
         self._current_index: Optional[int] = None
         self._sound_player = SoundPlayer()
         self._overlay_window = OverlayWindow()
@@ -299,14 +361,72 @@ class ConfiguratorWindow(QMainWindow):
         list_buttons.addWidget(self._delete_btn)
         left_panel.addLayout(list_buttons)
 
-        # Right panel: detail editor
+        # Right panel uses tabs: Global Settings and Shortcut Details
+        tabs = QTabWidget()
+
+        # Tab 1: Global Settings
+        global_panel = QWidget()
+        global_layout = QVBoxLayout()
+        global_panel.setLayout(global_layout)
+        global_layout.addWidget(QLabel("<b>Global Settings</b>"))
+        # Activator hotkey
+        global_layout.addWidget(QLabel("Activator Hotkey:"))
+        self._activator_capture = HotkeyCapture()
+        global_layout.addWidget(self._activator_capture)
+        # Mode and timeout
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Mode:"))
+        self._mode_press = QRadioButton("Press")
+        self._mode_hold = QRadioButton("Hold")
+        self._mode_press.setChecked(True)
+        mode_layout.addWidget(self._mode_press)
+        mode_layout.addWidget(self._mode_hold)
+        mode_layout.addSpacing(20)
+        mode_layout.addWidget(QLabel("Timeout (ms):"))
+        self._timeout_input = QSpinBox()
+        self._timeout_input.setRange(100, 60000)
+        self._timeout_input.setValue(1500)
+        mode_layout.addWidget(self._timeout_input)
+        global_layout.addLayout(mode_layout)
+        # Save button for global settings
+        global_buttons = QHBoxLayout()
+        self._global_save_btn = QPushButton("Save Global Settings")
+        self._global_save_btn.clicked.connect(self._save_changes)
+        global_buttons.addStretch(1)
+        global_buttons.addWidget(self._global_save_btn)
+        global_layout.addLayout(global_buttons)
+        global_layout.addStretch()
+
+        # Tab 2: Shortcut Details (existing UI)
+        shortcut_panel = QWidget()
         right_panel = QVBoxLayout()
+        shortcut_panel.setLayout(right_panel)
         right_panel.addWidget(QLabel("<b>Shortcut Details</b>"))
 
-        # Hotkey
-        right_panel.addWidget(QLabel("Hotkey:"))
+        # Trigger type
+        trigger_layout = QHBoxLayout()
+        trigger_layout.addWidget(QLabel("Trigger:"))
+        self._trigger_direct = QRadioButton("Direct hotkey")
+        self._trigger_suffix = QRadioButton("Chord suffix")
+        self._trigger_direct.setChecked(True)
+        trigger_layout.addWidget(self._trigger_direct)
+        trigger_layout.addWidget(self._trigger_suffix)
+        right_panel.addLayout(trigger_layout)
+
+        # Hotkey / Suffix capture widgets
+        right_panel.addWidget(QLabel("Hotkey or Suffix:"))
         self._hotkey_capture = HotkeyCapture()
+        self._suffix_capture = SingleKeyCapture()
         right_panel.addWidget(self._hotkey_capture)
+        right_panel.addWidget(self._suffix_capture)
+        self._suffix_capture.hide()
+
+        def _on_trigger_changed():
+            suffix_mode = self._trigger_suffix.isChecked()
+            self._hotkey_capture.setVisible(not suffix_mode)
+            self._suffix_capture.setVisible(suffix_mode)
+        self._trigger_direct.toggled.connect(_on_trigger_changed)
+        self._trigger_suffix.toggled.connect(_on_trigger_changed)
 
         # Sound
         right_panel.addWidget(QLabel("Sound File:"))
@@ -396,9 +516,13 @@ class ConfiguratorWindow(QMainWindow):
 
         right_panel.addStretch()
 
+        # Assemble tabs
+        tabs.addTab(global_panel, "Global Settings")
+        tabs.addTab(shortcut_panel, "Shortcuts")
+
         # Combine panels
         main_layout.addLayout(left_panel, 1)
-        main_layout.addLayout(right_panel, 2)
+        main_layout.addWidget(tabs, 2)
         central.setLayout(main_layout)
 
         self._update_ui_state()
@@ -406,9 +530,22 @@ class ConfiguratorWindow(QMainWindow):
     def _load_shortcuts(self) -> None:
         """Load shortcuts from configuration file."""
         try:
-            self._shortcuts = load_shortcuts()
+            self._activator, self._shortcuts = load_config()
             self._refresh_list()
             _LOGGER.info("Loaded %d shortcuts", len(self._shortcuts))
+            # Populate global settings UI from activator
+            if self._activator:
+                self._activator_capture.set_hotkey(self._activator.hotkey)
+                self._timeout_input.setValue(int(getattr(self._activator, "timeout_ms", 1500)))
+                mode = getattr(self._activator, "mode", "press").lower()
+                if mode == "hold":
+                    self._mode_hold.setChecked(True)
+                else:
+                    self._mode_press.setChecked(True)
+            else:
+                self._activator_capture.set_hotkey("")
+                self._timeout_input.setValue(1500)
+                self._mode_press.setChecked(True)
         except ConfigError as exc:
             QMessageBox.critical(self, "Configuration Error", str(exc))
             _LOGGER.error("Failed to load shortcuts: %s", exc)
@@ -417,7 +554,11 @@ class ConfiguratorWindow(QMainWindow):
         """Refresh the shortcut list widget."""
         self._list_widget.clear()
         for shortcut in self._shortcuts:
-            display = f"{shortcut.hotkey}"
+            if shortcut.hotkey:
+                display = shortcut.hotkey
+            else:
+                seq = "+".join(shortcut.suffix) if shortcut.suffix else ""
+                display = f"[{seq}]"
             if shortcut.sound_path:
                 display += " | 🔊"
             if shortcut.overlay:
@@ -436,7 +577,15 @@ class ConfiguratorWindow(QMainWindow):
         self._current_index = index
         shortcut = self._shortcuts[index]
 
-        self._hotkey_capture.set_hotkey(shortcut.hotkey)
+        # Trigger type and captures
+        if shortcut.hotkey:
+            self._trigger_direct.setChecked(True)
+            self._hotkey_capture.set_hotkey(shortcut.hotkey)
+            self._suffix_capture.set_key("")
+        else:
+            self._trigger_suffix.setChecked(True)
+            self._hotkey_capture.set_hotkey("")
+            self._suffix_capture.set_key(" ".join(shortcut.suffix) if shortcut.suffix else "")
         self._sound_input.setText(shortcut.sound_path or "")
 
         if shortcut.overlay:
@@ -461,7 +610,9 @@ class ConfiguratorWindow(QMainWindow):
 
     def _clear_editor(self) -> None:
         """Clear the editor panel."""
+        self._trigger_direct.setChecked(True)
         self._hotkey_capture.set_hotkey("")
+        self._suffix_capture.set_key("")
         self._sound_input.setText("")
         self._overlay_input.setText("")
         self._cleanup_preview_movie()
@@ -682,9 +833,18 @@ class ConfiguratorWindow(QMainWindow):
             )
             return
 
-        # Save to file
+        # Save to file (include activator)
         try:
-            save_shortcuts(self._shortcuts)
+            activator = None
+            act_hotkey = self._activator_capture.get_hotkey().strip()
+            if act_hotkey:
+                mode = "hold" if self._mode_hold.isChecked() else "press"
+                activator = ActivatorConfig(
+                    hotkey=act_hotkey,
+                    mode=mode,
+                    timeout_ms=self._timeout_input.value(),
+                )
+            save_config(activator, self._shortcuts)
             QMessageBox.information(
                 self, "Success", f"Saved {len(self._shortcuts)} shortcuts successfully!"
             )
@@ -698,10 +858,27 @@ class ConfiguratorWindow(QMainWindow):
         if self._current_index is None:
             return True
 
-        hotkey = self._hotkey_capture.get_hotkey().strip()
-        if not hotkey:
-            QMessageBox.warning(self, "Validation Error", "Hotkey cannot be empty")
-            return False
+        # Determine trigger
+        suffix_mode = self._trigger_suffix.isChecked()
+        hotkey = None
+        suffix = None
+        if suffix_mode:
+            raw = self._suffix_capture.get_key().strip().lower()
+            if not raw:
+                QMessageBox.warning(self, "Validation Error", "Suffix cannot be empty")
+                return False
+            # Split on spaces or commas; ignore extra separators
+            tokens = [t for t in re.split(r"[\s,]+", raw) if t]
+            if not tokens:
+                QMessageBox.warning(self, "Validation Error", "Suffix cannot be empty")
+                return False
+            suffix = tuple(tokens)
+        else:
+            hk = self._hotkey_capture.get_hotkey().strip()
+            if not hk:
+                QMessageBox.warning(self, "Validation Error", "Hotkey cannot be empty")
+                return False
+            hotkey = hk
 
         sound_path = self._sound_input.text().strip() or None
         overlay_path = self._overlay_input.text().strip()
@@ -734,6 +911,7 @@ class ConfiguratorWindow(QMainWindow):
         # Create new shortcut (since Shortcut is frozen)
         self._shortcuts[self._current_index] = Shortcut(
             hotkey=hotkey,
+            suffix=suffix,
             sound_path=sound_path,
             overlay=overlay,
         )
@@ -744,11 +922,21 @@ class ConfiguratorWindow(QMainWindow):
         """Validate all shortcuts and return list of errors."""
         errors = []
 
-        # Check for duplicate hotkeys
-        hotkeys = [s.hotkey for s in self._shortcuts]
+        # Check for duplicate hotkeys (ignore None)
+        hotkeys = [s.hotkey for s in self._shortcuts if s.hotkey]
         duplicates = {hk for hk in hotkeys if hotkeys.count(hk) > 1}
         if duplicates:
             errors.append(f"Duplicate hotkeys found: {', '.join(duplicates)}")
+
+        # Check for duplicate suffix sequences (ignore None)
+        suffixes = [s.suffix for s in self._shortcuts if s.suffix]
+        dup_suffix: list[tuple[str, ...]] = []
+        for sx in suffixes:
+            if suffixes.count(sx) > 1 and sx not in dup_suffix:
+                dup_suffix.append(sx)
+        if dup_suffix:
+            formatted = ["+".join(sx) for sx in dup_suffix]
+            errors.append(f"Duplicate chord suffixes found: {', '.join(formatted)}")
 
         # Check for missing files
         for i, shortcut in enumerate(self._shortcuts):

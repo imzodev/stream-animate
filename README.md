@@ -23,6 +23,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
    - Use the desktop configurator to add, edit, and preview shortcuts with a user-friendly interface.
    - Click "Add" to create new shortcuts, use "Browse..." buttons to select files, and "Preview" to test them.
    - Click "Save Changes" when done.
+   - To use activator + chorded suffixes, see "Activator + Chorded Suffixes" below.
 4. **Alternative: Manual JSON configuration**
    - Copy the template: `cp config/shortcuts.sample.json config/shortcuts.json`.
    - Edit `config/shortcuts.json` to add your hotkeys, sound paths, and overlay settings.
@@ -64,25 +65,36 @@ Shortcuts are stored in `config/shortcuts.json`. You can also edit this file dir
 
 ```json
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "shortcuts": [
-    {
-      "hotkey": "<ctrl>+<alt>+1",
-      "sound": "assets/sounds/celebration.wav",
-      "overlay": {
-        "file": "assets/overlays/celebration.gif",
-        "x": 960,
-        "y": 540,
-        "duration": 1500
-      }
-    }
-  ]
+    {"hotkey": "<ctrl>+<alt>+1", "sound": "assets/sounds/celebration.wav"},
+
+    {"suffix": "b", "overlay": {"file": "assets/overlays/sample.gif", "x": 960, "y": 540, "duration": 1500}},
+    {"suffix": ["g", "h"], "overlay": {"file": "assets/overlays/sample.mp4", "x": 800, "y": 450, "duration": 0}}
+  ],
+  "activator": {"hotkey": "<ctrl>+<alt>+a", "mode": "press", "timeout_ms": 1500}
 }
 ```
 
-- **`hotkey`** accepts `pynput`-style strings. Combine modifiers (`<ctrl>`, `<alt>`, `<shift>`, `<cmd>`) with letters or function keys.
-- **`sound`** points to your audio file. WAV provides the snappiest playback.
-- **`overlay`** lets you position overlays via `x`/`y` pixels from the top-left corner of the display and control visibility duration in milliseconds.
+- **`hotkey`**: direct global hotkey (works without activator).
+- **`suffix`**: one key or a sequence of keys pressed after the activator within `timeout_ms`.
+- **`activator`**: the global key combo that arms the chord mode. Supported modes: `press` (implemented), `hold` (reserved).
+- **`sound`**: path to audio file. WAV/MP3 supported.
+- **`overlay`**: visual asset path with optional `x`, `y`, `duration` (ms), `width`, `height`.
+
+### Activator + Chorded Suffixes
+
+You can trigger shortcuts by first pressing a global activator and then one or more keys in sequence.
+
+- **Enable**: set `activator.hotkey` and add shortcuts with `suffix` (string or array of strings).
+- **Behavior** (press mode):
+  - Press and release the activator to arm for `timeout_ms` (default 1500 ms).
+  - Press suffix key(s) in order. Matching is prefix-aware; it waits for more keys if your input matches a sequence prefix.
+  - Press `Esc` to cancel arming.
+- **Notes**:
+  - Avoid defining a direct `hotkey` that equals the activator, as it will fire immediately and can be confusing during testing.
+  - Numeric suffixes use top-row digits; Numpad digits are not mapped by default.
+  - Sequences of 2–3 keys are recommended to fit within the timeout.
 
 ## System Tray Control
 When running in listener mode, the application displays a system tray icon for easy control:
@@ -101,6 +113,7 @@ When running in listener mode, the application displays a system tray icon for e
 - **System tray not showing:** If the tray icon doesn't appear, your desktop environment may not support system trays. You can still quit the application with `Ctrl+C` in the terminal.
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
+- **Activator disarms immediately**: Ensure you’re on the latest code (we ignore the activator’s last press as a suffix), your suffix is defined (string or array), and there’s no direct hotkey equal to the activator.
 
 ## Power Tips
 - **Layer multiple shortcuts:** Build themed reactions (victory, defeat, raid) with unique audio/visual combos.

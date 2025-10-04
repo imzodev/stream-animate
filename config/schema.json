@@ -9,6 +9,17 @@
       "description": "Schema version identifier",
       "default": "1.0.0"
     },
+    "activator": {
+      "type": "object",
+      "description": "Optional global activator for chorded shortcuts",
+      "properties": {
+        "hotkey": { "type": "string", "description": "Activator hotkey" },
+        "mode": { "type": "string", "enum": ["press", "hold"], "default": "press" },
+        "timeout_ms": { "type": "integer", "minimum": 100, "default": 1500 }
+      },
+      "required": ["hotkey"],
+      "additionalProperties": false
+    },
     "shortcuts": {
       "type": "array",
       "items": {
@@ -19,11 +30,21 @@
   "definitions": {
     "shortcut": {
       "type": "object",
-      "required": ["hotkey"],
+      "oneOf": [
+        { "required": ["hotkey"] },
+        { "required": ["suffix"] }
+      ],
       "properties": {
         "hotkey": {
           "type": "string",
           "description": "pynput-style hotkey definition"
+        },
+        "suffix": {
+          "description": "Suffix keys captured sequentially after activator (single string or array)",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+          ]
         },
         "sound": {
           "type": "string",

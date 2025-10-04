@@ -6,12 +6,15 @@ import logging
 from pathlib import Path
 from typing import Iterable, List
 
-from .config_loader import ConfigError, load_shortcuts
-from .models import Shortcut
+from .config_loader import ConfigError, load_config
+from .models import ActivatorConfig, Shortcut
 
 
 _LOGGER = logging.getLogger(__name__)
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
+
+_CACHED_ACTIVATOR: ActivatorConfig | None = None
+_CACHED_SHORTCUTS: list[Shortcut] | None = None
 
 
 def default_shortcuts() -> List[Shortcut]:
@@ -25,13 +28,31 @@ def default_shortcuts() -> List[Shortcut]:
     return []
 
 
-def iter_shortcuts() -> Iterable[Shortcut]:
-    """Convenience iterator over the default shortcuts."""
+def _load_config_cached() -> tuple[ActivatorConfig | None, list[Shortcut]]:
+    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
+    if _CACHED_SHORTCUTS is not None:
+        return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
     try:
-        yield from load_shortcuts()
+        activator, shortcuts = load_config()
+        _CACHED_ACTIVATOR = activator
+        _CACHED_SHORTCUTS = list(shortcuts)
     except ConfigError as exc:
         _LOGGER.warning("Falling back to built-in shortcuts: %s", exc)
-        yield from default_shortcuts()
+        _CACHED_ACTIVATOR = None
+        _CACHED_SHORTCUTS = list(default_shortcuts())
+    return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
+
+
+def get_activator() -> ActivatorConfig | None:
+    """Return the optional global activator configuration, if present."""
+    activator, _ = _load_config_cached()
+    return activator
+
+
+def iter_shortcuts() -> Iterable[Shortcut]:
+    """Convenience iterator over the configured shortcuts."""
+    _, shortcuts = _load_config_cached()
+    yield from shortcuts
 
 
 def assets_dir() -> Path:

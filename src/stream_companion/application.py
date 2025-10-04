@@ -12,6 +12,7 @@ from .hotkeys import HotkeyManager
 from .models import OverlayConfig, Shortcut
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
+from . import registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,22 +104,53 @@ class Application:
         return candidate
 
     def _register_hotkeys(self) -> None:
+        # Register direct hotkeys and collect chord suffix sequences
+        from typing import Tuple
+        seq_map: Dict[Tuple[str, ...], callable] = {}
         for shortcut in self._shortcuts:
+            callback = lambda sc=shortcut: self._signals.triggered.emit(sc)
+            if shortcut.hotkey:
+                try:
+                    self._hotkey_manager.register_hotkey(
+                        shortcut.hotkey,
+                        callback,
+                    )
+                except ValueError as exc:
+                    self._logger.warning(
+                        "Skipping duplicate or invalid hotkey '%s': %s",
+                        shortcut.hotkey,
+                        exc,
+                    )
+            elif shortcut.suffix:
+                key = tuple(k.strip().lower() for k in shortcut.suffix)
+                if key in seq_map:
+                    self._logger.warning(
+                        "Duplicate chord suffix sequence '%s' detected; later entry will override",
+                        "+".join(key),
+                    )
+                seq_map[key] = callback
+
+        # Configure chorded activator if present
+        activator = registry.get_activator()
+        if activator and seq_map:
             try:
-                self._hotkey_manager.register_hotkey(
-                    shortcut.hotkey,
-                    lambda sc=shortcut: self._signals.triggered.emit(sc),
+                self._hotkey_manager.configure_chord_sequences(
+                    activator.hotkey,
+                    activator.timeout_ms,
+                    seq_map,
+                )
+                self._logger.info(
+                    "Chord activator configured: %s with %d suffix mappings (mode=%s)",
+                    activator.hotkey,
+                    len(seq_map),
+                    getattr(activator, "mode", "press"),
                 )
             except ValueError as exc:
-                self._logger.warning(
-                    "Skipping duplicate or invalid hotkey '%s': %s",
-                    shortcut.hotkey,
-                    exc,
-                )
+                self._logger.warning("Failed to configure activator: %s", exc)
 
     def _handle_shortcut_in_main_thread(self, shortcut: Shortcut) -> None:
         """Handle shortcut trigger in the main Qt thread."""
-        self._logger.info("Hotkey triggered: %s", shortcut.hotkey)
+        self._logger.info("Hotkey triggered: %s", shortcut.label())
         sound_id = self._sound_ids.get(shortcut)
         if sound_id:
             played = self._sound_player.play(sound_id)
