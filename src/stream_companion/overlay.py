@@ -136,6 +136,15 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
     def _prepare_pixmap(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+        # Ensure window is translucent for images
+        try:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        except Exception:
+            pass
+        # Ensure label paints with transparent bg
+        self._label.setStyleSheet("background: transparent;")
+
         pixmap = QPixmap(path.as_posix())
         if pixmap.isNull():
             _LOGGER.warning("Overlay image failed to load: %s", path)
@@ -153,6 +162,15 @@ class OverlayWindow(QWidget):
         return True
 
     def _prepare_movie(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+        # Ensure window is translucent for animations (GIFs)
+        try:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        except Exception:
+            pass
+        # Ensure label paints with transparent bg
+        self._label.setStyleSheet("background: transparent;")
+
         movie = QMovie(path.as_posix())
         if not movie.isValid():
             _LOGGER.warning("Overlay animation invalid: %s", path)
@@ -225,6 +243,8 @@ class OverlayWindow(QWidget):
             self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
         except Exception:
             pass
+        # Remove any forced transparent styles on label during video to avoid artifacts
+        self._label.setStyleSheet("")
 
         # Remember target size for scaling frames
         self._video_target_size = size if size is not None else (640, 360)
