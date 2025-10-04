@@ -159,6 +159,13 @@ def run_application(shortcuts: Iterable[Shortcut]) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
     from .tray_icon import TrayIcon
 
+    # Ensure Qt uses software OpenGL before QApplication is constructed
+    try:
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseSoftwareOpenGL, True)
+    except Exception:
+        # Best-effort; continue if not supported on platform
+        pass
+
     app = QApplication.instance() or QApplication([])
     application = Application(shortcuts)
     application.start()

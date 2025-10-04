@@ -323,7 +323,7 @@ class ConfiguratorWindow(QMainWindow):
         right_panel.addWidget(QLabel("Overlay File:"))
         overlay_layout = QHBoxLayout()
         self._overlay_input = QLineEdit()
-        self._overlay_input.setPlaceholderText("Path to overlay image/gif (optional)")
+        self._overlay_input.setPlaceholderText("Path to overlay image/gif/video (optional)")
         self._overlay_input.textChanged.connect(self._on_overlay_changed)
         self._overlay_browse_btn = QPushButton("Browse...")
         self._overlay_browse_btn.clicked.connect(self._browse_overlay)
@@ -523,7 +523,7 @@ class ConfiguratorWindow(QMainWindow):
             self,
             "Select Overlay File",
             "",
-            "Image Files (*.png *.gif *.jpg);;All Files (*)",
+            "Overlay Files (*.png *.gif *.jpg *.jpeg *.mp4 *.mov *.avi *.mkv *.webm *.m4v);;All Files (*)",
         )
         if file_path:
             self._overlay_input.setText(file_path)
@@ -559,7 +559,8 @@ class ConfiguratorWindow(QMainWindow):
         # Load and display preview
         path_obj = Path(path)
         try:
-            if path_obj.suffix.lower() == ".gif":
+            suffix = path_obj.suffix.lower()
+            if suffix == ".gif":
                 # For GIFs, show first frame
                 movie = QMovie(str(path_obj))
                 if not movie.isValid():
@@ -586,6 +587,11 @@ class ConfiguratorWindow(QMainWindow):
                 if not self._custom_size_checkbox.isChecked():
                     self._width_input.setValue(pixmap.width())
                     self._height_input.setValue(pixmap.height())
+            elif suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
+                # For videos, we don't render a live preview here
+                self._overlay_preview.clear()
+                self._overlay_preview.setText("Video file selected (no preview)")
+                # If custom size not set, leave size fields as-is
             else:
                 # For static images
                 pixmap = QPixmap(str(path_obj))

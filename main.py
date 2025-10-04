@@ -6,12 +6,16 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+import os
 
 ROOT_DIR = Path(__file__).resolve().parent
 SRC_DIR = ROOT_DIR / "src"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+
+# Default to disabling XCB GLX integration to avoid GLX requirements for video rendering
+os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
 
 from stream_companion import application, registry  # noqa: E402
 

@@ -4,7 +4,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 
 ## Highlights
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
-- **Instant reactions:** Fire sound bites (WAV/MP3) and animated overlays (PNG/GIF) with a tap.
+- **Instant reactions:** Fire sound bites (WAV/MP3) and overlays (PNG/GIF/JPG/Video) with a tap.
 - **Configurable visuals:** Choose overlay positions, screen duration, and transparency to match your brand.
 - **Desktop configurator:** A streamlined UI with file-browser selection, live preview, and hotkey capture makes setup effortless—no manual JSON editing required.
 - **Low footprint:** Runs quietly in the background so you can focus on the show.
@@ -15,7 +15,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
    pip install -r requirements.txt
    ```
 2. **Prepare assets**
-   - Drop audio clips (WAV/MP3) and overlays (PNG/GIF) inside the `assets/` directory.
+   - Drop audio clips (WAV/MP3) and overlays (PNG/GIF/JPG/MP4/WEBM/MOV/M4V/AVI/MKV) inside the `assets/` directory.
 3. **Configure shortcuts (GUI method - recommended)**
    ```bash
    python main.py --config
@@ -97,7 +97,7 @@ When running in listener mode, the application displays a system tray icon for e
 - **Configurator preview issues:** If sound or overlay previews fail, check that:
   - File paths are correct and files exist
   - Audio files are in supported formats (WAV/MP3)
-  - Overlay files are in supported formats (PNG/GIF/JPG)
+  - Overlay files are in supported formats (PNG/GIF/JPG/MP4/WEBM/MOV/M4V/AVI/MKV)
 - **System tray not showing:** If the tray icon doesn't appear, your desktop environment may not support system trays. You can still quit the application with `Ctrl+C` in the terminal.
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.

@@ -10,6 +10,15 @@
         "y": 540,
         "duration": 1500
       }
+    },
+    {
+      "hotkey": "<ctrl>+<alt>+2",
+      "overlay": {
+        "file": "assets/overlays/sample.mp4",
+        "x": 800,
+        "y": 450,
+        "duration": 0
+      }
     }
   ]
 }

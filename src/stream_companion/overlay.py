@@ -11,9 +11,10 @@ import logging
 from pathlib import Path
 from typing import Optional, Tuple
 
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer, QUrl
 from PySide6.QtGui import QMovie, QPixmap
 from PySide6.QtWidgets import QLabel, QWidget
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +43,12 @@ class OverlayWindow(QWidget):
 
         self._label = QLabel(self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Video components (lazily created on first use)
+        self._video_player: Optional[QMediaPlayer] = None
+        self._video_audio: Optional[QAudioOutput] = None
+        self._video_sink: Optional[QVideoSink] = None
+        self._video_target_size: Optional[Tuple[int, int]] = None
 
         self._movie: Optional[QMovie] = None
 
@@ -76,9 +83,14 @@ class OverlayWindow(QWidget):
             _LOGGER.warning("Overlay asset missing or not a file: %s", path)
             return False
 
-        is_gif = path.suffix.lower() == ".gif"
+        suffix = path.suffix.lower()
+        is_gif = suffix == ".gif"
+        is_video = suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}
         if is_gif:
             if not self._prepare_movie(path, size):
+                return False
+        elif is_video:
+            if not self._prepare_video(path, size):
                 return False
         else:
             if not self._prepare_pixmap(path, size):
@@ -105,11 +117,13 @@ class OverlayWindow(QWidget):
 
     def hideEvent(self, event) -> None:  # type: ignore[override]
         self._stop_animation()
+        self._stop_video()
         self._label.clear()
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._stop_animation()
+        self._stop_video()
         super().closeEvent(event)
 
     def _configure_window_flags(self) -> None:
@@ -160,6 +174,74 @@ class OverlayWindow(QWidget):
         self._movie = movie
         return True
 
+    def _prepare_video(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+        # Lazily create video components
+        if self._video_player is None:
+            self._video_player = QMediaPlayer(self)
+            self._video_audio = QAudioOutput(self)
+            self._video_audio.setVolume(1.0)
+            self._video_player.setAudioOutput(self._video_audio)
+            self._video_sink = QVideoSink(self)
+            self._video_player.setVideoSink(self._video_sink)
+
+            # Render frames into the QLabel to avoid GLX/OpenGL requirements
+            def _on_frame_changed(frame):  # type: ignore[no-redef]
+                try:
+                    image = frame.toImage()
+                    if image.isNull():
+                        return
+                    pixmap = QPixmap.fromImage(image)
+                    target = self._video_target_size
+                    if target is not None:
+                        pixmap = pixmap.scaled(
+                            target[0],
+                            target[1],
+                            Qt.AspectRatioMode.IgnoreAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    self._label.setPixmap(pixmap)
+                    self._resize_to_pixmap(pixmap)
+                except Exception:  # noqa: BLE001 - best effort rendering
+                    pass
+
+            self._video_sink.videoFrameChanged.connect(_on_frame_changed)
+
+            # Auto-hide on end of media if no explicit timer is running
+            def _on_status_changed(status):  # type: ignore[no-redef]
+                from PySide6.QtMultimedia import QMediaPlayer as _QMP
+                if status == _QMP.MediaStatus.EndOfMedia and not self._timer.isActive():
+                    self.hide()
+
+            self._video_player.mediaStatusChanged.connect(_on_status_changed)
+
+        # Stop any ongoing modes and switch to video
+        self._stop_animation()
+        self._label.clear()
+        self._label.show()
+
+        # To avoid GLX/translucency composition paths, make the window opaque during video
+        try:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        except Exception:
+            pass
+
+        # Remember target size for scaling frames
+        self._video_target_size = size if size is not None else (640, 360)
+
+        # Set source and start playback
+        try:
+            self._video_player.setSource(QUrl.fromLocalFile(path.as_posix()))  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001 - robust logging
+            _LOGGER.warning("Overlay video failed to set source: %s (%s)", path, exc)
+            return False
+
+        # Set initial window size before first frame arrives
+        self.resize(self._video_target_size[0], self._video_target_size[1])
+
+        self._video_player.play()  # type: ignore[union-attr]
+        return True
+
     def _resize_to_pixmap(self, pixmap: QPixmap) -> None:
         if pixmap.isNull():
             return
@@ -179,3 +261,17 @@ class OverlayWindow(QWidget):
             self._movie.stop()
             self._label.setMovie(None)
             self._movie = None
+
+    def _stop_video(self) -> None:
+        if self._video_player:
+            try:
+                self._video_player.stop()
+            except Exception:  # noqa: BLE001 - best effort cleanup
+                pass
+        self._video_target_size = None
+        # Restore translucent background attributes for image/GIF overlays
+        try:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        except Exception:
+            pass
