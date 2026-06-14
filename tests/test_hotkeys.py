@@ -118,3 +118,41 @@ def test_dispatch_invokes_hotkey_press_and_release():
     assert binding.hotkey.release_calls == [fake_key]
     assert events == ["released"]
     manager.stop()
+
+
+def test_canonicalize_wraps_modifiers_in_angle_brackets():
+    from stream_companion.hotkeys import HotkeyManager
+
+    assert HotkeyManager.canonicalize("ctrl+alt+9") == "<ctrl>+<alt>+9"
+    assert HotkeyManager.canonicalize("<ctrl>+<alt>+9") == "<ctrl>+<alt>+9"
+    assert HotkeyManager.canonicalize("Ctrl + Alt + 9") == "<ctrl>+<alt>+9"
+    assert HotkeyManager.canonicalize("shift+a") == "<shift>+a"
+    assert HotkeyManager.canonicalize("F5") == "f5"
+
+
+def test_canonicalize_rejects_invalid_inputs():
+    from stream_companion.hotkeys import HotkeyManager
+
+    import pytest
+
+    with pytest.raises(ValueError):
+        HotkeyManager.canonicalize("")
+    with pytest.raises(ValueError):
+        HotkeyManager.canonicalize("+++")
+    with pytest.raises(ValueError):
+        # Modifier-only combinations are not allowed
+        HotkeyManager.canonicalize("ctrl+alt")
+
+
+def test_register_hotkey_normalizes_bare_form():
+    """A bare 'ctrl+alt+9' should be registered the same as '<ctrl>+<alt>+9'."""
+
+    manager, _ = make_manager()
+    calls: List[str] = []
+
+    manager.register_hotkey("ctrl+alt+9", lambda: calls.append("hit"))
+    # Trigger using the canonical form
+    assert manager.trigger("<ctrl>+<alt>+9") is True
+    # And via the bare form too (since it normalizes)
+    assert manager.trigger("Ctrl + Alt + 9") is True
+    assert calls == ["hit", "hit"]

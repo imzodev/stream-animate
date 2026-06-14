@@ -226,6 +226,52 @@ def test_text_typer_window_size_zero_disables_tail_tracking():
     assert typer.tail() == ""
 
 
+def test_text_typer_propagates_controller_errors():
+    class BrokenController:
+        def type(self, text: str) -> None:
+            raise RuntimeError("simulated pynput failure")
+
+    typer = TextTyper(controller_factory=lambda: BrokenController(), window=32)
+    with pytest.raises(RuntimeError):
+        typer.type_text("hello", append_space=False)
+
+
+def test_process_chunk_returns_status_tags():
+    """_process_chunk returns 'silent', 'above_silence', 'transcribed', or 'error'."""
+
+    engine, sd, model, controller, _ = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
+    )
+
+    # Silent chunk (all zeros, rms=0)
+    result = engine._process_chunk(np.zeros(4000, dtype=np.float32))
+    assert result == "silent"
+
+    # Above-silence chunk returns "above_silence" when transcribe yields empty string
+    model.responses = [""]
+    result = engine._process_chunk(np.ones(4000, dtype=np.float32) * 0.5)
+    assert result == "above_silence"
+
+    # Non-empty transcription returns "transcribed"
+    model.responses = ["hello"]
+    result = engine._process_chunk(np.ones(4000, dtype=np.float32) * 0.5)
+    assert result == "transcribed"
+    assert controller.typed == ["hello "]
+
+    # Transcribe exception returns "error"
+    model.responses = [""]  # just to reset
+    original = engine._transcriber.transcribe
+    engine._transcriber.transcribe = lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError("boom")
+    )
+    try:
+        result = engine._process_chunk(np.ones(4000, dtype=np.float32) * 0.5)
+    finally:
+        engine._transcriber.transcribe = original
+    assert result == "error"
+    assert engine.last_error and "boom" in engine.last_error
+
+
 # ---------------------------------------------------------------------------
 # STTEngine
 # ---------------------------------------------------------------------------
@@ -363,3 +409,51 @@ def test_engine_microphone_failure_emits_status():
     time.sleep(0.2)
     engine.stop()
     assert any(s.startswith("error:") or s == "stopped" for s in statuses)
+
+
+def test_engine_status_reports_running_and_model():
+    engine, _, _, _, _ = _make_engine(
+        {"always_on": False, "hotkey": "<ctrl>+<alt>+space", "model": "tiny"}
+    )
+    # Before start: thread is not alive, mic is closed
+    snap = engine.status()
+    assert snap["running"] is False
+    assert snap["active"] is False
+    assert snap["mic_open"] is False
+    assert snap["model"] == "tiny"
+    assert snap["hotkey"] is None  # not passed in _make_engine
+    assert snap["last_error"] is None
+
+    # Hotkey is propagated when the engine is constructed with one
+    engine_with_hk = STTEngine(
+        STTConfig(always_on=False, hotkey="<ctrl>+<alt>+x"),
+        audio_capture=AudioCapture(sounddevice_module=FakeSoundDevice()),
+        transcriber=WhisperTranscriber(model_loader=lambda _n: FakeWhisperModel()),
+        typer=TextTyper(controller_factory=FakeController),
+        hotkey="<ctrl>+<alt>+x",
+    )
+    assert engine_with_hk.status()["hotkey"] == "<ctrl>+<alt>+x"
+
+
+def test_engine_observers_fire_on_state_change():
+    engine, sd, model, controller, _ = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.0}
+    )
+    events: List[str] = []
+
+    def observer() -> None:
+        events.append(engine.status().get("active", False) and "active" or "idle")
+
+    engine.add_observer(observer)
+    engine.set_active(True)
+    engine.start()
+    import time
+
+    # Wait briefly so the loop has time to start
+    time.sleep(0.1)
+    # Observer should have fired for the set_active, the start, and the
+    # run-loop entry. At least one of those is "active".
+    assert "active" in events
+    engine.stop()
+    # remove_observer should be a no-op on a missing callback
+    engine.remove_observer(lambda: None)

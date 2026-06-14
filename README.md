@@ -186,6 +186,14 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
 - **Activator disarms immediately**: Ensure you’re on the latest code (we ignore the activator’s last press as a suffix), your suffix is defined (string or array), and there’s no direct hotkey equal to the activator.
+- **STT shows as disabled in tray:** The tray menu reflects the engine state in real time. If the **Start/Stop STT** entry is greyed out, run with `--log-level INFO` and look for messages from `stream_companion.stt` and `stream_companion.application`. Common causes:
+  - The hotkey couldn't be registered (bad format). The engine accepts both `<ctrl>+<alt>+9` and bare `ctrl+alt+9` and is logged as the canonical form.
+  - The microphone device couldn't be opened (e.g. wrong device index, missing PortAudio, permission denied). Look for `Cannot start STT microphone:` in the log.
+  - The Whisper model failed to load (network blocked on first use, or insufficient disk/memory).
+- **Debugging STT interactively:**
+  - `python main.py --stt-status` prints the parsed STT configuration and exits without starting the listener. Use this to confirm the config file is being read correctly.
+  - `python main.py --log-level DEBUG` shows every state transition (engine start/stop, hotkey toggle, mic open/close, transcription calls, typed character counts).
+  - The `STTEngine.status()` method returns a JSON-serializable dict with `running`, `active`, `mic_open`, `transcriber_loaded`, `model`, `language`, `device`, `chunk_seconds`, `always_on`, `hotkey`, `typed_chars`, `started_at`, and `last_error` — useful for custom diagnostics.
 
 ## Power Tips
 - **Layer multiple shortcuts:** Build themed reactions (victory, defeat, raid) with unique audio/visual combos.

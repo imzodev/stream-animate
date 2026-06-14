@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 import re
 
-from PySide6.QtCore import Qt, Signal, QPoint
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPainter, QPen, QColor, QCursor, QPixmap, QMovie
 from PySide6.QtWidgets import (
     QApplication,

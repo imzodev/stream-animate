@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Iterable, List, Optional
 
-from PySide6.QtCore import QMetaObject, Qt, QObject, Signal
+from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from .hotkeys import HotkeyManager
@@ -54,7 +54,10 @@ class Application:
         if self._stt_engine is not None:
             self._stt_engine = self._stt_engine
         elif self._stt_config is not None:
-            self._stt_engine = STTEngine(self._stt_config)
+            self._stt_engine = STTEngine(
+                self._stt_config,
+                hotkey=self._stt_config.hotkey,
+            )
 
         # Create signals for thread-safe communication
         self._signals = ShortcutSignals()
@@ -111,18 +114,43 @@ class Application:
         self._stop_stt()
         self._stt_config = config
         if config is not None:
-            self._stt_engine = STTEngine(config)
+            self._stt_engine = STTEngine(
+                config,
+                hotkey=config.hotkey,
+            )
         else:
             self._stt_engine = None
+        self._logger.info(
+            "STT config replaced: enabled=%s always_on=%s hotkey=%s model=%s language=%s",
+            bool(config and config.enabled),
+            bool(config and config.always_on),
+            getattr(config, "hotkey", None) if config else None,
+            getattr(config, "model", None) if config else None,
+            getattr(config, "language", None) if config else None,
+        )
         if self._registered:
             self._register_hotkeys()
             self._start_stt()
 
     def _start_stt(self) -> None:
         if self._stt_engine is None or self._stt_config is None:
+            self._logger.info(
+                "STT start skipped: engine=%s config=%s",
+                self._stt_engine,
+                self._stt_config,
+            )
             return
         mode = self._stt_config.activation_mode()
+        self._logger.info(
+            "STT starting: mode=%s enabled=%s always_on=%s hotkey=%s model=%s",
+            mode,
+            self._stt_config.enabled,
+            self._stt_config.always_on,
+            self._stt_config.hotkey,
+            self._stt_config.model,
+        )
         if mode == "off":
+            self._logger.info("STT activation_mode is 'off'; engine not started")
             return
         if mode == "always":
             self._stt_engine.set_active(True)
@@ -146,10 +174,13 @@ class Application:
 
     def _stop_stt(self) -> None:
         if self._stt_engine is not None:
+            self._logger.info("STT stopping")
             try:
                 self._stt_engine.stop()
             except Exception:  # pragma: no cover - defensive
                 self._logger.exception("Error stopping STT engine")
+        else:
+            self._logger.info("STT stop skipped: no engine")
 
     def _handle_stt_status_in_main_thread(self, status: str) -> None:
         self._logger.info("STT status: %s", status)
@@ -242,7 +273,18 @@ class Application:
 
     def _on_stt_toggle(self) -> None:
         if self._stt_engine is None:
+            self._logger.warning("STT hotkey pressed but no engine is configured")
             return
+        if not self._stt_engine.is_running:
+            self._logger.warning(
+                "STT hotkey pressed but engine is not running (last_error=%s)",
+                self._stt_engine.last_error,
+            )
+            return
+        self._logger.info(
+            "STT toggle hotkey pressed: was %s",
+            "active" if self._stt_engine.is_active else "idle",
+        )
         self._stt_engine.trigger()
         self._signals.stt_status.emit(
             "activated" if self._stt_engine.is_active else "deactivated"
@@ -305,20 +347,61 @@ def run_application(
     application = Application(shortcuts, stt_config=stt_config)
     application.start()
 
+    _LOGGER.info(
+        "STT initial state: engine=%s config=%s",
+        "configured" if application.stt_engine() else "none",
+        (
+            (
+                f"enabled={stt_config.enabled} always_on={stt_config.always_on} "
+                f"hotkey={stt_config.hotkey} model={stt_config.model} language={stt_config.language}"
+            )
+            if stt_config
+            else "no stt config"
+        ),
+    )
+
     def _stt_state() -> Optional[str]:
+        """Return a granular state string for the tray icon.
+
+        Returns:
+            ``None``        - no STT config at all (action hidden)
+            ``"disabled"``  - config exists but engine is not running
+            ``"error"``     - engine is running but in an error state
+            ``"active"``    - engine is running and transcribing
+            ``"idle"``      - engine is running but waiting for toggle
+        """
+
         engine = application.stt_engine()
         if engine is None:
             return None
         if not engine.is_running:
-            return "off"
+            return "disabled"
+        if engine.last_error:
+            return "error"
         return "active" if engine.is_active else "idle"
 
     def _toggle_stt() -> None:
         engine = application.stt_engine()
-        if engine is None or not engine.is_running:
+        if engine is None:
+            _LOGGER.info("Tray STT toggle ignored: no engine configured")
+            return
+        if not engine.is_running:
+            _LOGGER.info("Tray STT toggle ignored: engine not running")
             return
         engine.trigger()
-        tray.refresh_stt_label()
+        # tray.refresh_stt_label() is also called via the engine observer.
+
+    tray_holder: Dict[str, Optional[TrayIcon]] = {"tray": None}
+
+    def _refresh_tray_label() -> None:
+        tray = tray_holder.get("tray")
+        if tray is not None:
+            tray.refresh_stt_label()
+
+    # Wire observer so the tray updates on every state change.
+    engine = application.stt_engine()
+    if engine is not None:
+        engine.add_observer(_refresh_tray_label)
 
     # Create system tray icon with quit callback
     tray = TrayIcon(
@@ -327,12 +410,15 @@ def run_application(
         on_toggle_stt=_toggle_stt,
         stt_state_provider=_stt_state,
     )
+    tray_holder["tray"] = tray
     tray.show()
     tray.refresh_stt_label()
 
     try:
         app.exec()
     finally:
+        if engine is not None:
+            engine.remove_observer(_refresh_tray_label)
         application.stop()
         tray.hide()
 

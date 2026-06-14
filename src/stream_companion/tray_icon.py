@@ -130,14 +130,24 @@ class TrayIcon:
         state = self._stt_state_provider()
         if state == "active":
             self._stt_toggle_action.setText("Stop STT")
+            self._stt_toggle_action.setEnabled(True)
             self._tray_icon.setToolTip("Streaming Companion Tool — STT active")
         elif state == "idle":
             self._stt_toggle_action.setText("Start STT")
+            self._stt_toggle_action.setEnabled(True)
             self._tray_icon.setToolTip("Streaming Companion Tool — STT idle")
-        else:
+        elif state == "error":
+            self._stt_toggle_action.setText("STT (error — see logs)")
+            self._stt_toggle_action.setEnabled(False)
+            self._tray_icon.setToolTip("Streaming Companion Tool — STT error")
+        elif state == "disabled":
             self._stt_toggle_action.setText("STT (disabled)")
             self._stt_toggle_action.setEnabled(False)
             self._tray_icon.setToolTip("Streaming Companion Tool")
+        else:
+            # Provider returned None: STT not configured at all. Hide the
+            # action so the tray menu stays clean.
+            self._stt_toggle_action.setVisible(False)
 
     def _load_icon(self) -> Optional[QIcon]:
         """Load the tray icon from assets.

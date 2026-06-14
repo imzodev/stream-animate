@@ -13,9 +13,10 @@ from .models import ActivatorConfig, Shortcut, STTConfig
 _LOGGER = logging.getLogger(__name__)
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
 
-_CACHED_ACTIVATOR: ActivatorConfig | None = None
-_CACHED_SHORTCUTS: list[Shortcut] | None = None
+_CACHED_ACTIVATOR: Optional[ActivatorConfig] = None
+_CACHED_SHORTCUTS: Optional[list[Shortcut]] = None
 _CACHED_STT: Optional[STTConfig] = None
+_FULL_CONFIG_LOADED: bool = False
 
 
 def default_shortcuts() -> List[Shortcut]:
@@ -29,7 +30,7 @@ def default_shortcuts() -> List[Shortcut]:
     return []
 
 
-def _load_config_cached() -> tuple[ActivatorConfig | None, list[Shortcut]]:
+def _load_config_cached() -> tuple[Optional[ActivatorConfig], list[Shortcut]]:
     global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
     if _CACHED_SHORTCUTS is not None:
         return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
@@ -47,8 +48,8 @@ def _load_config_cached() -> tuple[ActivatorConfig | None, list[Shortcut]]:
 def _load_full_config_cached() -> (
     tuple[Optional[ActivatorConfig], list[Shortcut], Optional[STTConfig]]
 ):
-    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
-    if _CACHED_SHORTCUTS is not None:
+    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _FULL_CONFIG_LOADED
+    if _FULL_CONFIG_LOADED:
         return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
     try:
         activator, shortcuts, stt = load_full_config()
@@ -60,10 +61,11 @@ def _load_full_config_cached() -> (
         _CACHED_ACTIVATOR = None
         _CACHED_SHORTCUTS = list(default_shortcuts())
         _CACHED_STT = None
+    _FULL_CONFIG_LOADED = True
     return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
 
 
-def get_activator() -> ActivatorConfig | None:
+def get_activator() -> Optional[ActivatorConfig]:
     """Return the optional global activator configuration, if present."""
     activator, _ = _load_config_cached()
     return activator
@@ -85,10 +87,11 @@ def get_stt_config() -> Optional[STTConfig]:
 def reload_config() -> None:
     """Clear the config cache so the next call reloads from disk."""
 
-    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
+    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _FULL_CONFIG_LOADED
     _CACHED_ACTIVATOR = None
     _CACHED_SHORTCUTS = None
     _CACHED_STT = None
+    _FULL_CONFIG_LOADED = False
 
 
 def assets_dir() -> Path:

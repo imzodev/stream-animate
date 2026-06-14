@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -310,14 +311,26 @@ class TextTyper:
         with self._lock:
             overlap = self._find_overlap(self._typed_tail, payload)
             to_type = payload[overlap:]
-            if to_type:
-                controller = self._get_controller()
-                controller.type(to_type)
-                self._typed_tail = (
-                    (self._typed_tail + to_type)[-self._window :]
-                    if self._window
-                    else ""
-                )
+        if not to_type:
+            _LOGGER.debug(
+                "STT typer: fully dedup'd against tail (tail_len=%d, payload_len=%d)",
+                len(self._typed_tail),
+                len(payload),
+            )
+            return ""
+        try:
+            controller = self._get_controller()
+            controller.type(to_type)
+        except Exception as exc:
+            _LOGGER.exception(
+                "STT typer: pynput controller.type(%r) failed: %s", to_type, exc
+            )
+            raise
+        with self._lock:
+            self._typed_tail = (
+                (self._typed_tail + to_type)[-self._window :] if self._window else ""
+            )
+        _LOGGER.info("STT typer typed %d chars: %r", len(to_type), to_type)
         return to_type
 
     def reset(self) -> None:
@@ -370,8 +383,10 @@ class STTEngine:
         typer: Optional[TextTyper] = None,
         on_phrase: Optional[Callable[[STTEvent], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
+        hotkey: Optional[str] = None,
     ) -> None:
         self._config = config
+        self._stt_hotkey = hotkey
         self._audio = audio_capture or AudioCapture(
             sample_rate=config.sample_rate,
             chunk_seconds=config.chunk_seconds,
@@ -387,6 +402,10 @@ class STTEngine:
         self._lock = threading.Lock()
         self._active = False
         self._typed_total_chars = 0
+        self._last_error: Optional[str] = None
+        self._started_at: Optional[float] = None
+        self._mic_open: bool = False
+        self._observers: List[Callable[[], None]] = []
 
     @property
     def config(self) -> STTConfig:
@@ -406,6 +425,36 @@ class STTEngine:
     def typed_total_chars(self) -> int:
         return self._typed_total_chars
 
+    @property
+    def last_error(self) -> Optional[str]:
+        return self._last_error
+
+    def status(self) -> dict:
+        """Return a JSON-serializable snapshot of the engine state.
+
+        Useful for logging, the tray icon, and one-shot CLI debugging.
+        """
+
+        with self._lock:
+            active = self._active
+            thread_alive = self._thread is not None and self._thread.is_alive()
+        transcriber_loaded = self._transcriber.is_loaded()
+        return {
+            "running": thread_alive,
+            "active": active,
+            "mic_open": self._mic_open,
+            "transcriber_loaded": transcriber_loaded,
+            "model": self._config.model,
+            "language": self._config.language,
+            "device": self._config.device,
+            "chunk_seconds": self._config.chunk_seconds,
+            "always_on": self._config.always_on,
+            "hotkey": self._stt_hotkey,
+            "typed_chars": self._typed_total_chars,
+            "started_at": self._started_at,
+            "last_error": self._last_error,
+        }
+
     def start(self) -> None:
         """Start the capture/transcribe loop in a background thread.
 
@@ -417,13 +466,23 @@ class STTEngine:
 
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
-                _LOGGER.debug("STT engine already running")
+                _LOGGER.info("STT start requested but engine is already running")
                 return
             self._stop_event.clear()
+            self._last_error = None
+            self._started_at = time.time()
             self._thread = threading.Thread(
                 target=self._run, name="stt-engine", daemon=True
             )
             self._thread.start()
+        _LOGGER.info(
+            "STT engine started: model=%s language=%s device=%s always_on=%s",
+            self._config.model,
+            self._config.language,
+            self._config.device,
+            self._config.always_on,
+        )
+        self._started_at = time.time()
         self._emit_status("started")
 
     def stop(self) -> None:
@@ -431,6 +490,7 @@ class STTEngine:
 
         with self._lock:
             if self._thread is None:
+                _LOGGER.info("STT stop requested but engine is not running")
                 return
             self._active = False
             self._stop_event.set()
@@ -440,6 +500,9 @@ class STTEngine:
         self._audio.stop()
         with self._lock:
             self._thread = None
+            self._mic_open = False
+            self._started_at = None
+        _LOGGER.info("STT engine stopped (typed_chars=%d)", self._typed_total_chars)
         self._emit_status("stopped")
 
     def set_active(self, active: bool) -> None:
@@ -452,10 +515,19 @@ class STTEngine:
 
         with self._lock:
             if self._active == active:
+                _LOGGER.debug("STT set_active(%s) is a no-op", active)
                 return
             self._active = active
             if not active:
                 self._typer.reset()
+        if active:
+            _LOGGER.info(
+                "STT activated (model=%s, language=%s)",
+                self._config.model,
+                self._config.language,
+            )
+        else:
+            _LOGGER.info("STT deactivated")
         self._emit_status("activated" if active else "deactivated")
 
     def trigger(self) -> None:
@@ -463,16 +535,43 @@ class STTEngine:
 
         with self._lock:
             current = self._active
-        self.set_active(not current)
+        new_state = not current
+        _LOGGER.info(
+            "STT toggle: %s -> %s (hotkey=%s, model=%s)",
+            "active" if current else "idle",
+            "active" if new_state else "idle",
+            self._stt_hotkey,
+            self._config.model,
+        )
+        self.set_active(new_state)
 
     def _run(self) -> None:
         try:
             self._audio.start()
         except AudioCaptureError as exc:
-            _LOGGER.error("Cannot start STT: %s", exc)
+            self._last_error = str(exc)
+            with self._lock:
+                self._mic_open = False
+            _LOGGER.error("Cannot start STT microphone: %s", exc)
             self._emit_status(f"error:{exc}")
             return
-        _LOGGER.info("STT engine loop running")
+        with self._lock:
+            self._mic_open = True
+        _LOGGER.info(
+            "STT engine loop running (mic=%s, sample_rate=%d, chunk=%.2fs, silence_threshold=%.4f)",
+            (
+                self._audio.device
+                if hasattr(self._audio, "device")
+                else self._config.device
+            ),
+            self._audio.sample_rate,
+            self._audio.chunk_seconds,
+            self._config.silence_rms_threshold,
+        )
+        chunks_received = 0
+        chunks_above_silence = 0
+        chunks_transcribed = 0
+        last_log = time.time()
         try:
             while not self._stop_event.is_set():
                 with self._lock:
@@ -487,24 +586,95 @@ class STTEngine:
                 chunk = self._audio.get_chunk(timeout=0.5)
                 if chunk is None:
                     continue
-                self._process_chunk(chunk)
+                chunks_received += 1
+                result = self._process_chunk(chunk)
+                if result == "above_silence":
+                    chunks_above_silence += 1
+                elif result == "transcribed":
+                    chunks_above_silence += 1
+                    chunks_transcribed += 1
+                # Periodically log activity even if nothing was transcribed,
+                # so users can see that the loop is alive and receiving audio.
+                if time.time() - last_log > 5.0:
+                    _LOGGER.info(
+                        "STT heartbeat: %d chunks received, %d above silence, %d transcribed (rms_threshold=%.4f, model_loaded=%s)",
+                        chunks_received,
+                        chunks_above_silence,
+                        chunks_transcribed,
+                        self._config.silence_rms_threshold,
+                        self._transcriber.is_loaded(),
+                    )
+                    last_log = time.time()
         finally:
+            with self._lock:
+                self._mic_open = False
             self._audio.stop()
-            _LOGGER.info("STT engine loop stopped")
+            _LOGGER.info(
+                "STT engine loop stopped (chunks_received=%d, above_silence=%d, transcribed=%d)",
+                chunks_received,
+                chunks_above_silence,
+                chunks_transcribed,
+            )
 
-    def _process_chunk(self, chunk: np.ndarray) -> None:
+    def _process_chunk(self, chunk: np.ndarray) -> str:
+        """Transcribe a single chunk. Returns a status tag for the loop counters.
+
+        Returns one of: ``"silent"``, ``"above_silence"``, ``"transcribed"``,
+        ``"error"``. The first two are tracked by the engine loop; the last
+        two are surfaced to the user via the typed log message.
+        """
+
         rms = float(np.sqrt(np.mean(np.square(chunk)))) if chunk.size else 0.0
         if rms < self._config.silence_rms_threshold:
-            _LOGGER.debug("Skipping silent chunk (rms=%.4f)", rms)
-            return
+            _LOGGER.debug(
+                "STT skipping silent chunk (rms=%.6f < threshold=%.4f, samples=%d)",
+                rms,
+                self._config.silence_rms_threshold,
+                chunk.size,
+            )
+            return "silent"
+        _LOGGER.debug(
+            "STT chunk above silence: rms=%.4f samples=%d",
+            rms,
+            chunk.size,
+        )
+        if not self._transcriber.is_loaded():
+            _LOGGER.info(
+                "STT loading Whisper model '%s' (first use may take a while)…",
+                self._config.model,
+            )
+        t0 = time.time()
         try:
             text = self._transcriber.transcribe(chunk, language=self._config.language)
         except Exception as exc:  # pragma: no cover - model path
+            self._last_error = f"transcribe: {exc}"
             _LOGGER.exception("Whisper transcription failed: %s", exc)
-            return
+            self._emit_status(f"error:transcribe:{exc}")
+            return "error"
+        dt = time.time() - t0
         if not text:
-            return
-        typed = self._typer.type_text(text, append_space=self._config.append_space)
+            _LOGGER.info(
+                "STT transcription returned empty string after %.2fs (rms=%.4f, model=%s, lang=%s)",
+                dt,
+                rms,
+                self._config.model,
+                self._config.language,
+            )
+            return "above_silence"
+        _LOGGER.info(
+            "STT transcribed in %.2fs: %r (rms=%.4f, model=%s)",
+            dt,
+            text,
+            rms,
+            self._config.model,
+        )
+        try:
+            typed = self._typer.type_text(text, append_space=self._config.append_space)
+        except Exception as exc:
+            self._last_error = f"typer: {exc}"
+            _LOGGER.exception("STT typer failed: %s", exc)
+            self._emit_status(f"error:typer:{exc}")
+            return "error"
         with self._lock:
             self._typed_total_chars += len(typed)
         _LOGGER.info(
@@ -526,11 +696,39 @@ class STTEngine:
                 )
             except Exception:  # pragma: no cover - user callback
                 _LOGGER.exception("STT on_phrase callback raised")
+        return "transcribed"
 
     def _emit_status(self, status: str) -> None:
         if self._on_status is None:
-            return
-        try:
-            self._on_status(status)
-        except Exception:  # pragma: no cover - user callback
-            _LOGGER.exception("STT on_status callback raised")
+            pass
+        else:
+            try:
+                self._on_status(status)
+            except Exception:  # pragma: no cover - user callback
+                _LOGGER.exception("STT on_status callback raised")
+        self._notify_observers()
+
+    def add_observer(self, callback: Callable[[], None]) -> None:
+        """Register a callback fired on every state transition.
+
+        Use to update UI (tray icon, status indicators) without polling.
+        """
+
+        with self._lock:
+            self._observers.append(callback)
+
+    def remove_observer(self, callback: Callable[[], None]) -> None:
+        with self._lock:
+            try:
+                self._observers.remove(callback)
+            except ValueError:
+                pass
+
+    def _notify_observers(self) -> None:
+        with self._lock:
+            observers = list(self._observers)
+        for cb in observers:
+            try:
+                cb()
+            except Exception:  # pragma: no cover - user callback
+                _LOGGER.exception("STT observer raised")

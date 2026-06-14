@@ -67,6 +67,42 @@ class HotkeyManager:
         parts = [segment.strip() for segment in combination.split("+")]
         return "+".join(parts).lower()
 
+    @staticmethod
+    def canonicalize(combination: str) -> str:
+        """Convert a user-friendly hotkey string into pynput's <key>+<key> form.
+
+        Accepts both ``<ctrl>+<alt>+9`` and the bare form ``ctrl+alt+9`` (with
+        or without spaces). Wraps any bare modifier key (ctrl/alt/shift/cmd/
+        meta) in angle brackets. Returns the canonical lowercase string.
+
+        Raises ``ValueError`` if the result would be empty or contain only
+        modifiers.
+        """
+
+        if not combination:
+            raise ValueError("Hotkey combination must be a non-empty string")
+        modifiers = {"ctrl", "alt", "shift", "cmd", "meta"}
+        out = []
+        for raw in combination.split("+"):
+            token = raw.strip().lower()
+            if not token:
+                continue
+            if token in modifiers:
+                out.append(f"<{token}>")
+            else:
+                out.append(token)
+        if not out:
+            raise ValueError(
+                f"Hotkey combination '{combination}' has no usable key segments"
+            )
+        # Require at least one non-modifier key to avoid registering
+        # something like "ctrl+alt" with no trigger.
+        if all(seg.startswith("<") and seg.endswith(">") for seg in out):
+            raise ValueError(
+                f"Hotkey combination '{combination}' has no non-modifier key"
+            )
+        return "+".join(out)
+
     @property
     def is_running(self) -> bool:
         with self._lock:
@@ -99,16 +135,17 @@ class HotkeyManager:
         if not callable(callback):
             raise ValueError("Hotkey callback must be callable")
 
-        normalized = self._normalize_combination(combination)
+        canonical = self.canonicalize(combination)
+        normalized = self._normalize_combination(canonical)
         with self._lock:
             if normalized in self._hotkeys:
                 raise ValueError(f"Hotkey '{combination}' already registered")
             hotkey = self._hotkey_factory(
-                combination,
+                canonical,
                 lambda combo=normalized: self._execute_callback(combo),
             )
-            self._hotkeys[normalized] = _Binding(combination, callback, hotkey)
-        self._logger.info("Registered hotkey %s", combination)
+            self._hotkeys[normalized] = _Binding(canonical, callback, hotkey)
+        self._logger.info("Registered hotkey %s (input was %r)", canonical, combination)
 
     def configure_chord(
         self, activator: str, timeout_ms: int, suffix_map: Dict[str, Callback]
@@ -123,13 +160,14 @@ class HotkeyManager:
             raise ValueError("Suffix map must not be empty")
 
         # Register activator as a normal hotkey whose callback arms the manager
-        self._activator_combo = self._normalize_combination(activator)
+        canonical = self.canonicalize(activator)
+        self._activator_combo = self._normalize_combination(canonical)
 
         def _arm_cb() -> None:
             self._arm(timeout_ms)
 
         # Use register_hotkey to reuse parsing/logging
-        self.register_hotkey(activator, _arm_cb)
+        self.register_hotkey(canonical, _arm_cb)
         with self._lock:
             # Back-compat: wrap single-key map into sequence map
             self._suffix_seq_map = {(k,): cb for k, cb in suffix_map.items()}
@@ -147,12 +185,13 @@ class HotkeyManager:
         if not seq_map:
             raise ValueError("Sequence map must not be empty")
 
-        self._activator_combo = self._normalize_combination(activator)
+        canonical = self.canonicalize(activator)
+        self._activator_combo = self._normalize_combination(canonical)
 
         def _arm_cb() -> None:
             self._arm(timeout_ms)
 
-        self.register_hotkey(activator, _arm_cb)
+        self.register_hotkey(canonical, _arm_cb)
         with self._lock:
             self._suffix_seq_map = dict(seq_map)
             self._arm_timeout_ms = max(100, int(timeout_ms))
@@ -168,7 +207,11 @@ class HotkeyManager:
         return False
 
     def trigger(self, combination: str) -> bool:
-        normalized = self._normalize_combination(combination)
+        try:
+            canonical = self.canonicalize(combination)
+        except ValueError:
+            return False
+        normalized = self._normalize_combination(canonical)
         return self._execute_callback(normalized)
 
     def registered_combinations(self) -> Iterable[str]:
