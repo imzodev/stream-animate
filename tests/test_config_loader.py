@@ -19,6 +19,7 @@ def _write_schema(path: Path) -> None:
         "type": "object",
         "required": ["shortcuts"],
         "properties": {
+            "version": {"type": "string"},
             "shortcuts": {
                 "type": "array",
                 "items": {
@@ -38,10 +39,14 @@ def _write_schema(path: Path) -> None:
                             },
                             "additionalProperties": False,
                         },
+                        "trigger_word": {
+                            "type": ["string", "null"],
+                            "description": "Voice trigger word",
+                        },
                     },
                     "additionalProperties": False,
                 },
-            }
+            },
         },
         "additionalProperties": False,
     }
@@ -168,6 +173,9 @@ def _write_full_schema(path: Path) -> None:
                     "append_space": {"type": "boolean"},
                     "silence_rms_threshold": {"type": "number"},
                     "dedup_window": {"type": "integer"},
+                    "trigger_cooldown_ms": {"type": "integer"},
+                    "type_into_focused_window": {"type": "boolean"},
+                    "voice_triggers_enabled": {"type": "boolean"},
                 },
                 "additionalProperties": False,
             },
@@ -199,6 +207,9 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
                     "append_space": True,
                     "silence_rms_threshold": 0.01,
                     "dedup_window": 32,
+                    "trigger_cooldown_ms": 2000,
+                    "type_into_focused_window": False,
+                    "voice_triggers_enabled": True,
                 },
             }
         ),
@@ -215,6 +226,8 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
     assert stt.hotkey == "<ctrl>+<alt>+space"
     assert stt.model == "turbo"
     assert stt.chunk_seconds == 3.0
+    assert stt.type_into_focused_window is False
+    assert stt.voice_triggers_enabled is True
 
     # Save and reload
     save_config(
@@ -272,3 +285,77 @@ def test_stt_save_without_stt_preserves_existing(tmp_path: Path) -> None:
     assert stt is not None
     assert stt.always_on is True
     assert stt.model == "base"
+
+
+def test_trigger_word_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A trigger_word declared on a shortcut should survive a save/load cycle."""
+
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    config_path = tmp_path / "shortcuts.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": "1.0.0",
+                "shortcuts": [
+                    {
+                        "hotkey": "<ctrl>+<alt>+c",
+                        "sound": "sounds/celebration.wav",
+                        "trigger_word": "Fail",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion import config_loader
+
+    monkeypatch.setattr(
+        config_loader,
+        "_default_paths",
+        lambda: (config_path, schema_path, config_path),
+    )
+
+    shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert len(shortcuts) == 1
+    assert shortcuts[0].trigger_word == "Fail"
+    assert shortcuts[0].normalized_trigger_word() == "fail"
+
+    # Save and reload — trigger_word must be preserved
+    config_loader.save_config(
+        None, shortcuts, config_path=config_path, schema_path=schema_path
+    )
+    shortcuts2 = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert shortcuts2[0].trigger_word == "fail"  # normalized on save
+    assert shortcuts2[0].normalized_trigger_word() == "fail"
+
+
+def test_trigger_word_omitted_is_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shortcut without trigger_word should have None, not a default empty string."""
+
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    config_path = tmp_path / "shortcuts.json"
+    config_path.write_text(
+        json.dumps(
+            {"version": "1.0.0", "shortcuts": [{"hotkey": "a", "sound": "x.wav"}]}
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion import config_loader
+
+    monkeypatch.setattr(
+        config_loader,
+        "_default_paths",
+        lambda: (config_path, schema_path, config_path),
+    )
+
+    shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert shortcuts[0].trigger_word is None
+    assert shortcuts[0].normalized_trigger_word() is None

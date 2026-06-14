@@ -40,7 +40,10 @@
         "sample_rate": { "type": "integer", "default": 16000, "minimum": 8000, "maximum": 48000 },
         "append_space": { "type": "boolean", "default": true },
         "silence_rms_threshold": { "type": "number", "default": 0.005, "minimum": 0.0 },
-        "dedup_window": { "type": "integer", "default": 64, "minimum": 0, "maximum": 4096 }
+        "dedup_window": { "type": "integer", "default": 64, "minimum": 0, "maximum": 4096 },
+        "trigger_cooldown_ms": { "type": "integer", "default": 1500, "minimum": 0, "maximum": 60000, "description": "Per-shortcut cooldown for voice-triggered shortcuts" },
+        "type_into_focused_window": { "type": "boolean", "default": true, "description": "Whether the STT engine also types the dictated text into the focused window" },
+        "voice_triggers_enabled": { "type": "boolean", "default": true, "description": "Whether the STT engine scans phrases for shortcut trigger words" }
       },
       "additionalProperties": false
     }
@@ -70,6 +73,10 @@
         },
         "overlay": {
           "$ref": "#/definitions/overlay"
+        },
+        "trigger_word": {
+          "type": ["string", "null"],
+          "description": "When STT transcribes a phrase containing this word (case-insensitive, word-boundary match), the shortcut fires. Set to null or omit to disable voice triggering for this shortcut."
         }
       },
       "additionalProperties": false

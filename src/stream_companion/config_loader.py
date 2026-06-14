@@ -163,6 +163,7 @@ def _hydrate_config(data: dict) -> Tuple[Optional[ActivatorConfig], List[Shortcu
                 suffix=suffix_tuple,
                 sound_path=raw.get("sound"),
                 overlay=overlay,
+                trigger_word=raw.get("trigger_word"),
             )
         except KeyError as exc:
             raise ConfigError(
@@ -247,6 +248,11 @@ def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
             append_space=bool(raw.get("append_space", True)),
             silence_rms_threshold=float(raw.get("silence_rms_threshold", 0.005)),
             dedup_window=int(raw.get("dedup_window", 64)),
+            trigger_cooldown_ms=int(raw.get("trigger_cooldown_ms", 1500)),
+            # Both new flags default to True; legacy config files that
+            # don't carry them are interpreted as "use defaults".
+            type_into_focused_window=bool(raw.get("type_into_focused_window", True)),
+            voice_triggers_enabled=bool(raw.get("voice_triggers_enabled", True)),
         )
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"Invalid STT configuration: {exc}") from exc
@@ -296,9 +302,11 @@ def _serialize(
                 entry["overlay"]["width"] = shortcut.overlay.width
             if shortcut.overlay.height is not None:
                 entry["overlay"]["height"] = shortcut.overlay.height
+        if shortcut.normalized_trigger_word() is not None:
+            entry["trigger_word"] = shortcut.normalized_trigger_word()
         serialized.append(entry)
 
-    data: dict = {"version": "1.2.0", "shortcuts": serialized}
+    data: dict = {"version": "1.3.0", "shortcuts": serialized}
     if activator is not None:
         data["activator"] = {
             "hotkey": activator.hotkey,
@@ -318,6 +326,9 @@ def _serialize(
             "append_space": stt.append_space,
             "silence_rms_threshold": stt.silence_rms_threshold,
             "dedup_window": stt.dedup_window,
+            "trigger_cooldown_ms": stt.trigger_cooldown_ms,
+            "type_into_focused_window": stt.type_into_focused_window,
+            "voice_triggers_enabled": stt.voice_triggers_enabled,
         }
     return data
 

@@ -110,14 +110,15 @@ Stream Companion can transcribe your voice in real time and type the result into
 
 ### Quick Start
 1. Open the configurator (`python main.py --config`) and switch to the **Speech-to-Text** tab.
-2. Tick **Enable speech-to-text typing**.
+2. Tick **Enable speech-to-text (STT)**.
 3. Choose an activation mode:
    - **Always on** — the engine starts transcribing as soon as the app launches.
    - **Toggle via hotkey** — capture a global hotkey (e.g. `<ctrl>+<alt>+space`); press once to start dictating, again to stop.
-4. Pick a **Whisper model**. `turbo` is recommended for live dictation; use `base` or `small` on lower-end hardware.
-5. Select your **Language** (`auto` lets Whisper detect, or pick a specific code).
-6. Pick an **Input device** (or leave it on *System default*).
-7. Click **Save STT Settings**. The save returns immediately, but if the model is not yet cached the tool will start downloading it in the background. **Watch the terminal for the progress log** — you'll see lines like:
+4. By default the engine both **types dictated text into the focused window** and **triggers voice shortcuts** (see [Voice Triggers](#voice-triggers) below). You can untick either sub-option to disable that side-effect.
+5. Pick a **Whisper model**. `turbo` is recommended for live dictation; use `base` or `small` on lower-end hardware.
+6. Select your **Language** (`auto` lets Whisper detect, or pick a specific code).
+7. Pick an **Input device** (or leave it on *System default*).
+8. Click **Save STT Settings**. The save returns immediately, but if the model is not yet cached the tool will start downloading it in the background. **Watch the terminal for the progress log** — you'll see lines like:
    ```
    [INFO] stream_companion.model_downloader: Whisper model 'large' not cached; downloading (~2.9 GiB) to /home/irving/.cache/whisper/large-v3.pt …
    [INFO] stream_companion.model_downloader: Whisper model 'large' download: 500.0 MiB / 2.9 GiB (17%)
@@ -126,7 +127,38 @@ Stream Companion can transcribe your voice in real time and type the result into
    [INFO] stream_companion.model_downloader: Whisper model 'large' download complete: /home/irving/.cache/whisper/large-v3.pt
    ```
    You can close the configurator during the download; it continues in the background.
-8. Re-launch the listener (`python main.py --log-level INFO`) and click into any text field. Start speaking — each phrase is typed into the focused window followed by a space.
+9. Re-launch the listener (`python main.py --log-level INFO`) and click into any text field. Start speaking — each phrase is typed into the focused window followed by a space.
+
+### Voice Triggers
+Each shortcut can declare a **trigger word** that, when spoken, fires the shortcut (plays its sound, displays its overlay, or runs the same code path as the hotkey). The triggers and the focused-window typing are **independent** — you can keep voice triggers active while disabling typing, or vice versa.
+
+#### Configuring a trigger word
+1. Open the configurator and select a shortcut.
+2. In the **Voice Trigger Word (optional)** field, type the word (e.g. `fail`, `niño`, `OK`). Matching is:
+   - **Case-insensitive** — `Fail` and `fail` both match.
+   - **Word-boundary** — `fail` matches "what a fail" but NOT "failful" or "failsafe".
+   - **Whole-word token** — the same word is required even when preceded/followed by punctuation.
+3. The same trigger word on two shortcuts will only fire the first one (the second is reported as a warning in the configurator).
+4. Click **Save Changes**. The trigger word is now active.
+
+#### Per-shortcut cooldown
+To avoid firing the same shortcut many times on overlapping audio chunks of one utterance, each shortcut has a per-shortcut cooldown (default **1500 ms**, configurable via `trigger_cooldown_ms` in the STT block of `config/shortcuts.json`).
+
+#### JSON form
+```json
+{
+  "hotkey": "<ctrl>+<alt>+f",
+  "sound": "sounds/celebration.wav",
+  "trigger_word": "fail"
+}
+```
+
+#### Independent control: typing vs triggers
+- The hotkey/always-on toggle controls **when the STT engine runs**.
+- `type_into_focused_window` (default `true`) decides whether the transcribed text is typed.
+- `voice_triggers_enabled` (default `true`) decides whether the engine scans phrases for trigger words.
+
+So with `always_on: false` + a hotkey + `voice_triggers_enabled: true` + `type_into_focused_window: false`, your hotkey turns on listening (which fires voice shortcuts on detected words) but does NOT type into any focused window — useful when you only want reactions on stream.
 
 ### Tray / Hotkey Controls
 - The tray menu shows **Start STT** / **Stop STT** based on the current state.

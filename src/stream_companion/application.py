@@ -13,6 +13,7 @@ from .models import OverlayConfig, Shortcut, STTConfig
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 from .stt import STTEngine
+from .triggers import TriggerMatcher, build_matcher_from_shortcuts
 from . import registry
 
 _LOGGER = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class ShortcutSignals(QObject):
 
     triggered = Signal(Shortcut)
     stt_status = Signal(str)
+    stt_phrase = Signal(str)  # emitted whenever a phrase is finalized
 
 
 class Application:
@@ -37,6 +39,7 @@ class Application:
         hotkey_manager: Optional[HotkeyManager] = None,
         stt_config: Optional[STTConfig] = None,
         stt_engine: Optional[STTEngine] = None,
+        trigger_matcher: Optional[TriggerMatcher] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._shortcuts: List[Shortcut] = list(shortcuts)
@@ -57,7 +60,28 @@ class Application:
             self._stt_engine = STTEngine(
                 self._stt_config,
                 hotkey=self._stt_config.hotkey,
+                on_phrase=self._on_stt_phrase,
             )
+
+        # Trigger matcher for voice-triggered shortcuts. If the caller did
+        # not inject one, build it from the current shortcut list + the
+        # cooldown from the STT config (if any).
+        if trigger_matcher is not None:
+            self._trigger_matcher = trigger_matcher
+        else:
+            cooldown = (
+                self._stt_config.trigger_cooldown_ms if self._stt_config else 1500
+            )
+            self._trigger_matcher, duplicates = build_matcher_from_shortcuts(
+                self._shortcuts, cooldown_ms=cooldown
+            )
+            for word, label in duplicates:
+                self._logger.warning(
+                    "Duplicate voice trigger word %r (also bound to %s); only the first "
+                    "registration will fire",
+                    word,
+                    label,
+                )
 
         # Create signals for thread-safe communication
         self._signals = ShortcutSignals()
@@ -66,6 +90,9 @@ class Application:
         )
         self._signals.stt_status.connect(
             self._handle_stt_status_in_main_thread, Qt.ConnectionType.QueuedConnection
+        )
+        self._signals.stt_phrase.connect(
+            self._handle_stt_phrase_in_main_thread, Qt.ConnectionType.QueuedConnection
         )
 
     def start(self) -> None:
@@ -104,11 +131,15 @@ class Application:
     def stt_engine(self) -> Optional[STTEngine]:
         return self._stt_engine
 
+    def trigger_matcher(self) -> TriggerMatcher:
+        return self._trigger_matcher
+
     def set_stt_config(self, config: Optional[STTConfig]) -> None:
         """Replace the active STT config/engine at runtime.
 
         Restarts the engine so new settings (model, language, device) take
-        effect without restarting the whole application.
+        effect without restarting the whole application. Also rebuilds
+        the trigger matcher so the new cooldown is honored.
         """
 
         self._stop_stt()
@@ -117,16 +148,30 @@ class Application:
             self._stt_engine = STTEngine(
                 config,
                 hotkey=config.hotkey,
+                on_phrase=self._on_stt_phrase,
             )
         else:
             self._stt_engine = None
+        # Rebuild the matcher to honor the new cooldown value.
+        cooldown = config.trigger_cooldown_ms if config is not None else 1500
+        self._trigger_matcher, duplicates = build_matcher_from_shortcuts(
+            self._shortcuts, cooldown_ms=cooldown
+        )
+        for word, label in duplicates:
+            self._logger.warning(
+                "Duplicate voice trigger word %r (also bound to %s); only the first "
+                "registration will fire",
+                word,
+                label,
+            )
         self._logger.info(
-            "STT config replaced: enabled=%s always_on=%s hotkey=%s model=%s language=%s",
+            "STT config replaced: enabled=%s always_on=%s hotkey=%s model=%s language=%s trigger_cooldown_ms=%s",
             bool(config and config.enabled),
             bool(config and config.always_on),
             getattr(config, "hotkey", None) if config else None,
             getattr(config, "model", None) if config else None,
             getattr(config, "language", None) if config else None,
+            cooldown,
         )
         if self._registered:
             self._register_hotkeys()
@@ -142,34 +187,55 @@ class Application:
             return
         mode = self._stt_config.activation_mode()
         self._logger.info(
-            "STT starting: mode=%s enabled=%s always_on=%s hotkey=%s model=%s",
+            "STT starting: mode=%s enabled=%s always_on=%s hotkey=%s model=%s type_into_window=%s voice_triggers=%s",
             mode,
             self._stt_config.enabled,
             self._stt_config.always_on,
             self._stt_config.hotkey,
             self._stt_config.model,
+            self._stt_config.type_into_focused_window,
+            self._stt_config.voice_triggers_enabled,
         )
         if mode == "off":
             self._logger.info("STT activation_mode is 'off'; engine not started")
             return
+
+        # Apply the two independent sub-flags:
+        # - voice_triggers_enabled controls whether the matcher scans
+        #   phrases (the engine still transcribes so typing can work)
+        # - type_into_focused_window is implemented as the engine's
+        #   active state, but the two should be decoupled: voice
+        #   triggers should fire even when typing is paused.
+        self._stt_engine.set_triggers_enabled(self._stt_config.voice_triggers_enabled)
+
         if mode == "always":
-            self._stt_engine.set_active(True)
+            # In always-on mode, typing is also on (the user can still
+            # disable it via the sub-checkbox, but the engine is
+            # transcribing either way).
+            self._stt_engine.set_active(
+                self._stt_config.type_into_focused_window
+                or self._stt_config.voice_triggers_enabled
+            )
         else:
-            # hotkey mode: idle until toggled
+            # Hotkey mode: typing is paused by default. Voice triggers
+            # are still on if the sub-checkbox is enabled.
             self._stt_engine.set_active(False)
         self._stt_engine.start()
         if mode == "always":
             self._logger.info(
-                "STT always-on (model=%s, language=%s)",
+                "STT always-on (model=%s, language=%s, type_into_window=%s, voice_triggers=%s)",
                 self._stt_config.model,
                 self._stt_config.language,
+                self._stt_config.type_into_focused_window,
+                self._stt_config.voice_triggers_enabled,
             )
         else:
             self._logger.info(
-                "STT idle; press %s to toggle (model=%s, language=%s)",
+                "STT idle; press %s to toggle (model=%s, language=%s, voice_triggers=%s)",
                 self._stt_config.hotkey,
                 self._stt_config.model,
                 self._stt_config.language,
+                self._stt_config.voice_triggers_enabled,
             )
 
     def _stop_stt(self) -> None:
@@ -184,6 +250,48 @@ class Application:
 
     def _handle_stt_status_in_main_thread(self, status: str) -> None:
         self._logger.info("STT status: %s", status)
+
+    def _on_stt_phrase(self, event) -> None:
+        """Engine callback fired on the capture thread for each phrase.
+
+        Emits a Qt signal so the matcher (and any UI observers) run on
+        the main thread.
+        """
+
+        try:
+            self._signals.stt_phrase.emit(event.raw_text or event.text)
+        except Exception:  # pragma: no cover - defensive
+            self._logger.exception("Failed to emit stt_phrase signal")
+
+    def _handle_stt_phrase_in_main_thread(self, phrase: str) -> None:
+        """Match the phrase against registered trigger words and fire shortcuts.
+
+        Note: typing the phrase into the focused window is intentionally
+        NOT done here. Voice triggers only fire the configured
+        shortcut's sound/overlay. Dictation-to-typing would be a
+        separate opt-in feature.
+        """
+
+        if not phrase:
+            return
+        self._logger.debug("STT phrase received for trigger scan: %r", phrase)
+        matched = self._trigger_matcher.match(phrase)
+        if not matched:
+            return
+        # Find the actual Shortcut objects that match the words and fire
+        # them. We deliberately re-resolve from the live shortcut list
+        # (rather than caching on the matcher callback) so that
+        # set_stt_config / configurator edits are reflected immediately.
+        for word in matched:
+            for shortcut in self._shortcuts:
+                if shortcut.normalized_trigger_word() == word:
+                    self._logger.info(
+                        "Voice trigger %r firing shortcut %s",
+                        word,
+                        shortcut.label(),
+                    )
+                    self._signals.triggered.emit(shortcut)
+                    break
 
     def _preload_sounds(self) -> None:
         for shortcut in self._shortcuts:

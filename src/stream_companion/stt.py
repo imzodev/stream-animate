@@ -401,6 +401,14 @@ class STTEngine:
         self._stop_event = threading.Event()
         self._lock = threading.Lock()
         self._active = False
+        # Voice triggers can be active independently of typing. When
+        # ``_triggers_enabled`` is True, the engine still transcribes
+        # audio chunks (and emits phrase events) even if ``_active`` is
+        # False. The default is True so the voice trigger feature
+        # works out of the box; users who only want typing can call
+        # ``set_triggers_enabled(False)`` to suppress trigger scanning
+        # while keeping typing under its own activation control.
+        self._triggers_enabled = True
         self._typed_total_chars = 0
         self._last_error: Optional[str] = None
         self._started_at: Optional[float] = None
@@ -545,6 +553,23 @@ class STTEngine:
         )
         self.set_active(new_state)
 
+    def set_triggers_enabled(self, enabled: bool) -> None:
+        """Enable or disable voice-trigger scanning independently of typing.
+
+        Triggers are enabled by default. When disabled, the engine still
+        transcribes (so typing works in the same activation mode) but
+        the engine loop discards transcription results. Useful for
+        streamers who only want typing, or who want to temporarily
+        silence voice-triggered sound effects.
+        """
+
+        with self._lock:
+            if self._triggers_enabled == enabled:
+                return
+            self._triggers_enabled = enabled
+        _LOGGER.info("STT voice triggers %s", "enabled" if enabled else "disabled")
+        self._notify_observers()
+
     def _run(self) -> None:
         try:
             self._audio.start()
@@ -571,37 +596,48 @@ class STTEngine:
         chunks_received = 0
         chunks_above_silence = 0
         chunks_transcribed = 0
+        chunks_triggered = 0
         last_log = time.time()
         try:
             while not self._stop_event.is_set():
                 with self._lock:
                     active = self._active
-                if not active:
-                    # Drop audio so we don't build up a backlog while paused
+                    triggers_enabled = self._triggers_enabled
+                if not active and not triggers_enabled:
+                    # Nothing to do: drop audio so we don't build up a
+                    # backlog while paused.
                     chunk = self._audio.get_chunk(timeout=0.25)
                     if chunk is not None:
-                        # discard
                         pass
                     continue
                 chunk = self._audio.get_chunk(timeout=0.5)
                 if chunk is None:
                     continue
                 chunks_received += 1
-                result = self._process_chunk(chunk)
+                # When typing is paused, still transcribe (cheap-ish; the
+                # model is already loaded) so that voice triggers can fire
+                # independently. Pass `type_into_window=False` to skip
+                # the typing step.
+                result = self._process_chunk(chunk, type_into_window=active)
                 if result == "above_silence":
                     chunks_above_silence += 1
                 elif result == "transcribed":
                     chunks_above_silence += 1
                     chunks_transcribed += 1
+                elif result == "trigger_only":
+                    chunks_above_silence += 1
+                    chunks_triggered += 1
                 # Periodically log activity even if nothing was transcribed,
                 # so users can see that the loop is alive and receiving audio.
                 if time.time() - last_log > 5.0:
                     _LOGGER.info(
-                        "STT heartbeat: %d chunks received, %d above silence, %d transcribed (rms_threshold=%.4f, model_loaded=%s)",
+                        "STT heartbeat: %d chunks received, %d above silence, %d transcribed, %d trigger-only (active=%s, triggers_enabled=%s, model_loaded=%s)",
                         chunks_received,
                         chunks_above_silence,
                         chunks_transcribed,
-                        self._config.silence_rms_threshold,
+                        chunks_triggered,
+                        active,
+                        triggers_enabled,
                         self._transcriber.is_loaded(),
                     )
                     last_log = time.time()
@@ -610,18 +646,31 @@ class STTEngine:
                 self._mic_open = False
             self._audio.stop()
             _LOGGER.info(
-                "STT engine loop stopped (chunks_received=%d, above_silence=%d, transcribed=%d)",
+                "STT engine loop stopped (chunks_received=%d, above_silence=%d, transcribed=%d, trigger_only=%d)",
                 chunks_received,
                 chunks_above_silence,
                 chunks_transcribed,
+                chunks_triggered,
             )
 
-    def _process_chunk(self, chunk: np.ndarray) -> str:
+    def _process_chunk(
+        self, chunk: np.ndarray, *, type_into_window: bool = True
+    ) -> str:
         """Transcribe a single chunk. Returns a status tag for the loop counters.
 
+        Args:
+            chunk: The audio buffer to transcribe.
+            type_into_window: When True (the default), the typed text is
+                also injected into the focused window. When False, the
+                transcription still happens (so voice triggers can be
+                scanned) but typing is skipped. This is used by the
+                engine loop to keep voice triggers active even when
+                typing is paused.
+
         Returns one of: ``"silent"``, ``"above_silence"``, ``"transcribed"``,
-        ``"error"``. The first two are tracked by the engine loop; the last
-        two are surfaced to the user via the typed log message.
+        ``"trigger_only"``, ``"error"``. The first two are tracked by the
+        engine loop; the last three are surfaced to the user via the
+        typed log message.
         """
 
         rms = float(np.sqrt(np.mean(np.square(chunk)))) if chunk.size else 0.0
@@ -668,22 +717,34 @@ class STTEngine:
             rms,
             self._config.model,
         )
-        try:
-            typed = self._typer.type_text(text, append_space=self._config.append_space)
-        except Exception as exc:
-            self._last_error = f"typer: {exc}"
-            _LOGGER.exception("STT typer failed: %s", exc)
-            self._emit_status(f"error:typer:{exc}")
-            return "error"
-        with self._lock:
-            self._typed_total_chars += len(typed)
-        _LOGGER.info(
-            "STT typed=%d chars (rms=%.3f, lang=%s) :: %s",
-            len(typed),
-            rms,
-            self._config.language,
-            text,
-        )
+        typed = ""
+        if type_into_window:
+            try:
+                typed = self._typer.type_text(
+                    text, append_space=self._config.append_space
+                )
+            except Exception as exc:
+                self._last_error = f"typer: {exc}"
+                _LOGGER.exception("STT typer failed: %s", exc)
+                self._emit_status(f"error:typer:{exc}")
+                return "error"
+            with self._lock:
+                self._typed_total_chars += len(typed)
+            _LOGGER.info(
+                "STT typed=%d chars (rms=%.3f, lang=%s) :: %s",
+                len(typed),
+                rms,
+                self._config.language,
+                text,
+            )
+        else:
+            _LOGGER.info(
+                "STT trigger-only mode (typing paused): %r (rms=%.4f)",
+                text,
+                rms,
+            )
+        # Always emit the phrase event so the trigger matcher (or any
+        # other observer) can react, even when typing is skipped.
         if self._on_phrase is not None:
             try:
                 self._on_phrase(
@@ -696,7 +757,7 @@ class STTEngine:
                 )
             except Exception:  # pragma: no cover - user callback
                 _LOGGER.exception("STT on_phrase callback raised")
-        return "transcribed"
+        return "transcribed" if type_into_window else "trigger_only"
 
     def _emit_status(self, status: str) -> None:
         if self._on_status is None:

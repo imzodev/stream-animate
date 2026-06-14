@@ -546,6 +546,22 @@ class ConfiguratorWindow(QMainWindow):
         right_panel.addWidget(self._suffix_capture)
         self._suffix_capture.hide()
 
+        # Voice trigger word
+        right_panel.addWidget(QLabel("Voice Trigger Word (optional):"))
+        self._trigger_word_input = QLineEdit()
+        self._trigger_word_input.setPlaceholderText(
+            "Word that, when spoken, fires this shortcut (e.g. 'fail')"
+        )
+        self._trigger_word_input.setMaxLength(64)
+        right_panel.addWidget(self._trigger_word_input)
+        self._trigger_word_note = QLabel(
+            "<i>Leave empty to disable voice triggering. Match is case-insensitive "
+            "and word-boundary (so 'fail' does not match 'failful'). "
+            "The same trigger word on two shortcuts will only fire the first.</i>"
+        )
+        self._trigger_word_note.setWordWrap(True)
+        right_panel.addWidget(self._trigger_word_note)
+
         def _on_trigger_changed():
             suffix_mode = self._trigger_suffix.isChecked()
             self._hotkey_capture.setVisible(not suffix_mode)
@@ -726,6 +742,7 @@ class ConfiguratorWindow(QMainWindow):
             self._suffix_capture.set_key(
                 " ".join(shortcut.suffix) if shortcut.suffix else ""
             )
+        self._trigger_word_input.setText(shortcut.trigger_word or "")
         self._sound_input.setText(shortcut.sound_path or "")
 
         if shortcut.overlay:
@@ -756,6 +773,7 @@ class ConfiguratorWindow(QMainWindow):
         self._trigger_direct.setChecked(True)
         self._hotkey_capture.set_hotkey("")
         self._suffix_capture.set_key("")
+        self._trigger_word_input.setText("")
         self._sound_input.setText("")
         self._overlay_input.setText("")
         self._cleanup_preview_movie()
@@ -786,9 +804,39 @@ class ConfiguratorWindow(QMainWindow):
         panel.setLayout(layout)
 
         # Enable
-        self._stt_enabled_checkbox = QCheckBox("Enable speech-to-text typing")
+        self._stt_enabled_checkbox = QCheckBox("Enable speech-to-text (STT)")
+        self._stt_enabled_checkbox.setToolTip(
+            "When enabled, the app will listen to your microphone and transcribe "
+            "spoken words with Whisper. Use the sub-options below to choose what "
+            "happens with the transcribed text."
+        )
         self._stt_enabled_checkbox.toggled.connect(self._on_stt_enabled_toggled)
         layout.addWidget(self._stt_enabled_checkbox)
+
+        # Sub-options for what to do with the transcript
+        sub_options = QVBoxLayout()
+        sub_options.setContentsMargins(20, 0, 0, 0)  # indent
+        self._stt_type_into_window_checkbox = QCheckBox(
+            "Type dictated text into the focused window"
+        )
+        self._stt_type_into_window_checkbox.setChecked(True)
+        self._stt_type_into_window_checkbox.toggled.connect(
+            self._on_stt_enabled_toggled
+        )
+        sub_options.addWidget(self._stt_type_into_window_checkbox)
+        self._stt_voice_triggers_checkbox = QCheckBox(
+            "Trigger voice shortcuts (sounds, images, videos)"
+        )
+        self._stt_voice_triggers_checkbox.setChecked(True)
+        self._stt_voice_triggers_checkbox.setToolTip(
+            "When a transcribed phrase contains a shortcut's 'Trigger Word', "
+            "that shortcut fires (its sound and/or overlay play). Independent "
+            "from typing — you can keep voice triggers active while disabling "
+            "the focused-window typing if you only want reactions on stream."
+        )
+        self._stt_voice_triggers_checkbox.toggled.connect(self._on_stt_enabled_toggled)
+        sub_options.addWidget(self._stt_voice_triggers_checkbox)
+        layout.addLayout(sub_options)
 
         # Activation mode group
         activation_group = QGroupBox("Activation")
@@ -946,6 +994,8 @@ class ConfiguratorWindow(QMainWindow):
             self._stt_always_on,
             self._stt_use_hotkey,
             self._stt_hotkey_capture,
+            self._stt_type_into_window_checkbox,
+            self._stt_voice_triggers_checkbox,
             self._stt_model_combo,
             self._stt_language_combo,
             self._stt_device_combo,
@@ -980,6 +1030,15 @@ class ConfiguratorWindow(QMainWindow):
         else:
             self._stt_use_hotkey.setChecked(True)
         self._stt_hotkey_capture.set_hotkey(cfg.hotkey or "")
+        # Sub-options default to True on a fresh STTConfig but the
+        # legacy config files don't carry them. When the field is
+        # missing, fall back to True (the desired default).
+        self._stt_type_into_window_checkbox.setChecked(
+            getattr(cfg, "type_into_focused_window", True)
+        )
+        self._stt_voice_triggers_checkbox.setChecked(
+            getattr(cfg, "voice_triggers_enabled", True)
+        )
 
         # Model
         model_idx = self._stt_model_combo.findData(cfg.model)
@@ -1044,6 +1103,8 @@ class ConfiguratorWindow(QMainWindow):
             append_space=self._stt_append_space.isChecked(),
             silence_rms_threshold=float(self._stt_silence_input.value()),
             dedup_window=int(self._stt_dedup_input.value()),
+            type_into_focused_window=self._stt_type_into_window_checkbox.isChecked(),
+            voice_triggers_enabled=self._stt_voice_triggers_checkbox.isChecked(),
         )
 
     def _validate_stt(self, stt: Optional[STTConfig]) -> List[str]:
@@ -1397,12 +1458,17 @@ class ConfiguratorWindow(QMainWindow):
                 height=height,
             )
 
+        # Voice trigger word (lowercased + stripped; empty -> None)
+        trigger_word_raw = self._trigger_word_input.text().strip()
+        trigger_word = trigger_word_raw.lower() or None
+
         # Create new shortcut (since Shortcut is frozen)
         self._shortcuts[self._current_index] = Shortcut(
             hotkey=hotkey,
             suffix=suffix,
             sound_path=sound_path,
             overlay=overlay,
+            trigger_word=trigger_word,
         )
         self._refresh_list()
         return True
@@ -1426,6 +1492,23 @@ class ConfiguratorWindow(QMainWindow):
         if dup_suffix:
             formatted = ["+".join(sx) for sx in dup_suffix]
             errors.append(f"Duplicate chord suffixes found: {', '.join(formatted)}")
+
+        # Check for duplicate voice trigger words (warning, not error —
+        # we keep the first and silently ignore the rest, but the user
+        # should be aware of the conflict).
+        trigger_words = [s.normalized_trigger_word() for s in self._shortcuts]
+        trigger_words = [w for w in trigger_words if w]
+        seen: set[str] = set()
+        duplicate_triggers: list[str] = []
+        for w in trigger_words:
+            if w in seen and w not in duplicate_triggers:
+                duplicate_triggers.append(w)
+            seen.add(w)
+        for w in duplicate_triggers:
+            errors.append(
+                f"Duplicate voice trigger words found: {w!r} — only the first "
+                "shortcut with that word will fire."
+            )
 
         # Check for missing files
         for i, shortcut in enumerate(self._shortcuts):

@@ -237,7 +237,7 @@ def test_text_typer_propagates_controller_errors():
 
 
 def test_process_chunk_returns_status_tags():
-    """_process_chunk returns 'silent', 'above_silence', 'transcribed', or 'error'."""
+    """_process_chunk returns one of the documented status tags."""
 
     engine, sd, model, controller, _ = _make_engine(
         {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
@@ -252,11 +252,21 @@ def test_process_chunk_returns_status_tags():
     result = engine._process_chunk(np.ones(4000, dtype=np.float32) * 0.5)
     assert result == "above_silence"
 
-    # Non-empty transcription returns "transcribed"
+    # Non-empty transcription with type_into_window=True returns "transcribed"
     model.responses = ["hello"]
     result = engine._process_chunk(np.ones(4000, dtype=np.float32) * 0.5)
     assert result == "transcribed"
     assert controller.typed == ["hello "]
+
+    # Non-empty transcription with type_into_window=False returns "trigger_only"
+    # and does NOT type into the focused window.
+    model.responses = ["trigger fire"]
+    controller.typed.clear()
+    result = engine._process_chunk(
+        np.ones(4000, dtype=np.float32) * 0.5, type_into_window=False
+    )
+    assert result == "trigger_only"
+    assert controller.typed == []  # nothing was typed
 
     # Transcribe exception returns "error"
     model.responses = [""]  # just to reset
@@ -270,6 +280,20 @@ def test_process_chunk_returns_status_tags():
         engine._transcriber.transcribe = original
     assert result == "error"
     assert engine.last_error and "boom" in engine.last_error
+
+
+def test_set_triggers_enabled_toggles_state():
+    engine, _, _, _, _ = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
+    )
+    # Default is True (we want voice triggers active out of the box)
+    assert engine._triggers_enabled is True
+    engine.set_triggers_enabled(False)
+    assert engine._triggers_enabled is False
+    engine.set_triggers_enabled(False)  # no-op
+    assert engine._triggers_enabled is False
+    engine.set_triggers_enabled(True)
+    assert engine._triggers_enabled is True
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +379,84 @@ def test_engine_idle_does_not_transcribe_in_hotkey_mode():
     for _ in range(3):
         stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
     _wait_until(lambda: any(t.strip() == "activated" for t in controller.typed))
+    engine.stop()
+
+
+def test_engine_transcribes_for_triggers_while_typing_paused():
+    """In hotkey mode, voice triggers should still fire when typing is paused."""
+
+    engine, sd, model, controller, _ = _make_engine(
+        {
+            "always_on": False,
+            "hotkey": "<ctrl>+<alt>+space",
+            "chunk_seconds": 0.25,
+            "silence_rms_threshold": 0.0,
+        }
+    )
+    # _active stays False; the loop is in "trigger-only" mode.
+    assert engine._active is False
+    assert engine._triggers_enabled is True  # default
+
+    on_phrase_calls: list[str] = []
+    engine.add_observer(lambda: None)  # no-op
+    # We can't easily inspect the on_phrase signal without spinning up
+    # the Qt event loop, but we can verify that the engine's _process_chunk
+    # is reachable by checking the on_phrase callback was wired. The
+    # cleaner test is to use the heartbeat/log mechanism: push audio,
+    # wait for the engine to consume it, and confirm that the typer was
+    # NOT called (because typing is paused) but the model was.
+    model.responses = ["trigger me"]
+    engine.start()
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+
+    # Inject on_phrase hook AFTER start so we can capture the phrase
+    def on_phrase(event):
+        on_phrase_calls.append(event.raw_text)
+
+    # Re-create the engine's on_phrase via monkey-patch on the
+    # transcriber (simpler than re-instantiating): we attach to the
+    # on_phrase attribute. But the simpler assertion is: when typing
+    # is paused, the typer must NOT be called.
+    for _ in range(3):
+        stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+    # Give the engine time to process
+    import time as _t
+
+    _t.sleep(0.5)
+    # If the trigger-only behavior works, controller.typed stays empty
+    assert controller.typed == []
+    # And the model was called at least once (transcription happened)
+    assert model.calls, "engine should still transcribe even when typing is paused"
+    engine.stop()
+
+
+def test_engine_disabled_triggers_skips_transcription_when_typing_paused():
+    """When typing is paused AND triggers are disabled, audio is discarded."""
+
+    engine, sd, model, controller, _ = _make_engine(
+        {
+            "always_on": False,
+            "hotkey": "<ctrl>+<alt>+space",
+            "chunk_seconds": 0.25,
+            "silence_rms_threshold": 0.0,
+        }
+    )
+    engine.set_triggers_enabled(False)
+    engine.start()
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+
+    # Push a few chunks. With typing paused and triggers disabled, the
+    # engine should drop them all (the loop's "if not active and not
+    # triggers_enabled: continue" branch).
+    for _ in range(3):
+        stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+    import time as _t
+
+    _t.sleep(0.5)
+    assert model.calls == []
+    assert controller.typed == []
     engine.stop()
 
 

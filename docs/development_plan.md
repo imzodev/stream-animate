@@ -81,6 +81,21 @@ Goal: Avoid blocking the first dictation on a multi-GB download by fetching the 
 - ✅ `python main.py --stt-status` — now also reports whether the configured model is cached and at what path/size.
 - ✅ 15 new unit tests in `tests/test_model_downloader.py` covering cache detection, model name validation, background thread management, SHA validation, error callbacks, and human-readable byte formatting.
 
+## Phase 8 – Voice Triggers (Complete)
+Goal: Let the user attach a **trigger word** to any shortcut so that speaking the word fires the shortcut (sound + overlay), independently of the focused-window typing flow.
+
+- ✅ `Shortcut` model gains `trigger_word: Optional[str]` and `normalized_trigger_word()` helper.
+- ✅ `STTConfig` gains `trigger_cooldown_ms: int = 1500`, `type_into_focused_window: bool = True`, and `voice_triggers_enabled: bool = True`.
+- ✅ New `src/stream_companion/triggers.py`:
+  - `find_trigger_words(phrase, words)` — case-insensitive, word-boundary match using a Unicode-aware regex; preserves the order in which the words appear in the phrase.
+  - `TriggerMatcher` class with `register` / `unregister` / `dispatch` / `match` / `clear`, per-word cooldown via injectable clock, `on_skip` hook, and fire/skip counters for diagnostics.
+  - `build_matcher_from_shortcuts(shortcuts, cooldown_ms=...)` factory that normalizes trigger words and reports duplicates.
+- ✅ `STTEngine` runs the engine loop independently of the typing active flag when triggers are enabled. `_process_chunk` accepts a `type_into_window` parameter so transcription still happens for trigger scanning even when typing is paused. New `set_triggers_enabled` method.
+- ✅ `Application._on_stt_phrase` emits a Qt signal; `_handle_stt_phrase_in_main_thread` matches the phrase against the live shortcut list and fires matching shortcuts through the existing sound+overlay pipeline. The matcher is rebuilt on `set_stt_config` so the new cooldown takes effect immediately.
+- ✅ Configurator: the Shortcut Details panel now has a **Voice Trigger Word** input. The Speech-to-Text tab gains two sub-checkboxes: "Type dictated text into the focused window" and "Trigger voice shortcuts". Both default to on.
+- ✅ Schema: `config/schema.json` extended with `trigger_word` on shortcuts, and the new `trigger_cooldown_ms` / `type_into_focused_window` / `voice_triggers_enabled` on the STT block. Config version bumped to 1.3.0.
+- ✅ Tests: 27 new tests in `tests/test_triggers.py` plus 2 round-trip tests in `tests/test_config_loader.py` and 2 in `tests/test_stt.py` for the new engine behavior. Total: 111 tests passing.
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.
