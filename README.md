@@ -155,16 +155,20 @@ Stream Companion can transcribe your voice in real time and type the result into
 9. Re-launch the listener (`python main.py --log-level INFO`) and click into any text field. Start speaking — each phrase is typed into the focused window followed by a space.
 
 ### Voice Triggers
-Each shortcut can declare a **trigger word** that, when spoken, fires the shortcut (plays its sound, displays its overlay, or runs the same code path as the hotkey). The triggers and the focused-window typing are **independent** — you can keep voice triggers active while disabling typing, or vice versa.
+Each shortcut can declare a **trigger word** or one or more **trigger phrases** that, when spoken, fire the shortcut (plays its sound, displays its overlay, or runs the same code path as the hotkey). The triggers and the focused-window typing are **independent** — you can keep voice triggers active while disabling typing, or vice versa.
 
-#### Configuring a trigger word
+#### Configuring a trigger
 1. Open the configurator and select a shortcut.
-2. In the **Voice Trigger Word (optional)** field, type the word (e.g. `fail`, `niño`, `OK`). Matching is:
-   - **Case-insensitive** — `Fail` and `fail` both match.
-   - **Word-boundary** — `fail` matches "what a fail" but NOT "failful" or "failsafe".
-   - **Whole-word token** — the same word is required even when preceded/followed by punctuation.
-3. The same trigger word on two shortcuts will only fire the first one (the second is reported as a warning in the configurator).
-4. Click **Save Changes**. The trigger word is now active.
+2. In the **Voice Trigger Word (optional)** field, type a single word (e.g. `fail`, `niño`, `OK`).
+3. In the **Voice Trigger Phrases (optional, one per line)** field, type one phrase per line. Each phrase is two or more words (e.g. `play fail`, `react with fire`, `que pasa parce`).
+4. Both fields can be configured on the same shortcut — the matcher will fire on any single trigger.
+
+#### Matching rules
+- **Case-insensitive** — `Fail` and `fail` both match.
+- **Word-boundary** — `fail` matches "what a fail" but NOT "failful" or "failsafe".
+- **Contiguous for phrases** — `"play fail"` matches "now we play fail here" but NOT "play the fail" (filler words break the match).
+- **Same trigger on two shortcuts** — only the first one fires. The configurator warns about duplicates.
+- The trigger list in the left panel shows a compact summary (e.g. `🗣️"fail", "play fail"`).
 
 #### Per-shortcut cooldown
 To avoid firing the same shortcut many times on overlapping audio chunks of one utterance, each shortcut has a per-shortcut cooldown (default **1500 ms**, configurable via `trigger_cooldown_ms` in the STT block of `config/shortcuts.json`).
@@ -174,7 +178,8 @@ To avoid firing the same shortcut many times on overlapping audio chunks of one 
 {
   "hotkey": "<ctrl>+<alt>+f",
   "sound": "sounds/celebration.wav",
-  "trigger_word": "fail"
+  "trigger_word": "fail",
+  "trigger_phrases": ["play fail", "react with fire"]
 }
 ```
 

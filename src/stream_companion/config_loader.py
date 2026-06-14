@@ -158,12 +158,30 @@ def _hydrate_config(data: dict) -> Tuple[Optional[ActivatorConfig], List[Shortcu
                     )
                 suffix_tuple = tuple(t.strip().lower() for t in tokens)
 
+            # Voice triggers: ``trigger_word`` (legacy) and
+            # ``trigger_phrases`` (new). Both can be present on the
+            # same shortcut and are matched independently.
+            trigger_phrases_raw = raw.get("trigger_phrases")
+            trigger_phrases_tuple: Optional[Tuple[str, ...]] = None
+            if trigger_phrases_raw is not None:
+                if isinstance(trigger_phrases_raw, str):
+                    phrases_list = [trigger_phrases_raw]
+                elif isinstance(trigger_phrases_raw, list):
+                    phrases_list = [str(p) for p in trigger_phrases_raw]
+                else:
+                    raise ConfigError(
+                        f"Shortcut at index {index} has invalid 'trigger_phrases' type"
+                    )
+                cleaned = tuple(p.strip() for p in phrases_list if p.strip())
+                trigger_phrases_tuple = cleaned or None
+
             shortcut = Shortcut(
                 hotkey=hotkey,
                 suffix=suffix_tuple,
                 sound_path=raw.get("sound"),
                 overlay=overlay,
                 trigger_word=raw.get("trigger_word"),
+                trigger_phrases=trigger_phrases_tuple,
             )
         except KeyError as exc:
             raise ConfigError(
@@ -304,9 +322,14 @@ def _serialize(
                 entry["overlay"]["height"] = shortcut.overlay.height
         if shortcut.normalized_trigger_word() is not None:
             entry["trigger_word"] = shortcut.normalized_trigger_word()
+        if shortcut.trigger_phrases:
+            # Strip + drop empty entries for clean JSON
+            entry["trigger_phrases"] = [
+                p for p in (raw.strip() for raw in shortcut.trigger_phrases) if p
+            ]
         serialized.append(entry)
 
-    data: dict = {"version": "1.3.0", "shortcuts": serialized}
+    data: dict = {"version": "1.4.0", "shortcuts": serialized}
     if activator is not None:
         data["activator"] = {
             "hotkey": activator.hotkey,

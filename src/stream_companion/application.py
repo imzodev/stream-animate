@@ -279,16 +279,16 @@ class Application:
         matched = self._trigger_matcher.match(phrase)
         if not matched:
             return
-        # Find the actual Shortcut objects that match the words and fire
-        # them. We deliberately re-resolve from the live shortcut list
-        # (rather than caching on the matcher callback) so that
+        # Find the actual Shortcut objects that match the phrases and
+        # fire them. We deliberately re-resolve from the live shortcut
+        # list (rather than caching on the matcher callback) so that
         # set_stt_config / configurator edits are reflected immediately.
-        for word in matched:
+        for phrase in matched:
             for shortcut in self._shortcuts:
-                if shortcut.normalized_trigger_word() == word:
+                if phrase in shortcut.all_trigger_phrases():
                     self._logger.info(
                         "Voice trigger %r firing shortcut %s",
-                        word,
+                        phrase,
                         shortcut.label(),
                     )
                     self._signals.triggered.emit(shortcut)

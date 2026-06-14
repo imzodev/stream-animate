@@ -43,6 +43,16 @@ def _write_schema(path: Path) -> None:
                             "type": ["string", "null"],
                             "description": "Voice trigger word",
                         },
+                        "trigger_phrases": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                },
+                            ],
+                            "description": "Multi-word voice trigger phrases",
+                        },
                     },
                     "additionalProperties": False,
                 },
@@ -359,3 +369,117 @@ def test_trigger_word_omitted_is_none(
     shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
     assert shortcuts[0].trigger_word is None
     assert shortcuts[0].normalized_trigger_word() is None
+
+
+def test_trigger_phrases_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Multi-word trigger phrases should survive a save/load cycle."""
+
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    config_path = tmp_path / "shortcuts.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": "1.0.0",
+                "shortcuts": [
+                    {
+                        "hotkey": "<ctrl>+<alt>+c",
+                        "sound": "sounds/celebration.wav",
+                        "trigger_phrases": [
+                            "Play Fail",
+                            "react with fire",
+                            "",  # empty entries should be dropped
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion import config_loader
+
+    monkeypatch.setattr(
+        config_loader,
+        "_default_paths",
+        lambda: (config_path, schema_path, config_path),
+    )
+
+    shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert len(shortcuts) == 1
+    # Empty entries are dropped; remaining phrases are stripped
+    assert shortcuts[0].trigger_phrases == ("Play Fail", "react with fire")
+    # all_trigger_phrases() lowercases
+    assert "play fail" in shortcuts[0].all_trigger_phrases()
+
+    # Save and reload — phrases must be preserved
+    config_loader.save_config(
+        None, shortcuts, config_path=config_path, schema_path=schema_path
+    )
+    shortcuts2 = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert shortcuts2[0].trigger_phrases == ("Play Fail", "react with fire")
+
+
+def test_trigger_phrases_omitted_is_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A shortcut without trigger_phrases should have None, not []."""
+
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    config_path = tmp_path / "shortcuts.json"
+    config_path.write_text(
+        json.dumps(
+            {"version": "1.0.0", "shortcuts": [{"hotkey": "a", "sound": "x.wav"}]}
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion import config_loader
+
+    monkeypatch.setattr(
+        config_loader,
+        "_default_paths",
+        lambda: (config_path, schema_path, config_path),
+    )
+
+    shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert shortcuts[0].trigger_phrases is None
+    assert shortcuts[0].all_trigger_phrases() == []
+
+
+def test_trigger_phrases_accepts_single_string(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """For convenience, a single string is coerced to a 1-element list."""
+
+    schema_path = tmp_path / "schema.json"
+    _write_schema(schema_path)
+    config_path = tmp_path / "shortcuts.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "version": "1.0.0",
+                "shortcuts": [
+                    {
+                        "hotkey": "a",
+                        "trigger_phrases": "just one",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion import config_loader
+
+    monkeypatch.setattr(
+        config_loader,
+        "_default_paths",
+        lambda: (config_path, schema_path, config_path),
+    )
+
+    shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
+    assert shortcuts[0].trigger_phrases == ("just one",)

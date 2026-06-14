@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -31,8 +31,14 @@ class Shortcut:
     # When the STT engine transcribes a phrase that contains this word
     # (matched on word boundaries, case-insensitive), the shortcut fires
     # in addition to any hotkey/suffix binding. None or empty string
-    # disables voice triggering for this shortcut.
+    # disables the single-word trigger. Legacy field; for multi-word
+    # phrases use ``trigger_phrases`` instead.
     trigger_word: Optional[str] = None
+    # List of multi-word phrases. Each phrase is a string of one or
+    # more words; matching is case-insensitive, word-boundary aware,
+    # and requires the tokens to appear contiguously in the transcribed
+    # phrase. Multiple phrases on the same shortcut are all checked.
+    trigger_phrases: Optional[Tuple[str, ...]] = None
 
     def sound_id(self) -> Optional[str]:
         """Derive a reusable sound identifier from the configured path."""
@@ -55,6 +61,27 @@ class Shortcut:
             return None
         normalized = self.trigger_word.strip().lower()
         return normalized or None
+
+    def all_trigger_phrases(self) -> List[str]:
+        """Return all voice triggers (single word + phrases) as a flat list.
+
+        Empty/whitespace strings are dropped. Order is preserved:
+        the legacy single word comes first, then the multi-word
+        phrases in the order they were declared.
+        """
+
+        out: List[str] = []
+        word = self.normalized_trigger_word()
+        if word is not None:
+            out.append(word)
+        if self.trigger_phrases:
+            for raw in self.trigger_phrases:
+                if not raw:
+                    continue
+                normalized = raw.strip().lower()
+                if normalized:
+                    out.append(normalized)
+        return out
 
 
 @dataclass(frozen=True)

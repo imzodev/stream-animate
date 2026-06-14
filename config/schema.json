@@ -1,6 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Streaming Companion Shortcuts",
+  "version": "1.4.0",
   "type": "object",
   "required": ["shortcuts"],
   "properties": {
@@ -77,6 +78,11 @@
         "trigger_word": {
           "type": ["string", "null"],
           "description": "When STT transcribes a phrase containing this word (case-insensitive, word-boundary match), the shortcut fires. Set to null or omit to disable voice triggering for this shortcut."
+        },
+        "trigger_phrases": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of multi-word phrases. When STT transcribes a phrase that contains a candidate phrase as a contiguous, case-insensitive, word-boundary subsequence, the shortcut fires."
         }
       },
       "additionalProperties": false

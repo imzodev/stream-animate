@@ -1,18 +1,27 @@
 """Voice-trigger matching for the Streaming Companion Tool.
 
 The STT engine transcribes short audio chunks and emits the resulting
-text. The application can attach one or more ``trigger_word`` values
-to a :class:`~stream_companion.models.Shortcut`; when the transcribed
-phrase contains the word (case-insensitive, word-boundary match), the
-shortcut fires.
+text. The application can attach one or more trigger words or
+phrases to a :class:`~stream_companion.models.Shortcut`; when the
+transcribed phrase contains the trigger (case-insensitive,
+word-boundary match), the shortcut fires.
+
+Two trigger sources are supported on each shortcut:
+
+* ``trigger_word`` — a single word (legacy field).
+* ``trigger_phrases`` — a list of one or more phrases, each of which
+  is a string of one or more words. Matching requires the tokens of
+  the phrase to appear contiguously in the transcribed phrase
+  (case-insensitive, word-boundary aware).
 
 This module owns the matching logic — keeping it out of the engine
 keeps the engine decoupled from application-level concepts. The
 :func:`TriggerMatcher` class:
 
-* Holds a mapping of normalized trigger word → callback.
-* Maintains a per-word cooldown timestamp so a single utterance with
-  overlapping chunks does not re-fire the same shortcut many times.
+* Holds a mapping of normalized trigger phrase → callback.
+* Maintains a per-phrase cooldown timestamp so a single utterance
+  with overlapping chunks does not re-fire the same shortcut many
+  times.
 * Provides both a pure ``match`` (no side effects, used for logging
   and tests) and a ``dispatch`` that respects the cooldown.
 
@@ -48,50 +57,115 @@ _WORD_PATTERN = re.compile(
 )
 
 
-def find_trigger_words(
-    phrase: str,
-    trigger_words: Iterable[str],
-) -> List[str]:
-    """Return the list of trigger words that appear in ``phrase``.
+def _tokenize(phrase: str) -> List[Tuple[str, int]]:
+    """Return the phrase's word tokens (lowercased) and their char offsets.
 
-    Matching is case-insensitive and word-boundary aware. The order of
-    the returned list mirrors the order in which the words appear in
-    ``phrase`` (so a phrase with two trigger words yields both, in
-    spoken order). Unknown trigger words (empty, None) are skipped.
-
-    Args:
-        phrase: Transcribed text from the STT engine.
-        trigger_words: Iterable of trigger words (case insensitive).
-            Empty or whitespace-only strings are ignored.
-
-    Returns:
-        List of trigger words that were matched, normalized to the
-        same case as the inputs to ``trigger_words``.
+    Words are split on the Unicode-aware word boundary, and ordering
+    matches the original string.
     """
 
     if not phrase:
         return []
-    norm_to_original: Dict[str, str] = {}
-    for raw in trigger_words:
-        if not raw:
-            continue
-        normalized = raw.strip().lower()
-        if not normalized:
-            continue
-        if normalized not in norm_to_original:
-            norm_to_original[normalized] = raw
-    if not norm_to_original:
+    return [(m.group(1).lower(), m.start()) for m in _WORD_PATTERN.finditer(phrase)]
+
+
+def _normalize_candidate(candidate: str) -> Tuple[str, ...]:
+    """Normalize a candidate phrase into a tuple of lowercase tokens.
+
+    Whitespace-separated words, in order. Empty/whitespace candidates
+    return an empty tuple (caller should treat as "no trigger").
+    """
+
+    if not candidate:
+        return ()
+    parts = _WORD_PATTERN.findall(candidate.lower())
+    return tuple(p for p in parts if p)
+
+
+def find_trigger_phrases(
+    phrase: str,
+    candidates: Iterable[str],
+) -> List[str]:
+    """Return the list of trigger phrases that appear in ``phrase``.
+
+    Matching rules:
+
+    * Case-insensitive.
+    * Word-boundary aware (so "fail" doesn't match "failful").
+    * **Contiguous** — the candidate's tokens must appear as a
+      contiguous subsequence of the phrase's tokens, in order.
+    * The order of the returned list mirrors the order in which the
+      candidate phrases appear in ``phrase``. Multiple matches of the
+      same candidate are deduplicated.
+
+    Args:
+        phrase: Transcribed text from the STT engine.
+        candidates: Iterable of trigger words or phrases (case
+            insensitive). A single-word candidate matches just like
+            a single-token phrase. Empty/whitespace candidates are
+            ignored.
+
+    Returns:
+        List of candidate strings that matched, in the same casing as
+        they were passed in (after stripping).
+    """
+
+    if not phrase:
+        return []
+    tokens = _tokenize(phrase)
+    if not tokens:
         return []
 
-    # Tokenize the phrase on word boundaries, case-insensitive.
-    tokens = [(m.group(1).lower(), m.start()) for m in _WORD_PATTERN.finditer(phrase)]
-    tokens.sort(key=lambda t: t[1])
+    # Pre-normalize candidates: keep the original string (for logging
+    # and as the matcher key) and a tuple of lowercased tokens for
+    # the actual matching.
+    norm_candidates: List[Tuple[str, Tuple[str, ...]]] = []
+    for raw in candidates:
+        if not raw:
+            continue
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        token_tuple = _normalize_candidate(stripped)
+        if not token_tuple:
+            continue
+        norm_candidates.append((stripped.lower(), token_tuple))
 
+    if not norm_candidates:
+        return []
+
+    # Sliding window: for each starting position, look for any
+    # candidate whose tokens match the contiguous slice.
     hits: List[str] = []
-    for token, _pos in tokens:
-        if token in norm_to_original and norm_to_original[token] not in hits:
-            hits.append(norm_to_original[token])
+    seen: set = set()
+    token_strings = [t for t, _ in tokens]
+    n_tokens = len(token_strings)
+    for i in range(n_tokens):
+        for original, candidate_tokens in norm_candidates:
+            cand_len = len(candidate_tokens)
+            if cand_len == 0 or i + cand_len > n_tokens:
+                continue
+            window = token_strings[i : i + cand_len]
+            if window == list(candidate_tokens):
+                if original not in seen:
+                    seen.add(original)
+                    hits.append(original)
+                # Don't break — the same candidate can be found at
+                # multiple positions in the phrase; we still want to
+                # record the first occurrence and skip the rest.
+                break
     return hits
+
+
+# Backward-compat alias for the old name; the behavior is the same
+# when candidates are single words.
+def find_trigger_words(
+    phrase: str,
+    trigger_words: Iterable[str],
+) -> List[str]:
+    """Deprecated alias for :func:`find_trigger_phrases`."""
+
+    return find_trigger_phrases(phrase, trigger_words)
 
 
 # ---------------------------------------------------------------------------
@@ -278,26 +352,33 @@ def build_matcher_from_shortcuts(
 ) -> Tuple[TriggerMatcher, List[Tuple[str, str]]]:
     """Build a :class:`TriggerMatcher` from an iterable of Shortcut objects.
 
-    Returns a tuple of ``(matcher, duplicates)`` where ``duplicates`` is
-    a list of ``(normalized_word, shortcut_label)`` for every shortcut
-    that shares a trigger word with an earlier one. The caller can log
-    these so the user is aware of the configuration conflict.
+    Pulls all voice triggers from each shortcut — both the legacy
+    ``trigger_word`` and the new ``trigger_phrases`` list — and
+    registers one callback per phrase. Each phrase is keyed in the
+    matcher's cooldown map by its normalized text, so a phrase fires
+    once per cooldown window.
+
+    Returns a tuple of ``(matcher, duplicates)`` where ``duplicates``
+    is a list of ``(normalized_phrase, shortcut_label)`` for every
+    shortcut that shares a trigger phrase with an earlier one. The
+    caller can log these so the user is aware of the configuration
+    conflict.
     """
 
     matcher = TriggerMatcher(cooldown_ms=cooldown_ms, clock=clock)
     seen: Dict[str, str] = {}
     duplicates: List[Tuple[str, str]] = []
     for shortcut in shortcuts:
-        word = getattr(shortcut, "normalized_trigger_word", lambda: None)()
-        if not word:
-            continue
-        if word in seen:
-            duplicates.append((word, shortcut.label()))
-            # Keep the first registration; later duplicates are skipped
-            # so the matcher only fires once per utterance.
-            continue
-        seen[word] = shortcut.label()
-        matcher.register(word, lambda w=word, sc=shortcut: _fire_shortcut(sc, w))
+        all_phrases = getattr(shortcut, "all_trigger_phrases", lambda: [])()
+        for phrase in all_phrases:
+            if phrase in seen:
+                duplicates.append((phrase, shortcut.label()))
+                continue
+            seen[phrase] = shortcut.label()
+            matcher.register(
+                phrase,
+                lambda p=phrase, sc=shortcut: _fire_shortcut(sc, p),
+            )
     return matcher, duplicates
 
 

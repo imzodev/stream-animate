@@ -4,6 +4,7 @@ from stream_companion.models import Shortcut
 from stream_companion.triggers import (
     TriggerMatcher,
     build_matcher_from_shortcuts,
+    find_trigger_phrases,
     find_trigger_words,
 )
 
@@ -22,10 +23,17 @@ def test_find_trigger_words_case_insensitive():
 
 
 def test_find_trigger_words_preserves_input_casing():
-    # The returned word uses the casing from the input list, not from
-    # the phrase. This keeps logs readable.
+    # The returned word is normalized to lowercase (the matcher keys
+    # on the normalized form). The phrase's "Fail" still matches
+    # because matching itself is case-insensitive.
     result = find_trigger_words("say Fail out loud", ["FAIL"])
-    assert result == ["FAIL"]
+    assert result == ["fail"]
+
+
+def test_find_trigger_words_phrase_input_lowercases():
+    # Multi-word candidates are also lowercased on output.
+    result = find_trigger_words("play fail now", ["PLAY FAIL", "win"])
+    assert result == ["play fail"]
 
 
 def test_find_trigger_words_word_boundary_excludes_substring():
@@ -63,6 +71,93 @@ def test_find_trigger_words_punctuation_boundary():
     # Punctuation should not break word boundary detection
     assert find_trigger_words("hey, fail!", ["fail"]) == ["fail"]
     assert find_trigger_words("(fail)", ["fail"]) == ["fail"]
+
+
+# ---------------------------------------------------------------------------
+# find_trigger_phrases — multi-word matching
+# ---------------------------------------------------------------------------
+
+
+def test_find_trigger_phrases_basic():
+    assert find_trigger_phrases("oh play fail now", ["play fail"]) == ["play fail"]
+
+
+def test_find_trigger_phrases_case_insensitive():
+    assert find_trigger_phrases("oh PLAY FAIL now", ["play fail"]) == ["play fail"]
+    assert find_trigger_phrases("oh play fail now", ["PLAY FAIL"]) == ["play fail"]
+
+
+def test_find_trigger_phrases_returns_lower_cased():
+    assert find_trigger_phrases("say Play Fail out loud", ["play fail"]) == [
+        "play fail"
+    ]
+
+
+def test_find_trigger_phrases_requires_contiguity():
+    # Filler words between trigger tokens must NOT match
+    assert find_trigger_phrases("oh play the fail now", ["play fail"]) == []
+
+
+def test_find_trigger_phrases_word_boundary_excludes_substring():
+    # 'fail' inside a longer word shouldn't match as part of the phrase
+    assert find_trigger_phrases("oh failful play now", ["play fail"]) == []
+    assert find_trigger_phrases("oh play failsafe now", ["play fail"]) == []
+
+
+def test_find_trigger_phrases_multiple_candidates_in_phrase():
+    candidates = ["play fail", "win", "react with fire"]
+    assert find_trigger_phrases("let's play fail and then we win", candidates) == [
+        "play fail",
+        "win",
+    ]
+
+
+def test_find_trigger_phrases_multiple_phrases_on_same_shortcut():
+    # Same shortcut declaring "play fail" and "play win" — both should
+    # be checked against the phrase.
+    assert find_trigger_phrases("now we play win", ["play fail", "play win"]) == [
+        "play win"
+    ]
+
+
+def test_find_trigger_phrases_punctuation_handling():
+    assert find_trigger_phrases("oh, play fail!", ["play fail"]) == ["play fail"]
+    assert find_trigger_phrases("play-fail", ["play fail"]) == ["play fail"]
+
+
+def test_find_trigger_phrases_unicode():
+    # Accented characters in the trigger phrase still work
+    assert find_trigger_phrases("dile hola niño ahora", ["hola niño"]) == ["hola niño"]
+
+
+def test_find_trigger_phrases_single_word_still_works():
+    # A single-token candidate behaves like a word trigger.
+    assert find_trigger_phrases("oh what a fail", ["fail"]) == ["fail"]
+
+
+def test_find_trigger_phrases_dedups_repeats():
+    # Same phrase appearing twice in the candidates should only match once.
+    assert find_trigger_phrases("play fail play fail", ["play fail"]) == ["play fail"]
+
+
+def test_find_trigger_phrases_skips_empty_candidates():
+    assert find_trigger_phrases("play fail", ["", "  ", "play fail"]) == ["play fail"]
+
+
+def test_find_trigger_phrases_empty_phrase():
+    assert find_trigger_phrases("", ["anything"]) == []
+
+
+def test_find_trigger_phrases_phrase_at_phrase_boundaries():
+    # The match must respect word boundaries
+    assert find_trigger_phrases("iplay failz", ["play fail"]) == []
+
+
+def test_find_trigger_words_alias_returns_same_results():
+    # The legacy name is preserved as an alias.
+    assert find_trigger_words("play fail", ["play fail"]) == find_trigger_phrases(
+        "play fail", ["play fail"]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +315,17 @@ def test_matcher_on_skip_callback():
 # ---------------------------------------------------------------------------
 
 
-def _sc(label: str, hotkey: str, trigger_word: str | None = None) -> Shortcut:
+def _sc(
+    label: str,
+    hotkey: str,
+    trigger_word: str | None = None,
+    trigger_phrases: tuple[str, ...] | None = None,
+) -> Shortcut:
     return Shortcut(
         hotkey=hotkey,
         sound_path=f"/tmp/{label}.wav",
         trigger_word=trigger_word,
+        trigger_phrases=trigger_phrases,
     )
 
 
@@ -275,3 +376,72 @@ def test_build_matcher_respects_cooldown():
     scs = [_sc("a", "<ctrl>+1", "fail")]
     matcher, _ = build_matcher_from_shortcuts(scs, cooldown_ms=500)
     assert matcher.cooldown_ms == 500
+
+
+def test_build_matcher_registers_phrases():
+    scs = [
+        _sc("a", "<ctrl>+1", trigger_phrases=("play fail", "react with fire")),
+        _sc("b", "<ctrl>+2", trigger_phrases=("play win",)),
+        _sc("c", "<ctrl>+3"),  # no triggers
+    ]
+    matcher, duplicates = build_matcher_from_shortcuts(scs, cooldown_ms=0)
+    assert duplicates == []
+    assert sorted(matcher.registered_words()) == [
+        "play fail",
+        "play win",
+        "react with fire",
+    ]
+
+
+def test_build_matcher_combines_word_and_phrases():
+    # Same shortcut has a single-word trigger AND a multi-word phrase
+    scs = [
+        _sc(
+            "a",
+            "<ctrl>+1",
+            trigger_word="fail",
+            trigger_phrases=("play fail", "react with fire"),
+        ),
+    ]
+    matcher, _ = build_matcher_from_shortcuts(scs, cooldown_ms=0)
+    # All three triggers registered
+    assert sorted(matcher.registered_words()) == [
+        "fail",
+        "play fail",
+        "react with fire",
+    ]
+    # "oh fail now" matches only the single-word trigger
+    fired = matcher.dispatch("oh fail now")
+    assert fired == ["fail"]
+    # "now we play fail" matches BOTH "play fail" (phrase) and "fail"
+    # (single-word). The matcher returns both; the application
+    # de-duplicates by shortcut downstream.
+    fired = matcher.dispatch("now we play fail")
+    assert sorted(fired) == ["fail", "play fail"]
+    # A phrase that only matches the multi-word trigger
+    fired = matcher.dispatch("let us react with fire")
+    assert fired == ["react with fire"]
+
+
+def test_build_matcher_phrase_duplicates_across_shortcuts():
+    scs = [
+        _sc("a", "<ctrl>+1", trigger_phrases=("play fail",)),
+        _sc("b", "<ctrl>+2", trigger_phrases=("play fail",)),  # dup
+    ]
+    matcher, duplicates = build_matcher_from_shortcuts(scs, cooldown_ms=0)
+    assert len(duplicates) == 1
+    assert duplicates[0][0] == "play fail"
+    # First registration wins
+    fired = matcher.dispatch("oh play fail")
+    assert fired == ["play fail"]
+
+
+def test_build_matcher_phrase_and_word_deduped_together():
+    scs = [
+        _sc("a", "<ctrl>+1", trigger_word="play fail"),  # legacy single
+        _sc("b", "<ctrl>+2", trigger_phrases=("play fail",)),  # phrase
+    ]
+    matcher, duplicates = build_matcher_from_shortcuts(scs, cooldown_ms=0)
+    # The two are treated as the same trigger, so one is a duplicate
+    assert len(duplicates) == 1
+    assert duplicates[0][0] == "play fail"

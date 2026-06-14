@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
+  "version": "1.4.0",
   "shortcuts": [
     {"hotkey": "<ctrl>+<alt>+1", "sound": "assets/sounds/sample.wav"},
     {"hotkey": "<ctrl>+<alt>+2", "overlay": {"file": "assets/overlays/sample.mp4", "x": 800, "y": 450, "duration": 0}},
@@ -19,6 +19,10 @@
     "sample_rate": 16000,
     "append_space": true,
     "silence_rms_threshold": 0.005,
-    "dedup_window": 64
+    "dedup_window": 64,
+    "trigger_cooldown_ms": 1500,
+    "type_into_focused_window": true,
+    "voice_triggers_enabled": true
   }
 }
+

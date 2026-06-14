@@ -113,6 +113,29 @@ Goal: Show two independent visual indicators in the system tray so the user can 
 - ✅ `Application._stt_state` returns the new `TrayIndicatorState`; the existing observer continues to refresh the tray on every state change.
 - ✅ Tests: 17 new tests in `tests/test_tray_indicators.py` covering state composition, color presence, fallback paths, and the no-dots cases; 8 new tests in `tests/test_tray_icon.py` covering state-key deduping, menu hiding, left-click toggling, and label transitions. Total: 136 tests passing.
 
+## Phase 10 – Multi-word voice trigger phrases (Complete)
+Goal: Extend the existing voice-trigger system so a single shortcut can fire on multi-word phrases (e.g. "play fail" or "react with fire"), in addition to the legacy single-word trigger.
+
+- ✅ `Shortcut` model gains `trigger_phrases: Optional[Tuple[str, ...]]` alongside the existing `trigger_word`. The new helper `all_trigger_phrases()` flattens both fields into a single normalized list.
+- ✅ New `find_trigger_phrases(phrase, candidates)` in `triggers.py`:
+  - Tokenizes the phrase on Unicode word boundaries.
+  - Each candidate is normalized to a tuple of lowercase tokens.
+  - Sliding-window match: the candidate's tokens must appear as a
+    contiguous subsequence of the phrase's tokens, in order.
+  - Case-insensitive, word-boundary aware, **contiguous** (no filler-word tolerance).
+  - Empty candidates and empty phrases return `[]`.
+  - `find_trigger_words` is kept as a deprecated alias for the old name.
+- ✅ `build_matcher_from_shortcuts` now collects triggers from BOTH the legacy `trigger_word` and the new `trigger_phrases`. Duplicates are deduped across both sources.
+- ✅ `Application._handle_stt_phrase_in_main_thread` resolves matched phrases to the live shortcut list using `all_trigger_phrases()`. Same shortcut can fire on both its single-word and phrase triggers.
+- ✅ `config_loader` reads/writes `trigger_phrases: List[str]` (also accepts a single string for convenience). Empty entries are dropped. Schema version bumped to 1.4.0.
+- ✅ Configurator: the Shortcut Details panel now has two voice-trigger fields — the existing single-word `QLineEdit` (relabeled "Voice Trigger Word (optional)") plus a new `QPlainTextEdit` "Voice Trigger Phrases (optional, one per line)". The list panel's row summary shows up to 2 triggers with a "+N" indicator.
+- ✅ Schema: `config/schema.json` extended with `trigger_phrases` as `oneOf: [string, array of string]`. Config version bumped to 1.4.0.
+- ✅ Tests:
+  - 15 new tests in `tests/test_triggers.py` covering basic matching, case-insensitivity, contiguity, filler-word rejection, multiple candidates, dedup, unicode, punctuation, and the `find_trigger_words` alias.
+  - 4 new tests in `tests/test_build_matcher_from_shortcuts` paths: phrase registration, combined word+phrases, cross-shortcut duplicates, and word-vs-phrase dedup.
+  - 3 new round-trip tests in `tests/test_config_loader.py` for `trigger_phrases` save/load, omitted, and single-string coercion.
+- Total: 159 tests passing.
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.
