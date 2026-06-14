@@ -430,6 +430,12 @@ class STTEngine:
         return self._thread is not None and self._thread.is_alive()
 
     @property
+    def triggers_enabled(self) -> bool:
+        """``True`` when voice-trigger scanning is on (independent of typing)."""
+
+        return self._triggers_enabled
+
+    @property
     def typed_total_chars(self) -> int:
         return self._typed_total_chars
 

@@ -96,6 +96,23 @@ Goal: Let the user attach a **trigger word** to any shortcut so that speaking th
 - ✅ Schema: `config/schema.json` extended with `trigger_word` on shortcuts, and the new `trigger_cooldown_ms` / `type_into_focused_window` / `voice_triggers_enabled` on the STT block. Config version bumped to 1.3.0.
 - ✅ Tests: 27 new tests in `tests/test_triggers.py` plus 2 round-trip tests in `tests/test_config_loader.py` and 2 in `tests/test_stt.py` for the new engine behavior. Total: 111 tests passing.
 
+## Phase 9 – Tray status indicators (Complete)
+Goal: Show two independent visual indicators in the system tray so the user can see at a glance whether STT is listening and whether typing is active, even with the menu closed.
+
+- ✅ New `src/stream_companion/tray_indicators.py`:
+  - `TrayIndicatorState` dataclass with `enabled`, `stt_active`, `typing_active` and a friendly `tooltip`.
+  - `compose_state(...)` factory that derives the indicator state from raw engine flags (`stt_configured`, `engine_running`, `triggers_enabled`, `typing_active`).
+  - `compose_tray_icon(state, size=64, base_pixmap=None)` paints two corner dots on the base icon: a red dot in the top-right (STT active) and a blue dot in the bottom-right (typing active). Falls back to a synthesized "SC" badge when no asset is present.
+  - `find_base_icon_pixmap()` discovers the project's `assets/icon.png` / `tray_icon.png` / `icon.ico`.
+- ✅ `STTEngine` exposes a public `triggers_enabled` property so the application can read the flag from any thread.
+- ✅ `TrayIcon` rewritten:
+  - The state provider now returns a `TrayIndicatorState` (or `None` for "STT not configured").
+  - `refresh_stt_label()` recomposes the icon on every state change. A hashed state key skips no-op refreshes.
+  - The menu item label reflects the current sub-state: "Start STT", "Stop STT (currently typing)", "Stop STT (listening for triggers)", or "STT (disabled in config)".
+  - **Left-click** on the tray icon now toggles STT (single + double click both work), matching media-app conventions.
+- ✅ `Application._stt_state` returns the new `TrayIndicatorState`; the existing observer continues to refresh the tray on every state change.
+- ✅ Tests: 17 new tests in `tests/test_tray_indicators.py` covering state composition, color presence, fallback paths, and the no-dots cases; 8 new tests in `tests/test_tray_icon.py` covering state-key deduping, menu hiding, left-click toggling, and label transitions. Total: 136 tests passing.
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.

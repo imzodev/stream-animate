@@ -13,6 +13,7 @@ from .models import OverlayConfig, Shortcut, STTConfig
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 from .stt import STTEngine
+from .tray_indicators import TrayIndicatorState
 from .triggers import TriggerMatcher, build_matcher_from_shortcuts
 from . import registry
 
@@ -468,25 +469,35 @@ def run_application(
         ),
     )
 
-    def _stt_state() -> Optional[str]:
-        """Return a granular state string for the tray icon.
+    def _stt_state() -> Optional[TrayIndicatorState]:
+        """Return the indicator state for the tray icon.
 
-        Returns:
-            ``None``        - no STT config at all (action hidden)
-            ``"disabled"``  - config exists but engine is not running
-            ``"error"``     - engine is running but in an error state
-            ``"active"``    - engine is running and transcribing
-            ``"idle"``      - engine is running but waiting for toggle
+        ``None`` means STT is not configured at all (the tray hides
+        the indicator menu entries). Otherwise the state encodes
+        whether STT is enabled, whether the engine is running, and
+        whether the typing/trigger sub-flags are on.
         """
 
+        from .tray_indicators import compose_state
+
         engine = application.stt_engine()
+        stt_config = application._stt_config  # noqa: SLF001 — internal access
+        stt_configured = bool(stt_config and stt_config.enabled)
         if engine is None:
-            return None
-        if not engine.is_running:
-            return "disabled"
-        if engine.last_error:
-            return "error"
-        return "active" if engine.is_active else "idle"
+            if not stt_configured:
+                return None
+            return compose_state(
+                stt_configured=True,
+                engine_running=False,
+                triggers_enabled=False,
+                typing_active=False,
+            )
+        return compose_state(
+            stt_configured=stt_configured,
+            engine_running=engine.is_running,
+            triggers_enabled=engine.triggers_enabled,
+            typing_active=engine.is_active,
+        )
 
     def _toggle_stt() -> None:
         engine = application.stt_engine()

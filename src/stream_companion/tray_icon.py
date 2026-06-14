@@ -8,11 +8,27 @@ from typing import Callable, Optional
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from .tray_indicators import TrayIndicatorState, compose_tray_icon
+
 _LOGGER = logging.getLogger(__name__)
 
 
 class TrayIcon:
-    """System tray icon with context menu for application control."""
+    """System tray icon with context menu for application control.
+
+    The icon itself reflects two independent indicators (see
+    :class:`stream_companion.tray_indicators.TrayIndicatorState`):
+
+    * a red dot in the top-right when STT is active (the engine is
+      listening);
+    * a blue dot in the bottom-right when typing into the focused
+      window is active.
+
+    The state is provided by an injected callable (typically
+    ``Application._stt_state``) that returns either ``None`` (STT not
+    configured) or a :class:`TrayIndicatorState` describing the dots
+    to show.
+    """
 
     def __init__(
         self,
@@ -20,17 +36,19 @@ class TrayIcon:
         on_quit: Optional[Callable[[], None]] = None,
         on_open_configurator: Optional[Callable[[], None]] = None,
         on_toggle_stt: Optional[Callable[[], None]] = None,
-        stt_state_provider: Optional[Callable[[], Optional[str]]] = None,
+        stt_state_provider: Optional[Callable[[], Optional[TrayIndicatorState]]] = None,
     ) -> None:
         """Initialize the system tray icon.
 
         Args:
-            on_quit: Callback to execute when user selects Quit
-            on_open_configurator: Callback to execute when user selects Open Configurator
-            on_toggle_stt: Callback for toggling the STT engine. If ``None``,
-                the STT menu entries are not shown.
-            stt_state_provider: Optional callable returning one of
-                ``"off"``, ``"idle"``, ``"active"`` (or ``None`` to hide).
+            on_quit: Callback to execute when user selects Quit.
+            on_open_configurator: Callback for the Open Configurator item.
+            on_toggle_stt: Callback for the Start/Stop STT menu item (and
+                also fired when the user left-clicks the tray icon).
+            stt_state_provider: Callable returning a
+                :class:`TrayIndicatorState` or ``None``. ``None`` hides
+                the STT-related menu entries; otherwise the state drives
+                the colored dots on the icon and the menu labels.
         """
         self._on_quit = on_quit
         self._on_open_configurator = on_open_configurator
@@ -39,13 +57,18 @@ class TrayIcon:
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._menu: Optional[QMenu] = None
         self._stt_toggle_action: Optional[QAction] = None
+        self._base_icon: Optional[QIcon] = None
+        self._last_state_key: Optional[tuple] = None
+        # Disable the dot menu entries until state is provided.
+        self._stt_menu_hidden = False
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
 
     def show(self) -> bool:
-        """Show the system tray icon.
+        """Show the system tray icon."""
 
-        Returns:
-            True if the tray icon was shown successfully, False otherwise.
-        """
         if not QSystemTrayIcon.isSystemTrayAvailable():
             _LOGGER.warning("System tray is not available on this platform")
             return False
@@ -55,24 +78,15 @@ class TrayIcon:
             _LOGGER.error("QApplication instance not found")
             return False
 
-        # Create tray icon
         self._tray_icon = QSystemTrayIcon(app)
-
-        # Try to set an icon (fallback to default if no custom icon exists)
-        icon = self._load_icon()
-        if icon and not icon.isNull():
-            self._tray_icon.setIcon(icon)
-        else:
-            # Use a default Qt icon as fallback
-            from PySide6.QtWidgets import QStyle
-
-            self._tray_icon.setIcon(
-                app.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
-            )
-
+        self._install_initial_icon()
         self._tray_icon.setToolTip("Streaming Companion Tool")
 
-        # Create context menu
+        # Left-click on the icon = toggle STT (standard media-app behavior)
+        if self._on_toggle_stt is not None:
+            self._tray_icon.activated.connect(self._on_activated)
+
+        # Build the context menu
         self._menu = QMenu()
 
         if self._on_open_configurator:
@@ -95,6 +109,9 @@ class TrayIcon:
         self._tray_icon.setContextMenu(self._menu)
         self._tray_icon.show()
 
+        # Apply the initial state (e.g. hide the toggle when STT is
+        # not configured).
+        self.refresh_stt_label()
         _LOGGER.info("System tray icon displayed")
         return True
 
@@ -107,89 +124,146 @@ class TrayIcon:
     def show_message(
         self, title: str, message: str, icon: QSystemTrayIcon.MessageIcon = None
     ) -> None:
-        """Show a notification message from the tray icon.
+        """Show a notification message from the tray icon."""
 
-        Args:
-            title: Notification title
-            message: Notification message
-            icon: Icon type (defaults to Information)
-        """
         if not self._tray_icon:
             return
-
         if icon is None:
             icon = QSystemTrayIcon.MessageIcon.Information
-
         self._tray_icon.showMessage(title, message, icon, 3000)
 
+    # ------------------------------------------------------------------
+    # State refresh
+    # ------------------------------------------------------------------
+
+    def _install_initial_icon(self) -> None:
+        """Install a base icon (no dots) so the tray has something to show."""
+
+        from .tray_indicators import find_base_icon_pixmap, _fallback_base_pixmap
+
+        base = find_base_icon_pixmap(64) or _fallback_base_pixmap(64)
+        self._base_icon = QIcon(base)
+        if self._tray_icon is not None:
+            self._tray_icon.setIcon(self._base_icon)
+
+    def _composed_icon(self, state: TrayIndicatorState) -> QIcon:
+        """Compose the indicator-painted icon for the given state."""
+
+        from .tray_indicators import find_base_icon_pixmap
+
+        base = find_base_icon_pixmap(64)
+        return compose_tray_icon(state, size=64, base_pixmap=base)
+
     def refresh_stt_label(self) -> None:
-        """Update the STT menu label to reflect the current engine state."""
+        """Update the STT menu label and the indicator icon to match state.
 
-        if self._stt_toggle_action is None or self._stt_state_provider is None:
-            return
-        state = self._stt_state_provider()
-        if state == "active":
-            self._stt_toggle_action.setText("Stop STT")
-            self._stt_toggle_action.setEnabled(True)
-            self._tray_icon.setToolTip("Streaming Companion Tool — STT active")
-        elif state == "idle":
-            self._stt_toggle_action.setText("Start STT")
-            self._stt_toggle_action.setEnabled(True)
-            self._tray_icon.setToolTip("Streaming Companion Tool — STT idle")
-        elif state == "error":
-            self._stt_toggle_action.setText("STT (error — see logs)")
-            self._stt_toggle_action.setEnabled(False)
-            self._tray_icon.setToolTip("Streaming Companion Tool — STT error")
-        elif state == "disabled":
-            self._stt_toggle_action.setText("STT (disabled)")
-            self._stt_toggle_action.setEnabled(False)
-            self._tray_icon.setToolTip("Streaming Companion Tool")
-        else:
-            # Provider returned None: STT not configured at all. Hide the
-            # action so the tray menu stays clean.
-            self._stt_toggle_action.setVisible(False)
-
-    def _load_icon(self) -> Optional[QIcon]:
-        """Load the tray icon from assets.
-
-        Returns:
-            QIcon if found, None otherwise.
+        This is the single entry point the application should call when
+        the engine state changes. It is a no-op if nothing relevant has
+        changed (compared against ``_last_state_key``) to avoid
+        unnecessary repaints.
         """
-        # Try to load custom icon from assets
-        from pathlib import Path
 
-        icon_paths = [
-            Path(__file__).parents[2] / "assets" / "icon.png",
-            Path(__file__).parents[2] / "assets" / "tray_icon.png",
-        ]
+        if self._tray_icon is None or self._stt_state_provider is None:
+            return
 
-        for path in icon_paths:
-            if path.exists():
-                return QIcon(str(path))
+        state = self._stt_state_provider()
+        key = self._state_key(state)
+        if key == self._last_state_key:
+            return
+        self._last_state_key = key
 
-        return None
+        # Update the icon
+        if state is not None:
+            icon = self._composed_icon(state)
+            self._tray_icon.setIcon(icon)
+            self._tray_icon.setToolTip(state.tooltip)
+        else:
+            # No STT configured at all — revert to the base icon and
+            # hide the STT menu item.
+            self._tray_icon.setIcon(self._base_icon or QIcon())
+            self._tray_icon.setToolTip("Streaming Companion Tool")
+
+        # Update the menu
+        if self._stt_toggle_action is not None:
+            self._update_menu(state)
+
+    def _state_key(self, state: Optional[TrayIndicatorState]) -> Optional[tuple]:
+        """Return a hashable key for the state, used to skip no-op refreshes."""
+
+        if state is None:
+            return ("none",)
+        return (
+            "on" if state.enabled else "off",
+            bool(state.stt_active),
+            bool(state.typing_active),
+        )
+
+    def _update_menu(self, state: Optional[TrayIndicatorState]) -> None:
+        """Refresh the STT menu entry to reflect the current state."""
+
+        if self._stt_toggle_action is None:
+            return
+        if state is None:
+            # STT not configured: hide the toggle entirely
+            self._stt_toggle_action.setVisible(False)
+            self._stt_menu_hidden = True
+            return
+        # STT is configured (the engine is or could be running).
+        self._stt_toggle_action.setVisible(True)
+        self._stt_menu_hidden = False
+        if not state.enabled:
+            self._stt_toggle_action.setText("STT (disabled in config)")
+            self._stt_toggle_action.setEnabled(False)
+            return
+        if state.typing_active:
+            self._stt_toggle_action.setText("Stop STT (currently typing)")
+        elif state.stt_active:
+            self._stt_toggle_action.setText("Stop STT (listening for triggers)")
+        else:
+            self._stt_toggle_action.setText("Start STT")
+        self._stt_toggle_action.setEnabled(True)
+
+    # ------------------------------------------------------------------
+    # Click / menu handlers
+    # ------------------------------------------------------------------
+
+    def _on_activated(self, reason) -> None:
+        """Handle tray icon activation (left-click toggles STT)."""
+
+        # QSystemTrayIcon.ActivationReason.Trigger == left single click
+        # on Linux/Windows; DoubleClick is also common. We treat both
+        # as a toggle for convenience.
+        from PySide6.QtWidgets import QSystemTrayIcon as _Sti
+
+        if reason in (_Sti.ActivationReason.Trigger, _Sti.ActivationReason.DoubleClick):
+            self._handle_toggle_stt()
 
     def _handle_quit(self) -> None:
         """Handle quit action from tray menu."""
+
         _LOGGER.info("Quit requested from system tray")
         if self._on_quit:
             self._on_quit()
         else:
-            # Default behavior: quit the application
             app = QApplication.instance()
             if app:
                 app.quit()
 
     def _handle_open_configurator(self) -> None:
         """Handle open configurator action from tray menu."""
+
         _LOGGER.info("Open configurator requested from system tray")
         if self._on_open_configurator:
             self._on_open_configurator()
 
     def _handle_toggle_stt(self) -> None:
-        """Handle STT toggle from the tray menu."""
+        """Handle STT toggle from the tray menu or icon click."""
 
         _LOGGER.info("STT toggle requested from system tray")
         if self._on_toggle_stt:
             self._on_toggle_stt()
+        # The application is expected to refresh the state via the
+        # observer; we also call refresh directly in case the observer
+        # wasn't wired (e.g. when the toggle is invoked from a one-off
+        # CLI path).
         self.refresh_stt_label()

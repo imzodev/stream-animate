@@ -98,12 +98,37 @@ You can trigger shortcuts by first pressing a global activator and then one or m
   - Sequences of 2–3 keys are recommended to fit within the timeout.
 
 ## System Tray Control
-When running in listener mode, the application displays a system tray icon for easy control:
-- **Right-click the tray icon** to access:
-  - **Open Configurator** - Edit shortcuts without restarting
-  - **Start/Stop STT** - Toggle the speech-to-text engine (only shown when STT is enabled in the configurator)
-  - **Quit** - Gracefully exit the application
-- The tray icon provides a clean way to manage the background process without terminal access
+When running in listener mode, the application displays a system tray icon for easy control.
+
+### Menu (right-click)
+- **Open Configurator** — Edit shortcuts without restarting
+- **Start/Stop STT** — Toggle the speech-to-text engine. The label also reflects the current state:
+  - "Start STT" when idle
+  - "Stop STT (currently typing)" when STT is active and typing into the focused window
+  - "Stop STT (listening for triggers)" when STT is active and only voice triggers are on
+  - "STT (disabled in config)" when STT is configured off (grayed out)
+- **Quit** — Gracefully exit the application
+
+### Left-click
+A single left-click on the tray icon **toggles STT** (same as the menu's "Start/Stop STT" item). Right-click for the menu.
+
+### Status indicators
+The tray icon shows two independent colored dots so you can tell at a glance what the engine is doing:
+
+| Dot | Color | Meaning |
+|-----|-------|---------|
+| Top-right | 🔴 Red | **STT is active** — the engine is running and listening to the microphone. Independent of typing: you can have STT on with no typing (voice triggers only). |
+| Bottom-right | 🔵 Blue | **Typing into the focused window is active** — transcribed text is being typed via pynput. Independent of triggers: you can have typing on with no triggers. |
+
+The two dots can be on simultaneously, so the icon shows four visual states:
+- **No dots** — STT is off or disabled.
+- **Red only** — STT is listening for trigger words (typing disabled).
+- **Blue only** — Engine is typing; this rarely happens alone in practice because the engine only transcribes when one of typing/triggers is on.
+- **Red + Blue** — STT is on and typing into the focused window (the default "always-on" mode).
+
+Hovering the icon shows a detailed tooltip ("STT: listening", "STT: listening + typing into focused window", etc.). The same information is also available from the menu label.
+
+The base icon is `assets/icon.png` (or a synthesized "SC" badge if no asset is present).
 
 ## Speech-to-Text Typing
 Stream Companion can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [OpenAI Whisper](https://github.com/openai/whisper), it runs entirely on your machine — no cloud calls, no API keys.
