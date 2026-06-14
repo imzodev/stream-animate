@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from .config_loader import ConfigError, load_full_config, save_config
 from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
+from . import model_downloader
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
@@ -1284,17 +1285,60 @@ class ConfiguratorWindow(QMainWindow):
                 )
             self._stt_config = stt_config
             save_config(activator, self._shortcuts, stt=stt_config)
-            QMessageBox.information(
-                self, "Success", f"Saved {len(self._shortcuts)} shortcuts successfully!"
-            )
             _LOGGER.info(
                 "Saved %d shortcuts (stt=%s)",
                 len(self._shortcuts),
                 "on" if stt_config else "off",
             )
+            # Kick off a background Whisper download so the first dictation
+            # is not blocked by a multi-GB download. Runs in a daemon thread;
+            # the user can close the configurator and the download continues.
+            self._maybe_preload_stt_model(stt_config)
+            QMessageBox.information(
+                self, "Success", f"Saved {len(self._shortcuts)} shortcuts successfully!"
+            )
         except ConfigError as exc:
             QMessageBox.critical(self, "Save Error", str(exc))
             _LOGGER.error("Failed to save shortcuts: %s", exc)
+
+    def _maybe_preload_stt_model(self, stt_config: Optional[STTConfig]) -> None:
+        """Start a background download of the configured Whisper model.
+
+        Skips the download when STT is disabled, when the model is
+        unknown, or when the model is already cached. All work happens on
+        a daemon thread; the configurator stays responsive and the user
+        can close the window while the download continues.
+        """
+
+        if stt_config is None or not stt_config.enabled:
+            return
+        model_name = stt_config.model
+        if model_name not in model_downloader.available_models():
+            _LOGGER.warning(
+                "STT model %r is not recognized; skipping preload. "
+                "Available models: %s",
+                model_name,
+                ", ".join(model_downloader.available_models()),
+            )
+            return
+        if model_downloader.is_model_cached(model_name):
+            _LOGGER.info(
+                "Whisper model '%s' is already cached; no preload needed.",
+                model_name,
+            )
+            return
+        _LOGGER.info(
+            "Scheduling background download of Whisper model '%s' after config save.",
+            model_name,
+        )
+        model_downloader.start_background_download(
+            model_name,
+            on_complete=lambda path: _LOGGER.info(
+                "Whisper model '%s' preloaded to %s; first dictation will be instant.",
+                model_name,
+                path,
+            ),
+        )
 
     def _update_current_shortcut(self) -> bool:
         """Update the currently selected shortcut from editor fields."""
