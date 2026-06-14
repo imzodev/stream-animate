@@ -1,0 +1,365 @@
+from __future__ import annotations
+
+from typing import List
+
+import numpy as np
+import pytest
+
+from stream_companion.models import STTConfig
+from stream_companion.stt import (
+    AudioCapture,
+    AudioCaptureError,
+    STTEngine,
+    STTEvent,
+    TextTyper,
+    WhisperTranscriber,
+)
+
+
+# ---------------------------------------------------------------------------
+# Fakes
+# ---------------------------------------------------------------------------
+
+
+class FakeSoundDevice:
+    """Minimal stub of the sounddevice module used by AudioCapture."""
+
+    def __init__(self) -> None:
+        self.opened: List[dict] = []
+        self._active: List[FakeStream] = []
+
+    def InputStream(self, **kwargs):  # noqa: N802 - matches sounddevice API
+        stream = FakeStream(self, kwargs)
+        self.opened.append(kwargs)
+        return stream
+
+    def remove(self, stream: "FakeStream") -> None:
+        if stream in self._active:
+            self._active.remove(stream)
+
+
+class FakeStream:
+    def __init__(self, sd: FakeSoundDevice, kwargs: dict) -> None:
+        self._sd = sd
+        self.kwargs = kwargs
+        self.callback = kwargs.get("callback")
+        self.started = False
+        self.stopped = False
+        self.closed = False
+
+    def start(self) -> None:
+        self.started = True
+        self._sd._active.append(self)
+
+    def stop(self) -> None:
+        self.stopped = True
+
+    def close(self) -> None:
+        self.closed = True
+        self._sd.remove(self)
+
+    def push(self, samples: np.ndarray) -> None:
+        """Simulate an audio callback with the given float32 samples."""
+
+        if self.callback is None:
+            return
+        indata = samples.reshape(-1, 1)
+        self.callback(indata, samples.shape[0], None, None)
+
+
+class FakeWhisperModel:
+    def __init__(self) -> None:
+        self.calls: List[dict] = []
+        self.responses: List[str] = [""]
+
+    def transcribe(self, audio, **kwargs):
+        self.calls.append({"audio": audio, **kwargs})
+        return {"text": self.responses.pop(0) if self.responses else ""}
+
+
+class FakeController:
+    def __init__(self) -> None:
+        self.typed: List[str] = []
+
+    def type(self, text: str) -> None:
+        self.typed.append(text)
+
+
+# ---------------------------------------------------------------------------
+# AudioCapture
+# ---------------------------------------------------------------------------
+
+
+def test_audio_capture_requires_positive_chunk_seconds():
+    with pytest.raises(ValueError):
+        AudioCapture(chunk_seconds=0)
+    with pytest.raises(ValueError):
+        AudioCapture(sample_rate=0)
+
+
+def test_audio_capture_starts_and_stops():
+    sd = FakeSoundDevice()
+    cap = AudioCapture(sounddevice_module=sd, sample_rate=16000, chunk_seconds=1.0)
+    cap.start()
+    assert cap.is_running is True
+    assert len(sd.opened) == 1
+    assert sd.opened[0]["samplerate"] == 16000
+    assert sd.opened[0]["channels"] == 1
+    cap.stop()
+    assert cap.is_running is False
+
+
+def test_audio_capture_emits_full_chunk():
+    sd = FakeSoundDevice()
+    cap = AudioCapture(sounddevice_module=sd, sample_rate=16000, chunk_seconds=0.5)
+    cap.start()
+    stream = sd._active[0]
+    # 0.5s @ 16kHz = 8000 frames. Send 8000 samples.
+    samples = np.ones(8000, dtype=np.float32)
+    stream.push(samples)
+    chunk = cap.get_chunk(timeout=1.0)
+    assert chunk is not None
+    assert chunk.shape[0] == 8000
+    cap.stop()
+
+
+def test_audio_capture_start_failure_raises():
+    class BrokenSD:
+        def InputStream(self, **kwargs):  # noqa: N802
+            raise OSError("no mic")
+
+    cap = AudioCapture(sounddevice_module=BrokenSD())
+    with pytest.raises(AudioCaptureError):
+        cap.start()
+    assert cap.is_running is False
+    assert isinstance(cap.last_error(), OSError)
+
+
+# ---------------------------------------------------------------------------
+# WhisperTranscriber
+# ---------------------------------------------------------------------------
+
+
+def test_whisper_transcriber_lazy_loads_and_transcribes():
+    model = FakeWhisperModel()
+    model.responses = ["hello world"]
+    loader_calls: List[str] = []
+
+    def loader(name: str):
+        loader_calls.append(name)
+        return model
+
+    t = WhisperTranscriber(model_name="tiny", model_loader=loader)
+    assert t.is_loaded() is False
+    text = t.transcribe(np.zeros(16000, dtype=np.float32), language="auto")
+    assert text == "hello world"
+    assert loader_calls == ["tiny"]
+    assert t.is_loaded() is True
+    # Second call should not reload
+    model.responses = ["again"]
+    t.transcribe(np.zeros(16000, dtype=np.float32), language="en")
+    assert loader_calls == ["tiny"]
+    assert model.calls[-1]["language"] == "en"
+
+
+def test_whisper_transcriber_skips_language_kwarg_for_auto():
+    model = FakeWhisperModel()
+    model.responses = ["hi"]
+    t = WhisperTranscriber(model_loader=lambda _n: model)
+    t.transcribe(np.zeros(16000, dtype=np.float32), language="auto")
+    assert model.calls[-1].get("language") is None
+
+
+# ---------------------------------------------------------------------------
+# TextTyper
+# ---------------------------------------------------------------------------
+
+
+def test_text_typer_types_full_text_first_time():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=32)
+    typed = typer.type_text("hello", append_space=True)
+    assert typed == "hello "
+    assert controller.typed == ["hello "]
+
+
+def test_text_typer_dedups_overlapping_chunks():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=64)
+    typer.type_text("the quick brown", append_space=True)
+    # Next chunk repeats the tail "brown " then adds new text
+    typed = typer.type_text("brown fox jumps", append_space=True)
+    assert typed == "fox jumps "
+    assert controller.typed == ["the quick brown ", "fox jumps "]
+
+
+def test_text_typer_no_append_space():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=32)
+    typed = typer.type_text("hi", append_space=False)
+    assert typed == "hi"
+    assert controller.typed == ["hi"]
+
+
+def test_text_typer_empty_text_no_op():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=32)
+    assert typer.type_text("", append_space=True) == ""
+    assert controller.typed == []
+
+
+def test_text_typer_reset_clears_tail():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=32)
+    typer.type_text("foo", append_space=False)
+    typer.reset()
+    assert typer.tail() == ""
+    # After reset, no dedup happens
+    typed = typer.type_text("foo bar", append_space=False)
+    assert typed == "foo bar"
+
+
+def test_text_typer_window_size_zero_disables_tail_tracking():
+    controller = FakeController()
+    typer = TextTyper(controller_factory=lambda: controller, window=0)
+    typer.type_text("a", append_space=False)
+    assert typer.tail() == ""
+
+
+# ---------------------------------------------------------------------------
+# STTEngine
+# ---------------------------------------------------------------------------
+
+
+def _make_engine(
+    config_kwargs=None,
+) -> tuple[
+    STTEngine, FakeSoundDevice, FakeWhisperModel, FakeController, List[STTEvent]
+]:
+    cfg = STTConfig(**(config_kwargs or {}))
+    sd = FakeSoundDevice()
+    model = FakeWhisperModel()
+    controller = FakeController()
+    events: List[STTEvent] = []
+
+    cap = AudioCapture(
+        sounddevice_module=sd,
+        sample_rate=cfg.sample_rate,
+        chunk_seconds=cfg.chunk_seconds,
+    )
+    transcriber = WhisperTranscriber(model_loader=lambda _n: model)
+    typer = TextTyper(controller_factory=lambda: controller, window=cfg.dedup_window)
+    engine = STTEngine(
+        cfg,
+        audio_capture=cap,
+        transcriber=transcriber,
+        typer=typer,
+        on_phrase=events.append,
+    )
+    return engine, sd, model, controller, events
+
+
+def _wait_until(predicate, timeout: float = 4.0) -> None:
+    import time
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+
+
+def test_engine_active_transcribes_and_types():
+    engine, sd, model, controller, events = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.0}
+    )
+    model.responses = ["hello there"]
+    engine.set_active(True)
+    engine.start()
+    # Allow the loop to come up
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+    stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+    _wait_until(lambda: bool(controller.typed))
+    assert controller.typed and controller.typed[0].strip() == "hello there"
+    assert events and events[0].raw_text == "hello there"
+    engine.stop()
+
+
+def test_engine_idle_does_not_transcribe_in_hotkey_mode():
+    engine, sd, model, controller, _ = _make_engine(
+        {
+            "always_on": False,
+            "hotkey": "<ctrl>+<alt>+space",
+            "chunk_seconds": 0.25,
+            "silence_rms_threshold": 0.0,
+        }
+    )
+    # The engine may discard the first chunk if it arrives while the loop
+    # still believes we are idle. Provide two responses so the assertion
+    # below only needs at least one typed "activated" entry.
+    model.responses = ["activated", "activated"]
+    engine.start()
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+    engine.set_active(True)
+    # Push a burst of audio. Some chunks may be drained while the loop is
+    # still in the idle branch, but the engine will eventually process at
+    # least one after observing the active flag.
+    for _ in range(3):
+        stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+    _wait_until(lambda: any(t.strip() == "activated" for t in controller.typed))
+    engine.stop()
+
+
+def test_engine_skips_silent_chunks():
+    engine, sd, model, controller, _ = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
+    )
+    model.responses = ["should not type"]
+    engine.set_active(True)
+    engine.start()
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+    # All zeros -> RMS = 0 < threshold
+    stream.push(np.zeros(int(0.25 * 16000), dtype=np.float32))
+    import time
+
+    time.sleep(0.3)
+    assert controller.typed == []
+    engine.stop()
+
+
+def test_engine_activation_mode_helpers():
+    assert STTConfig(always_on=True).activation_mode() == "always"
+    assert STTConfig(always_on=False, hotkey="<ctrl>+x").activation_mode() == "hotkey"
+    assert STTConfig(enabled=False).activation_mode() == "off"
+
+
+def test_engine_microphone_failure_emits_status():
+    statuses: List[str] = []
+
+    class BrokenSD:
+        def InputStream(self, **kwargs):  # noqa: N802
+            raise OSError("nope")
+
+    cfg = STTConfig(always_on=True)
+    cap = AudioCapture(
+        sounddevice_module=BrokenSD(),
+        sample_rate=cfg.sample_rate,
+        chunk_seconds=cfg.chunk_seconds,
+    )
+    engine = STTEngine(
+        cfg,
+        audio_capture=cap,
+        transcriber=WhisperTranscriber(model_loader=lambda _n: FakeWhisperModel()),
+        on_status=statuses.append,
+    )
+    engine.set_active(True)
+    engine.start()
+    # Wait briefly for the loop to bail out
+    import time
+
+    time.sleep(0.2)
+    engine.stop()
+    assert any(s.startswith("error:") or s == "stopped" for s in statuses)

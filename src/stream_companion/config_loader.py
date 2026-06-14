@@ -9,7 +9,7 @@ from typing import List, Optional, Tuple
 
 import jsonschema
 
-from .models import ActivatorConfig, OverlayConfig, Shortcut
+from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -115,7 +115,9 @@ def _hydrate_config(data: dict) -> Tuple[Optional[ActivatorConfig], List[Shortcu
                 timeout_ms=int(a.get("timeout_ms", 1500)),
             )
         except KeyError as exc:
-            raise ConfigError(f"Activator missing required field: {exc.args[0]}") from exc
+            raise ConfigError(
+                f"Activator missing required field: {exc.args[0]}"
+            ) from exc
 
     shortcuts: List[Shortcut] = []
     for index, raw in enumerate(data.get("shortcuts", [])):
@@ -176,7 +178,10 @@ def load_config(
     schema_path: Optional[Path] = None,
     sample_path: Optional[Path] = None,
 ) -> Tuple[Optional[ActivatorConfig], List[Shortcut]]:
-    """Load full configuration including optional activator and shortcuts."""
+    """Load full configuration including optional activator and shortcuts.
+
+    Backward-compatible signature; STT config is available via load_full_config().
+    """
 
     cfg_path, sch_path, samp_path = _resolve_paths(
         config_path, schema_path, sample_path
@@ -194,6 +199,59 @@ def load_config(
     return activator, shortcuts
 
 
+def load_full_config(
+    config_path: Optional[Path] = None,
+    *,
+    schema_path: Optional[Path] = None,
+    sample_path: Optional[Path] = None,
+) -> Tuple[Optional[ActivatorConfig], List[Shortcut], Optional[STTConfig]]:
+    """Load full configuration: activator, shortcuts, and STT config."""
+
+    cfg_path, sch_path, samp_path = _resolve_paths(
+        config_path, schema_path, sample_path
+    )
+    _ensure_config_exists(cfg_path, samp_path)
+
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Config file {cfg_path} is not valid JSON: {exc}") from exc
+
+    _validate_config(data, sch_path)
+    activator, shortcuts = _hydrate_config(data)
+    stt = _hydrate_stt_config(data.get("stt"))
+    _LOGGER.info(
+        "Loaded %d shortcuts from %s (stt=%s)",
+        len(shortcuts),
+        cfg_path,
+        "on" if stt and stt.enabled else "off",
+    )
+    return activator, shortcuts, stt
+
+
+def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
+    """Build an STTConfig from the raw 'stt' section, or None if missing."""
+
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return STTConfig(
+            enabled=bool(raw.get("enabled", False)),
+            always_on=bool(raw.get("always_on", False)),
+            hotkey=raw.get("hotkey"),
+            language=str(raw.get("language", "auto")),
+            model=str(raw.get("model", "turbo")),
+            device=raw.get("device"),
+            chunk_seconds=float(raw.get("chunk_seconds", 4.0)),
+            sample_rate=int(raw.get("sample_rate", 16000)),
+            append_space=bool(raw.get("append_space", True)),
+            silence_rms_threshold=float(raw.get("silence_rms_threshold", 0.005)),
+            dedup_window=int(raw.get("dedup_window", 64)),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"Invalid STT configuration: {exc}") from exc
+
+
 def save_shortcuts(
     shortcuts: List[Shortcut],
     config_path: Optional[Path] = None,
@@ -208,7 +266,11 @@ def save_shortcuts(
     save_config(None, shortcuts, config_path=config_path, schema_path=schema_path)
 
 
-def _serialize(activator: Optional[ActivatorConfig], shortcuts: List[Shortcut]) -> dict:
+def _serialize(
+    activator: Optional[ActivatorConfig],
+    shortcuts: List[Shortcut],
+    stt: Optional[STTConfig] = None,
+) -> dict:
     """Convert config to JSON-serializable dictionary."""
 
     serialized = []
@@ -236,12 +298,26 @@ def _serialize(activator: Optional[ActivatorConfig], shortcuts: List[Shortcut]) 
                 entry["overlay"]["height"] = shortcut.overlay.height
         serialized.append(entry)
 
-    data: dict = {"version": "1.1.0", "shortcuts": serialized}
+    data: dict = {"version": "1.2.0", "shortcuts": serialized}
     if activator is not None:
         data["activator"] = {
             "hotkey": activator.hotkey,
             "mode": getattr(activator, "mode", "press"),
             "timeout_ms": getattr(activator, "timeout_ms", 1500),
+        }
+    if stt is not None:
+        data["stt"] = {
+            "enabled": stt.enabled,
+            "always_on": stt.always_on,
+            "hotkey": stt.hotkey,
+            "language": stt.language,
+            "model": stt.model,
+            "device": stt.device,
+            "chunk_seconds": stt.chunk_seconds,
+            "sample_rate": stt.sample_rate,
+            "append_space": stt.append_space,
+            "silence_rms_threshold": stt.silence_rms_threshold,
+            "dedup_window": stt.dedup_window,
         }
     return data
 
@@ -252,13 +328,32 @@ def save_config(
     *,
     config_path: Optional[Path] = None,
     schema_path: Optional[Path] = None,
+    stt: Optional[STTConfig] = None,
 ) -> None:
-    """Save full configuration including optional activator and shortcuts."""
+    """Save full configuration including optional activator and shortcuts.
+
+    Args:
+        stt: Optional STTConfig to persist. ``None`` means "do not touch the
+            'stt' key" (preserves whatever is already on disk during a partial
+            save). Pass an ``STTConfig`` to write it explicitly.
+    """
 
     cfg_path, sch_path, _ = _resolve_paths(config_path, schema_path, None)
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 
-    data = _serialize(activator, shortcuts)
+    if stt is not None:
+        data = _serialize(activator, shortcuts, stt)
+    else:
+        # Preserve existing stt section if present
+        existing_stt: Optional[STTConfig] = None
+        if cfg_path.exists():
+            try:
+                raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                raw = None
+            if isinstance(raw, dict):
+                existing_stt = _hydrate_stt_config(raw.get("stt"))
+        data = _serialize(activator, shortcuts, existing_stt)
     _validate_config(data, sch_path)
 
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

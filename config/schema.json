@@ -25,6 +25,24 @@
       "items": {
         "$ref": "#/definitions/shortcut"
       }
+    },
+    "stt": {
+      "type": "object",
+      "description": "Speech-to-text configuration (Whisper)",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "always_on": { "type": "boolean", "default": false },
+        "hotkey": { "type": ["string", "null"], "description": "Toggle hotkey when always_on is false" },
+        "language": { "type": "string", "default": "auto", "description": "Whisper language code or 'auto'" },
+        "model": { "type": "string", "default": "turbo", "enum": ["tiny", "base", "small", "medium", "large", "turbo", "tiny.en", "base.en", "small.en", "medium.en"] },
+        "device": { "type": ["integer", "null"], "description": "sounddevice input device index, null for system default" },
+        "chunk_seconds": { "type": "number", "default": 4.0, "minimum": 0.5, "maximum": 30.0 },
+        "sample_rate": { "type": "integer", "default": 16000, "minimum": 8000, "maximum": 48000 },
+        "append_space": { "type": "boolean", "default": true },
+        "silence_rms_threshold": { "type": "number", "default": 0.005, "minimum": 0.0 },
+        "dedup_window": { "type": "integer", "default": 64, "minimum": 0, "maximum": 4096 }
+      },
+      "additionalProperties": false
     }
   },
   "definitions": {

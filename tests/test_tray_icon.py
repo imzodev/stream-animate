@@ -54,7 +54,10 @@ def test_tray_icon_show_when_unavailable(mock_available, qt_app):
 
 def test_tray_icon_hide(qt_app):
     """Test hiding the tray icon."""
-    with patch("stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable", return_value=True):
+    with patch(
+        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        return_value=True,
+    ):
         tray = TrayIcon()
         tray.show()
         tray.hide()
@@ -67,7 +70,10 @@ def test_tray_icon_quit_callback(qt_app):
     """Test that quit callback is invoked."""
     on_quit_mock = MagicMock()
 
-    with patch("stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable", return_value=True):
+    with patch(
+        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        return_value=True,
+    ):
         tray = TrayIcon(on_quit=on_quit_mock)
         tray.show()
         tray._handle_quit()
@@ -79,7 +85,10 @@ def test_tray_icon_configurator_callback(qt_app):
     """Test that configurator callback is invoked."""
     on_config_mock = MagicMock()
 
-    with patch("stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable", return_value=True):
+    with patch(
+        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        return_value=True,
+    ):
         tray = TrayIcon(on_open_configurator=on_config_mock)
         tray.show()
         tray._handle_open_configurator()

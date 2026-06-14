@@ -95,7 +95,9 @@ def shortcut() -> Shortcut:
     )
 
 
-def test_application_registers_and_triggers_shortcut(shortcut: Shortcut, qt_app) -> None:
+def test_application_registers_and_triggers_shortcut(
+    shortcut: Shortcut, qt_app
+) -> None:
     sound = FakeSoundPlayer()
     overlay = FakeOverlayWindow()
     hotkeys = FakeHotkeyManager()

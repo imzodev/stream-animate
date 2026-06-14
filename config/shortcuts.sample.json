@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "shortcuts": [
     {"hotkey": "<ctrl>+<alt>+1", "sound": "assets/sounds/sample.wav"},
     {"hotkey": "<ctrl>+<alt>+2", "overlay": {"file": "assets/overlays/sample.mp4", "x": 800, "y": 450, "duration": 0}},
@@ -7,5 +7,18 @@
     {"suffix": "b", "overlay": {"file": "assets/overlays/sample.gif", "x": 960, "y": 540, "duration": 1500}},
     {"suffix": ["g", "h"], "sound": "assets/sounds/sample2.mp3"}
   ],
-  "activator": {"hotkey": "<ctrl>+<alt>+a", "mode": "press", "timeout_ms": 1500}
+  "activator": {"hotkey": "<ctrl>+<alt>+a", "mode": "press", "timeout_ms": 1500},
+  "stt": {
+    "enabled": false,
+    "always_on": false,
+    "hotkey": "<ctrl>+<alt>+space",
+    "language": "auto",
+    "model": "turbo",
+    "device": null,
+    "chunk_seconds": 4.0,
+    "sample_rate": 16000,
+    "append_space": true,
+    "silence_rms_threshold": 0.005,
+    "dedup_window": 64
+  }
 }

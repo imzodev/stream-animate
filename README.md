@@ -5,6 +5,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 ## Highlights
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
 - **Instant reactions:** Fire sound bites (WAV/MP3) and overlays (PNG/GIF/JPG/Video) with a tap.
+- **Speech-to-text typing:** Use OpenAI Whisper to dictate into any focused text field. Toggle with a hotkey or run it always-on, in 99+ languages with auto-detect.
 - **Configurable visuals:** Choose overlay positions, screen duration, and transparency to match your brand.
 - **Desktop configurator:** A streamlined UI with file-browser selection, live preview, and hotkey capture makes setup effortless—no manual JSON editing required.
 - **Low footprint:** Runs quietly in the background so you can focus on the show.
@@ -100,8 +101,79 @@ You can trigger shortcuts by first pressing a global activator and then one or m
 When running in listener mode, the application displays a system tray icon for easy control:
 - **Right-click the tray icon** to access:
   - **Open Configurator** - Edit shortcuts without restarting
+  - **Start/Stop STT** - Toggle the speech-to-text engine (only shown when STT is enabled in the configurator)
   - **Quit** - Gracefully exit the application
 - The tray icon provides a clean way to manage the background process without terminal access
+
+## Speech-to-Text Typing
+Stream Companion can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [OpenAI Whisper](https://github.com/openai/whisper), it runs entirely on your machine — no cloud calls, no API keys.
+
+### Quick Start
+1. Open the configurator (`python main.py --config`) and switch to the **Speech-to-Text** tab.
+2. Tick **Enable speech-to-text typing**.
+3. Choose an activation mode:
+   - **Always on** — the engine starts transcribing as soon as the app launches.
+   - **Toggle via hotkey** — capture a global hotkey (e.g. `<ctrl>+<alt>+space`); press once to start dictating, again to stop.
+4. Pick a **Whisper model**. `turbo` is recommended for live dictation; use `base` or `small` on lower-end hardware.
+5. Select your **Language** (`auto` lets Whisper detect, or pick a specific code).
+6. Pick an **Input device** (or leave it on *System default*).
+7. Click **Save STT Settings** and re-launch the listener (`python main.py --log-level INFO`).
+8. Click into any text field (chat box, OBS title, browser, terminal) and start speaking. Each phrase is typed into the focused window followed by a space.
+
+### Tray / Hotkey Controls
+- The tray menu shows **Start STT** / **Stop STT** based on the current state.
+- In hotkey mode, the configured hotkey toggles listening on/off at any time.
+
+### Tips
+- **First run downloads the Whisper model** (a few hundred MB for `turbo`); subsequent starts are instant.
+- A short **silence threshold** (RMS) prevents typing of pure background noise — increase it if you see unwanted characters.
+- **Dedup window** keeps the last N characters you typed so overlapping audio chunks don't double-type.
+- The list of supported languages is the union of Whisper's tokenizer + `auto`.
+
+### Requirements
+The listener adds two new system dependencies:
+- `openai-whisper` (transcription model)
+- `sounddevice` (microphone capture via PortAudio)
+- `numpy` (audio buffer math)
+
+On Debian/Ubuntu you may also need:
+```bash
+sudo apt-get install ffmpeg libportaudio2
+```
+
+`ffmpeg` is required by Whisper for first-use model downloads and any future audio-format conversions.
+
+### JSON Configuration
+STT settings can also be edited directly in `config/shortcuts.json`:
+```json
+{
+  "version": "1.2.0",
+  "shortcuts": [],
+  "stt": {
+    "enabled": true,
+    "always_on": false,
+    "hotkey": "<ctrl>+<alt>+space",
+    "language": "auto",
+    "model": "turbo",
+    "device": null,
+    "chunk_seconds": 4.0,
+    "sample_rate": 16000,
+    "append_space": true,
+    "silence_rms_threshold": 0.005,
+    "dedup_window": 64
+  }
+}
+```
+- `enabled` — master switch. When `false`, the engine is not started.
+- `always_on` — when `true`, dictation begins on app start. When `false`, the `hotkey` toggles it.
+- `hotkey` — pynput-style hotkey, e.g. `<ctrl>+<alt>+space`. Ignored when `always_on` is `true`.
+- `language` — a Whisper language code, or `auto`.
+- `model` — `tiny`, `base`, `small`, `medium`, `large`, or `turbo` (recommended).
+- `device` — `null` for the system default, or the `sounddevice` input device index.
+- `chunk_seconds` — how many seconds of audio to transcribe at a time (0.5–30).
+- `append_space` — append a space after each phrase so concatenated chunks don't run together.
+- `silence_rms_threshold` — skip chunks whose RMS volume is below this value.
+- `dedup_window` — number of recent characters used for tail-based dedup.
 
 ## Logging & Troubleshooting
 - **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.

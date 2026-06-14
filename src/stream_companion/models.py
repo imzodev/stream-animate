@@ -51,3 +51,32 @@ class ActivatorConfig:
     hotkey: str  # e.g. "<ctrl>+<alt>+a"
     mode: str = "press"  # "press" | "hold"
     timeout_ms: int = 1500
+
+
+@dataclass(frozen=True)
+class STTConfig:
+    """Configuration for the speech-to-text typing feature."""
+
+    enabled: bool = False
+    always_on: bool = False
+    hotkey: Optional[str] = None  # e.g. "<ctrl>+<alt>+space"
+    language: str = "auto"  # "auto" or a Whisper language code
+    model: str = "turbo"  # one of tiny, base, small, medium, large, turbo
+    device: Optional[int] = (
+        None  # sounddevice input device index, None = system default
+    )
+    chunk_seconds: float = 4.0
+    sample_rate: int = 16000
+    append_space: bool = True
+    silence_rms_threshold: float = 0.005  # skip typing when below this RMS
+    # Maximum number of characters of recently-typed text kept for dedup tailing.
+    dedup_window: int = 64
+
+    def activation_mode(self) -> str:
+        """Return how the listener should activate STT: 'always' or 'hotkey'."""
+
+        if self.always_on:
+            return "always"
+        if self.hotkey:
+            return "hotkey"
+        return "off"

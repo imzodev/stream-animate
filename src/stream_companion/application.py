@@ -9,9 +9,10 @@ from PySide6.QtCore import QMetaObject, Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from .hotkeys import HotkeyManager
-from .models import OverlayConfig, Shortcut
+from .models import OverlayConfig, Shortcut, STTConfig
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
+from .stt import STTEngine
 from . import registry
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class ShortcutSignals(QObject):
     """Qt signals for thread-safe shortcut triggering."""
 
     triggered = Signal(Shortcut)
+    stt_status = Signal(str)
 
 
 class Application:
@@ -33,6 +35,8 @@ class Application:
         sound_player: Optional[SoundPlayer] = None,
         overlay_window: Optional[OverlayWindow] = None,
         hotkey_manager: Optional[HotkeyManager] = None,
+        stt_config: Optional[STTConfig] = None,
+        stt_engine: Optional[STTEngine] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._shortcuts: List[Shortcut] = list(shortcuts)
@@ -44,10 +48,21 @@ class Application:
         self._sound_ids: Dict[Shortcut, str] = {}
         self._registered = False
 
+        # STT (speech-to-text typing)
+        self._stt_config = stt_config
+        self._stt_engine: Optional[STTEngine] = stt_engine
+        if self._stt_engine is not None:
+            self._stt_engine = self._stt_engine
+        elif self._stt_config is not None:
+            self._stt_engine = STTEngine(self._stt_config)
+
         # Create signals for thread-safe communication
         self._signals = ShortcutSignals()
         self._signals.triggered.connect(
             self._handle_shortcut_in_main_thread, Qt.ConnectionType.QueuedConnection
+        )
+        self._signals.stt_status.connect(
+            self._handle_stt_status_in_main_thread, Qt.ConnectionType.QueuedConnection
         )
 
     def start(self) -> None:
@@ -58,6 +73,7 @@ class Application:
 
         self._preload_sounds()
         self._register_hotkeys()
+        self._start_stt()
 
         if not self._shortcuts:
             self._logger.info(
@@ -78,8 +94,65 @@ class Application:
             return
         self._hotkey_manager.stop()
         self._sound_player.shutdown()
+        self._stop_stt()
         self._registered = False
         self._logger.info("Application stopped")
+
+    def stt_engine(self) -> Optional[STTEngine]:
+        return self._stt_engine
+
+    def set_stt_config(self, config: Optional[STTConfig]) -> None:
+        """Replace the active STT config/engine at runtime.
+
+        Restarts the engine so new settings (model, language, device) take
+        effect without restarting the whole application.
+        """
+
+        self._stop_stt()
+        self._stt_config = config
+        if config is not None:
+            self._stt_engine = STTEngine(config)
+        else:
+            self._stt_engine = None
+        if self._registered:
+            self._register_hotkeys()
+            self._start_stt()
+
+    def _start_stt(self) -> None:
+        if self._stt_engine is None or self._stt_config is None:
+            return
+        mode = self._stt_config.activation_mode()
+        if mode == "off":
+            return
+        if mode == "always":
+            self._stt_engine.set_active(True)
+        else:
+            # hotkey mode: idle until toggled
+            self._stt_engine.set_active(False)
+        self._stt_engine.start()
+        if mode == "always":
+            self._logger.info(
+                "STT always-on (model=%s, language=%s)",
+                self._stt_config.model,
+                self._stt_config.language,
+            )
+        else:
+            self._logger.info(
+                "STT idle; press %s to toggle (model=%s, language=%s)",
+                self._stt_config.hotkey,
+                self._stt_config.model,
+                self._stt_config.language,
+            )
+
+    def _stop_stt(self) -> None:
+        if self._stt_engine is not None:
+            try:
+                self._stt_engine.stop()
+            except Exception:  # pragma: no cover - defensive
+                self._logger.exception("Error stopping STT engine")
+
+    def _handle_stt_status_in_main_thread(self, status: str) -> None:
+        self._logger.info("STT status: %s", status)
 
     def _preload_sounds(self) -> None:
         for shortcut in self._shortcuts:
@@ -106,6 +179,7 @@ class Application:
     def _register_hotkeys(self) -> None:
         # Register direct hotkeys and collect chord suffix sequences
         from typing import Tuple
+
         seq_map: Dict[Tuple[str, ...], callable] = {}
         for shortcut in self._shortcuts:
             callback = lambda sc=shortcut: self._signals.triggered.emit(sc)
@@ -148,6 +222,32 @@ class Application:
             except ValueError as exc:
                 self._logger.warning("Failed to configure activator: %s", exc)
 
+        # STT toggle hotkey (must not collide with the chord activator's own key)
+        if (
+            self._stt_engine is not None
+            and self._stt_config is not None
+            and self._stt_config.hotkey
+            and not self._stt_config.always_on
+        ):
+            try:
+                self._hotkey_manager.register_hotkey(
+                    self._stt_config.hotkey,
+                    self._on_stt_toggle,
+                )
+                self._logger.info(
+                    "STT toggle hotkey registered: %s", self._stt_config.hotkey
+                )
+            except ValueError as exc:
+                self._logger.warning("Failed to register STT toggle hotkey: %s", exc)
+
+    def _on_stt_toggle(self) -> None:
+        if self._stt_engine is None:
+            return
+        self._stt_engine.trigger()
+        self._signals.stt_status.emit(
+            "activated" if self._stt_engine.is_active else "deactivated"
+        )
+
     def _handle_shortcut_in_main_thread(self, shortcut: Shortcut) -> None:
         """Handle shortcut trigger in the main Qt thread."""
         self._logger.info("Hotkey triggered: %s", shortcut.label())
@@ -187,7 +287,10 @@ class Application:
             )
 
 
-def run_application(shortcuts: Iterable[Shortcut]) -> None:
+def run_application(
+    shortcuts: Iterable[Shortcut],
+    stt_config: Optional[STTConfig] = None,
+) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
     from .tray_icon import TrayIcon
 
@@ -199,15 +302,33 @@ def run_application(shortcuts: Iterable[Shortcut]) -> None:
         pass
 
     app = QApplication.instance() or QApplication([])
-    application = Application(shortcuts)
+    application = Application(shortcuts, stt_config=stt_config)
     application.start()
+
+    def _stt_state() -> Optional[str]:
+        engine = application.stt_engine()
+        if engine is None:
+            return None
+        if not engine.is_running:
+            return "off"
+        return "active" if engine.is_active else "idle"
+
+    def _toggle_stt() -> None:
+        engine = application.stt_engine()
+        if engine is None or not engine.is_running:
+            return
+        engine.trigger()
+        tray.refresh_stt_label()
 
     # Create system tray icon with quit callback
     tray = TrayIcon(
         on_quit=lambda: (application.stop(), app.quit()),
         on_open_configurator=_open_configurator,
+        on_toggle_stt=_toggle_stt,
+        stt_state_provider=_stt_state,
     )
     tray.show()
+    tray.refresh_stt_label()
 
     try:
         app.exec()

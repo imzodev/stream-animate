@@ -26,10 +26,13 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QCheckBox,
+    QComboBox,
+    QDoubleSpinBox,
+    QGroupBox,
 )
 
-from .config_loader import ConfigError, load_config, save_config
-from .models import ActivatorConfig, OverlayConfig, Shortcut
+from .config_loader import ConfigError, load_full_config, save_config
+from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 
@@ -41,6 +44,124 @@ PREVIEW_HEIGHT = 150
 MAX_OVERLAY_SIZE = 9999
 MIN_OVERLAY_SIZE = 1
 MAX_DURATION_MS = 60000
+
+# Whisper supported languages (subset shown in the configurator; "auto" delegates
+# to Whisper's own language detection). Full list lives in whisper.tokenizer.
+WHISPER_LANGUAGES = [
+    ("auto", "Auto-detect"),
+    ("en", "English"),
+    ("zh", "Chinese"),
+    ("de", "German"),
+    ("es", "Spanish"),
+    ("ru", "Russian"),
+    ("ko", "Korean"),
+    ("fr", "French"),
+    ("ja", "Japanese"),
+    ("pt", "Portuguese"),
+    ("tr", "Turkish"),
+    ("pl", "Polish"),
+    ("ca", "Catalan"),
+    ("nl", "Dutch"),
+    ("ar", "Arabic"),
+    ("sv", "Swedish"),
+    ("it", "Italian"),
+    ("id", "Indonesian"),
+    ("hi", "Hindi"),
+    ("fi", "Finnish"),
+    ("vi", "Vietnamese"),
+    ("he", "Hebrew"),
+    ("uk", "Ukrainian"),
+    ("el", "Greek"),
+    ("ms", "Malay"),
+    ("cs", "Czech"),
+    ("ro", "Romanian"),
+    ("da", "Danish"),
+    ("hu", "Hungarian"),
+    ("ta", "Tamil"),
+    ("no", "Norwegian"),
+    ("th", "Thai"),
+    ("ur", "Urdu"),
+    ("hr", "Croatian"),
+    ("bg", "Bulgarian"),
+    ("lt", "Lithuanian"),
+    ("la", "Latin"),
+    ("mi", "Maori"),
+    ("ml", "Malayalam"),
+    ("cy", "Welsh"),
+    ("sk", "Slovak"),
+    ("te", "Telugu"),
+    ("fa", "Persian"),
+    ("lv", "Latvian"),
+    ("bn", "Bengali"),
+    ("sr", "Serbian"),
+    ("az", "Azerbaijani"),
+    ("sl", "Slovenian"),
+    ("kn", "Kannada"),
+    ("et", "Estonian"),
+    ("mk", "Macedonian"),
+    ("br", "Breton"),
+    ("eu", "Basque"),
+    ("is", "Icelandic"),
+    ("hy", "Armenian"),
+    ("ne", "Nepali"),
+    ("mn", "Mongolian"),
+    ("bs", "Bosnian"),
+    ("kk", "Kazakh"),
+    ("sq", "Albanian"),
+    ("sw", "Swahili"),
+    ("gl", "Galician"),
+    ("mr", "Marathi"),
+    ("pa", "Punjabi"),
+    ("si", "Sinhala"),
+    ("km", "Khmer"),
+    ("sn", "Shona"),
+    ("yo", "Yoruba"),
+    ("so", "Somali"),
+    ("af", "Afrikaans"),
+    ("oc", "Occitan"),
+    ("ka", "Georgian"),
+    ("be", "Belarusian"),
+    ("tg", "Tajik"),
+    ("sd", "Sindhi"),
+    ("gu", "Gujarati"),
+    ("am", "Amharic"),
+    ("yi", "Yiddish"),
+    ("lo", "Lao"),
+    ("uz", "Uzbek"),
+    ("fo", "Faroese"),
+    ("ht", "Haitian Creole"),
+    ("ps", "Pashto"),
+    ("tk", "Turkmen"),
+    ("nn", "Nynorsk"),
+    ("mt", "Maltese"),
+    ("sa", "Sanskrit"),
+    ("lb", "Luxembourgish"),
+    ("my", "Myanmar"),
+    ("bo", "Tibetan"),
+    ("tl", "Tagalog"),
+    ("mg", "Malagasy"),
+    ("as", "Assamese"),
+    ("tt", "Tatar"),
+    ("haw", "Hawaiian"),
+    ("ln", "Lingala"),
+    ("ha", "Hausa"),
+    ("ba", "Bashkir"),
+    ("jw", "Javanese"),
+    ("su", "Sundanese"),
+]
+
+WHISPER_MODELS = [
+    ("turbo", "turbo (recommended)"),
+    ("base", "base"),
+    ("small", "small"),
+    ("medium", "medium"),
+    ("large", "large"),
+    ("tiny", "tiny"),
+    ("tiny.en", "tiny.en (English-only)"),
+    ("base.en", "base.en (English-only)"),
+    ("small.en", "small.en (English-only)"),
+    ("medium.en", "medium.en (English-only)"),
+]
 
 
 class PositionPicker(QWidget):
@@ -96,9 +217,7 @@ class PositionPicker(QWidget):
         font.setPointSize(12)
         painter.setFont(font)
         coord_text = f"X: {cursor_pos.x()}, Y: {cursor_pos.y()}"
-        painter.drawText(
-            cursor_pos.x() + 10, cursor_pos.y() - 10, coord_text
-        )
+        painter.drawText(cursor_pos.x() + 10, cursor_pos.y() - 10, coord_text)
 
     def mouseMoveEvent(self, event) -> None:
         """Update display as mouse moves."""
@@ -273,7 +392,9 @@ class SingleKeyCapture(QWidget):
         self._display = QLineEdit()
         # Allow manual entry for multi-key sequences (space/comma separated)
         self._display.setReadOnly(False)
-        self._display.setPlaceholderText("Enter keys (space/comma separated) or click Capture for one key")
+        self._display.setPlaceholderText(
+            "Enter keys (space/comma separated) or click Capture for one key"
+        )
         self._capture_btn = QPushButton("Capture")
         self._capture_btn.clicked.connect(self._toggle_capture)
         layout.addWidget(self._display)
@@ -304,7 +425,9 @@ class SingleKeyCapture(QWidget):
             return
         # Disallow modifier-only keys
         mods = event.modifiers()
-        if mods & (Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier):
+        if mods & (
+            Qt.ControlModifier | Qt.AltModifier | Qt.ShiftModifier | Qt.MetaModifier
+        ):
             self._display.setText("No modifiers allowed")
             return
         name = HotkeyCapture._qt_key_to_name(self, event.key(), event.modifiers())
@@ -329,6 +452,7 @@ class ConfiguratorWindow(QMainWindow):
 
         self._shortcuts: List[Shortcut] = []
         self._activator: Optional[ActivatorConfig] = None
+        self._stt_config: Optional[STTConfig] = None
         self._current_index: Optional[int] = None
         self._sound_player = SoundPlayer()
         self._overlay_window = OverlayWindow()
@@ -425,6 +549,7 @@ class ConfiguratorWindow(QMainWindow):
             suffix_mode = self._trigger_suffix.isChecked()
             self._hotkey_capture.setVisible(not suffix_mode)
             self._suffix_capture.setVisible(suffix_mode)
+
         self._trigger_direct.toggled.connect(_on_trigger_changed)
         self._trigger_suffix.toggled.connect(_on_trigger_changed)
 
@@ -443,7 +568,9 @@ class ConfiguratorWindow(QMainWindow):
         right_panel.addWidget(QLabel("Overlay File:"))
         overlay_layout = QHBoxLayout()
         self._overlay_input = QLineEdit()
-        self._overlay_input.setPlaceholderText("Path to overlay image/gif/video (optional)")
+        self._overlay_input.setPlaceholderText(
+            "Path to overlay image/gif/video (optional)"
+        )
         self._overlay_input.textChanged.connect(self._on_overlay_changed)
         self._overlay_browse_btn = QPushButton("Browse...")
         self._overlay_browse_btn.clicked.connect(self._browse_overlay)
@@ -455,7 +582,9 @@ class ConfiguratorWindow(QMainWindow):
         self._overlay_preview = QLabel()
         self._overlay_preview.setFixedSize(PREVIEW_WIDTH, PREVIEW_HEIGHT)
         self._overlay_preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._overlay_preview.setStyleSheet("QLabel { border: 1px solid #ccc; background-color: #f0f0f0; }")
+        self._overlay_preview.setStyleSheet(
+            "QLabel { border: 1px solid #ccc; background-color: #f0f0f0; }"
+        )
         self._overlay_preview.setText("No preview")
         right_panel.addWidget(self._overlay_preview)
 
@@ -516,8 +645,12 @@ class ConfiguratorWindow(QMainWindow):
 
         right_panel.addStretch()
 
+        # Tab 3: Speech-to-Text (Whisper)
+        stt_panel = self._build_stt_panel()
+
         # Assemble tabs
         tabs.addTab(global_panel, "Global Settings")
+        tabs.addTab(stt_panel, "Speech-to-Text")
         tabs.addTab(shortcut_panel, "Shortcuts")
 
         # Combine panels
@@ -530,13 +663,15 @@ class ConfiguratorWindow(QMainWindow):
     def _load_shortcuts(self) -> None:
         """Load shortcuts from configuration file."""
         try:
-            self._activator, self._shortcuts = load_config()
+            self._activator, self._shortcuts, self._stt_config = load_full_config()
             self._refresh_list()
             _LOGGER.info("Loaded %d shortcuts", len(self._shortcuts))
             # Populate global settings UI from activator
             if self._activator:
                 self._activator_capture.set_hotkey(self._activator.hotkey)
-                self._timeout_input.setValue(int(getattr(self._activator, "timeout_ms", 1500)))
+                self._timeout_input.setValue(
+                    int(getattr(self._activator, "timeout_ms", 1500))
+                )
                 mode = getattr(self._activator, "mode", "press").lower()
                 if mode == "hold":
                     self._mode_hold.setChecked(True)
@@ -546,6 +681,8 @@ class ConfiguratorWindow(QMainWindow):
                 self._activator_capture.set_hotkey("")
                 self._timeout_input.setValue(1500)
                 self._mode_press.setChecked(True)
+            # Populate STT tab
+            self._load_stt_to_ui(self._stt_config)
         except ConfigError as exc:
             QMessageBox.critical(self, "Configuration Error", str(exc))
             _LOGGER.error("Failed to load shortcuts: %s", exc)
@@ -585,7 +722,9 @@ class ConfiguratorWindow(QMainWindow):
         else:
             self._trigger_suffix.setChecked(True)
             self._hotkey_capture.set_hotkey("")
-            self._suffix_capture.set_key(" ".join(shortcut.suffix) if shortcut.suffix else "")
+            self._suffix_capture.set_key(
+                " ".join(shortcut.suffix) if shortcut.suffix else ""
+            )
         self._sound_input.setText(shortcut.sound_path or "")
 
         if shortcut.overlay:
@@ -593,7 +732,10 @@ class ConfiguratorWindow(QMainWindow):
             self._x_input.setValue(shortcut.overlay.x)
             self._y_input.setValue(shortcut.overlay.y)
             self._duration_input.setValue(shortcut.overlay.duration_ms)
-            if shortcut.overlay.width is not None and shortcut.overlay.height is not None:
+            if (
+                shortcut.overlay.width is not None
+                and shortcut.overlay.height is not None
+            ):
                 self._custom_size_checkbox.setChecked(True)
                 self._width_input.setValue(shortcut.overlay.width)
                 self._height_input.setValue(shortcut.overlay.height)
@@ -630,6 +772,294 @@ class ConfiguratorWindow(QMainWindow):
         has_selection = self._current_index is not None
         self._delete_btn.setEnabled(has_selection)
         self._preview_btn.setEnabled(has_selection)
+
+    # ------------------------------------------------------------------
+    # Speech-to-Text tab
+    # ------------------------------------------------------------------
+
+    def _build_stt_panel(self) -> QWidget:
+        """Construct the STT settings tab."""
+
+        panel = QWidget()
+        layout = QVBoxLayout()
+        panel.setLayout(layout)
+
+        # Enable
+        self._stt_enabled_checkbox = QCheckBox("Enable speech-to-text typing")
+        self._stt_enabled_checkbox.toggled.connect(self._on_stt_enabled_toggled)
+        layout.addWidget(self._stt_enabled_checkbox)
+
+        # Activation mode group
+        activation_group = QGroupBox("Activation")
+        activation_layout = QVBoxLayout()
+        activation_group.setLayout(activation_layout)
+        self._stt_always_on = QRadioButton(
+            "Always on (transcribe whenever the app is running)"
+        )
+        self._stt_use_hotkey = QRadioButton(
+            "Toggle via hotkey (press to start, press again to stop)"
+        )
+        self._stt_always_on.setChecked(True)
+        for rb in (self._stt_always_on, self._stt_use_hotkey):
+            rb.toggled.connect(self._on_stt_activation_toggled)
+            activation_layout.addWidget(rb)
+
+        hotkey_row = QHBoxLayout()
+        hotkey_row.addWidget(QLabel("Toggle hotkey:"))
+        self._stt_hotkey_capture = HotkeyCapture()
+        hotkey_row.addWidget(self._stt_hotkey_capture, 1)
+        activation_layout.addLayout(hotkey_row)
+        layout.addWidget(activation_group)
+
+        # Model + language group
+        model_group = QGroupBox("Model & Language")
+        model_layout = QVBoxLayout()
+        model_group.setLayout(model_layout)
+
+        model_row = QHBoxLayout()
+        model_row.addWidget(QLabel("Whisper model:"))
+        self._stt_model_combo = QComboBox()
+        for code, label in WHISPER_MODELS:
+            self._stt_model_combo.addItem(label, userData=code)
+        model_row.addWidget(self._stt_model_combo, 1)
+        model_layout.addLayout(model_row)
+
+        lang_row = QHBoxLayout()
+        lang_row.addWidget(QLabel("Language:"))
+        self._stt_language_combo = QComboBox()
+        for code, label in WHISPER_LANGUAGES:
+            self._stt_language_combo.addItem(label, userData=code)
+        lang_row.addWidget(self._stt_language_combo, 1)
+        model_layout.addLayout(lang_row)
+
+        note = QLabel(
+            "<i>Larger models are more accurate but slower and use more memory. "
+            "The 'turbo' model is recommended for live dictation.</i>"
+        )
+        note.setWordWrap(True)
+        model_layout.addWidget(note)
+        layout.addWidget(model_group)
+
+        # Audio device + capture group
+        audio_group = QGroupBox("Audio Capture")
+        audio_layout = QVBoxLayout()
+        audio_group.setLayout(audio_layout)
+
+        device_row = QHBoxLayout()
+        device_row.addWidget(QLabel("Input device:"))
+        self._stt_device_combo = QComboBox()
+        self._populate_audio_devices()
+        self._stt_refresh_btn = QPushButton("Refresh")
+        self._stt_refresh_btn.clicked.connect(self._populate_audio_devices)
+        device_row.addWidget(self._stt_device_combo, 1)
+        device_row.addWidget(self._stt_refresh_btn)
+        audio_layout.addLayout(device_row)
+
+        chunk_row = QHBoxLayout()
+        chunk_row.addWidget(QLabel("Chunk size (seconds):"))
+        self._stt_chunk_input = QDoubleSpinBox()
+        self._stt_chunk_input.setRange(0.5, 30.0)
+        self._stt_chunk_input.setSingleStep(0.5)
+        self._stt_chunk_input.setValue(4.0)
+        chunk_row.addWidget(self._stt_chunk_input)
+        chunk_row.addSpacing(20)
+        chunk_row.addWidget(QLabel("Sample rate (Hz):"))
+        self._stt_samplerate_combo = QComboBox()
+        for rate in (8000, 16000, 22050, 32000, 44100, 48000):
+            self._stt_samplerate_combo.addItem(str(rate), userData=rate)
+        # Default to 16000
+        idx = self._stt_samplerate_combo.findData(16000)
+        if idx >= 0:
+            self._stt_samplerate_combo.setCurrentIndex(idx)
+        chunk_row.addWidget(self._stt_samplerate_combo)
+        audio_layout.addLayout(chunk_row)
+
+        silence_row = QHBoxLayout()
+        silence_row.addWidget(QLabel("Silence threshold (RMS):"))
+        self._stt_silence_input = QDoubleSpinBox()
+        self._stt_silence_input.setRange(0.0, 0.5)
+        self._stt_silence_input.setSingleStep(0.001)
+        self._stt_silence_input.setDecimals(3)
+        self._stt_silence_input.setValue(0.005)
+        silence_row.addWidget(self._stt_silence_input)
+        silence_row.addStretch(1)
+        audio_layout.addLayout(silence_row)
+        layout.addWidget(audio_group)
+
+        # Typing behavior group
+        typing_group = QGroupBox("Typing Behavior")
+        typing_layout = QVBoxLayout()
+        typing_group.setLayout(typing_layout)
+        self._stt_append_space = QCheckBox(
+            "Append a space after each transcribed phrase"
+        )
+        self._stt_append_space.setChecked(True)
+        typing_layout.addWidget(self._stt_append_space)
+        dedup_row = QHBoxLayout()
+        dedup_row.addWidget(QLabel("Dedup window (chars):"))
+        self._stt_dedup_input = QSpinBox()
+        self._stt_dedup_input.setRange(0, 4096)
+        self._stt_dedup_input.setValue(64)
+        dedup_row.addWidget(self._stt_dedup_input)
+        dedup_row.addStretch(1)
+        typing_layout.addLayout(dedup_row)
+        layout.addWidget(typing_group)
+
+        # Save button
+        stt_buttons = QHBoxLayout()
+        self._stt_save_btn = QPushButton("Save STT Settings")
+        self._stt_save_btn.clicked.connect(self._save_changes)
+        stt_buttons.addStretch(1)
+        stt_buttons.addWidget(self._stt_save_btn)
+        layout.addLayout(stt_buttons)
+        layout.addStretch(1)
+
+        # Apply default-disabled UI state
+        self._on_stt_enabled_toggled(False)
+        self._on_stt_activation_toggled()
+        return panel
+
+    def _populate_audio_devices(self) -> None:
+        """Enumerate input devices via sounddevice and fill the combo box."""
+
+        self._stt_device_combo.blockSignals(True)
+        self._stt_device_combo.clear()
+        self._stt_device_combo.addItem("System default", userData=None)
+        try:
+            import sounddevice as sd  # type: ignore[import-not-found]
+
+            devices = sd.query_devices()
+            for index, info in enumerate(devices):
+                if int(info.get("max_input_channels", 0)) > 0:
+                    name = info.get("name", f"Device {index}")
+                    self._stt_device_combo.addItem(f"{index}: {name}", userData=index)
+        except Exception as exc:  # pragma: no cover - hardware-specific
+            _LOGGER.warning("Could not enumerate audio devices: %s", exc)
+        self._stt_device_combo.blockSignals(False)
+
+    def _on_stt_enabled_toggled(self, _checked: bool) -> None:
+        """Enable/disable the rest of the STT panel based on the master switch."""
+
+        enabled = self._stt_enabled_checkbox.isChecked()
+        for w in (
+            self._stt_always_on,
+            self._stt_use_hotkey,
+            self._stt_hotkey_capture,
+            self._stt_model_combo,
+            self._stt_language_combo,
+            self._stt_device_combo,
+            self._stt_refresh_btn,
+            self._stt_chunk_input,
+            self._stt_samplerate_combo,
+            self._stt_silence_input,
+            self._stt_append_space,
+            self._stt_dedup_input,
+            self._stt_save_btn,
+        ):
+            w.setEnabled(enabled)
+        self._on_stt_activation_toggled()
+
+    def _on_stt_activation_toggled(self) -> None:
+        """Enable hotkey capture only when toggle mode is selected."""
+
+        if not hasattr(self, "_stt_use_hotkey"):
+            return
+        hotkey_enabled = (
+            self._stt_enabled_checkbox.isChecked() and self._stt_use_hotkey.isChecked()
+        )
+        self._stt_hotkey_capture.setEnabled(hotkey_enabled)
+
+    def _load_stt_to_ui(self, stt: Optional[STTConfig]) -> None:
+        """Populate STT widgets from the given config (or defaults)."""
+
+        cfg = stt or STTConfig()
+        self._stt_enabled_checkbox.setChecked(cfg.enabled)
+        if cfg.always_on:
+            self._stt_always_on.setChecked(True)
+        else:
+            self._stt_use_hotkey.setChecked(True)
+        self._stt_hotkey_capture.set_hotkey(cfg.hotkey or "")
+
+        # Model
+        model_idx = self._stt_model_combo.findData(cfg.model)
+        if model_idx >= 0:
+            self._stt_model_combo.setCurrentIndex(model_idx)
+        else:
+            self._stt_model_combo.setCurrentIndex(
+                self._stt_model_combo.findData("turbo")
+            )
+
+        # Language
+        lang_idx = self._stt_language_combo.findData(cfg.language)
+        if lang_idx >= 0:
+            self._stt_language_combo.setCurrentIndex(lang_idx)
+        else:
+            self._stt_language_combo.setCurrentIndex(
+                self._stt_language_combo.findData("auto")
+            )
+
+        # Device
+        device_idx = self._stt_device_combo.findData(cfg.device)
+        if device_idx >= 0:
+            self._stt_device_combo.setCurrentIndex(device_idx)
+        else:
+            self._stt_device_combo.setCurrentIndex(0)
+
+        self._stt_chunk_input.setValue(float(cfg.chunk_seconds))
+        sr_idx = self._stt_samplerate_combo.findData(cfg.sample_rate)
+        if sr_idx >= 0:
+            self._stt_samplerate_combo.setCurrentIndex(sr_idx)
+        self._stt_silence_input.setValue(float(cfg.silence_rms_threshold))
+        self._stt_append_space.setChecked(bool(cfg.append_space))
+        self._stt_dedup_input.setValue(int(cfg.dedup_window))
+
+        self._on_stt_enabled_toggled(cfg.enabled)
+
+    def _read_stt_from_ui(self) -> Optional[STTConfig]:
+        """Build an STTConfig from the current widget values, or None if disabled."""
+
+        if not self._stt_enabled_checkbox.isChecked():
+            return None
+
+        always_on = self._stt_always_on.isChecked()
+        hotkey = None
+        if not always_on:
+            raw = self._stt_hotkey_capture.get_hotkey().strip()
+            if raw:
+                hotkey = raw
+
+        model = self._stt_model_combo.currentData() or "turbo"
+        language = self._stt_language_combo.currentData() or "auto"
+        device = self._stt_device_combo.currentData()  # may be None
+        return STTConfig(
+            enabled=True,
+            always_on=always_on,
+            hotkey=hotkey,
+            language=str(language),
+            model=str(model),
+            device=device,
+            chunk_seconds=float(self._stt_chunk_input.value()),
+            sample_rate=int(self._stt_samplerate_combo.currentData() or 16000),
+            append_space=self._stt_append_space.isChecked(),
+            silence_rms_threshold=float(self._stt_silence_input.value()),
+            dedup_window=int(self._stt_dedup_input.value()),
+        )
+
+    def _validate_stt(self, stt: Optional[STTConfig]) -> List[str]:
+        """Return user-facing validation messages for the STT config."""
+
+        errors: List[str] = []
+        if stt is None:
+            return errors
+        if not stt.always_on and not stt.hotkey:
+            errors.append("STT: enable 'Always on' or set a toggle hotkey.")
+        if stt.chunk_seconds < 0.5 or stt.chunk_seconds > 30.0:
+            errors.append("STT: chunk size must be between 0.5 and 30 seconds.")
+        if stt.sample_rate < 8000 or stt.sample_rate > 48000:
+            errors.append("STT: sample rate must be between 8000 and 48000 Hz.")
+        if stt.silence_rms_threshold < 0:
+            errors.append("STT: silence threshold cannot be negative.")
+        return errors
 
     def _add_shortcut(self) -> None:
         """Add a new shortcut."""
@@ -701,7 +1131,7 @@ class ConfiguratorWindow(QMainWindow):
         """Update overlay preview when path changes."""
         # Clean up previous movie if any
         self._cleanup_preview_movie()
-        
+
         if not path or not Path(path).exists():
             self._overlay_preview.clear()
             self._overlay_preview.setText("No preview")
@@ -719,19 +1149,22 @@ class ConfiguratorWindow(QMainWindow):
                     self._overlay_preview.setText("Invalid GIF")
                     _LOGGER.warning("Failed to load GIF preview: %s", path_obj)
                     return
-                
+
                 movie.jumpToFrame(0)
                 pixmap = movie.currentPixmap()
                 if pixmap.isNull():
                     self._overlay_preview.clear()
                     self._overlay_preview.setText("Invalid GIF")
                     return
-                
+
                 # Store reference to clean up later
                 self._preview_movie = movie
-                
+
                 scaled = pixmap.scaled(
-                    PREVIEW_WIDTH, PREVIEW_HEIGHT, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    PREVIEW_WIDTH,
+                    PREVIEW_HEIGHT,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
                 )
                 self._overlay_preview.setPixmap(scaled)
                 # Set default size if not already set
@@ -751,9 +1184,12 @@ class ConfiguratorWindow(QMainWindow):
                     self._overlay_preview.setText("Invalid image")
                     _LOGGER.warning("Failed to load image preview: %s", path_obj)
                     return
-                
+
                 scaled = pixmap.scaled(
-                    PREVIEW_WIDTH, PREVIEW_HEIGHT, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
+                    PREVIEW_WIDTH,
+                    PREVIEW_HEIGHT,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
                 )
                 self._overlay_preview.setPixmap(scaled)
                 # Set default size if not already set
@@ -804,7 +1240,7 @@ class ConfiguratorWindow(QMainWindow):
                 size = None
                 if self._custom_size_checkbox.isChecked():
                     size = (self._width_input.value(), self._height_input.value())
-                
+
                 success = self._overlay_window.show_asset(
                     overlay_path,
                     duration_ms=self._duration_input.value(),
@@ -825,6 +1261,8 @@ class ConfiguratorWindow(QMainWindow):
 
         # Validate shortcuts
         validation_errors = self._validate_shortcuts()
+        stt_config = self._read_stt_from_ui()
+        validation_errors.extend(self._validate_stt(stt_config))
         if validation_errors:
             QMessageBox.warning(
                 self,
@@ -833,7 +1271,7 @@ class ConfiguratorWindow(QMainWindow):
             )
             return
 
-        # Save to file (include activator)
+        # Save to file (include activator and STT)
         try:
             activator = None
             act_hotkey = self._activator_capture.get_hotkey().strip()
@@ -844,11 +1282,16 @@ class ConfiguratorWindow(QMainWindow):
                     mode=mode,
                     timeout_ms=self._timeout_input.value(),
                 )
-            save_config(activator, self._shortcuts)
+            self._stt_config = stt_config
+            save_config(activator, self._shortcuts, stt=stt_config)
             QMessageBox.information(
                 self, "Success", f"Saved {len(self._shortcuts)} shortcuts successfully!"
             )
-            _LOGGER.info("Saved %d shortcuts", len(self._shortcuts))
+            _LOGGER.info(
+                "Saved %d shortcuts (stt=%s)",
+                len(self._shortcuts),
+                "on" if stt_config else "off",
+            )
         except ConfigError as exc:
             QMessageBox.critical(self, "Save Error", str(exc))
             _LOGGER.error("Failed to save shortcuts: %s", exc)
@@ -891,14 +1334,16 @@ class ConfiguratorWindow(QMainWindow):
                 width = self._width_input.value()
                 height = self._height_input.value()
                 # Validate that both width and height are set together
-                if (width is not None and height is None) or (width is None and height is not None):
+                if (width is not None and height is None) or (
+                    width is None and height is not None
+                ):
                     QMessageBox.warning(
                         self,
                         "Validation Error",
                         "Both width and height must be set together for custom size",
                     )
                     return False
-            
+
             overlay = OverlayConfig(
                 file=overlay_path,
                 x=self._x_input.value(),

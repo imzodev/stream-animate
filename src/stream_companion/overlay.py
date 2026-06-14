@@ -135,7 +135,9 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
-    def _prepare_pixmap(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+    def _prepare_pixmap(
+        self, path: Path, size: Optional[Tuple[int, int]] = None
+    ) -> bool:
         # Ensure window is translucent for images
         try:
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -153,7 +155,10 @@ class OverlayWindow(QWidget):
         # Resize if size is specified
         if size is not None:
             pixmap = pixmap.scaled(
-                size[0], size[1], Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation
+                size[0],
+                size[1],
+                Qt.AspectRatioMode.IgnoreAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
 
         self._stop_animation()
@@ -161,7 +166,9 @@ class OverlayWindow(QWidget):
         self._resize_to_pixmap(pixmap)
         return True
 
-    def _prepare_movie(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+    def _prepare_movie(
+        self, path: Path, size: Optional[Tuple[int, int]] = None
+    ) -> bool:
         # Ensure window is translucent for animations (GIFs)
         try:
             self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -179,6 +186,7 @@ class OverlayWindow(QWidget):
         # Set scaled size if specified
         if size is not None:
             from PySide6.QtCore import QSize
+
             movie.setScaledSize(QSize(size[0], size[1]))
 
         self._stop_animation()
@@ -192,7 +200,9 @@ class OverlayWindow(QWidget):
         self._movie = movie
         return True
 
-    def _prepare_video(self, path: Path, size: Optional[Tuple[int, int]] = None) -> bool:
+    def _prepare_video(
+        self, path: Path, size: Optional[Tuple[int, int]] = None
+    ) -> bool:
         # Lazily create video components
         if self._video_player is None:
             self._video_player = QMediaPlayer(self)
@@ -227,6 +237,7 @@ class OverlayWindow(QWidget):
             # Auto-hide on end of media if no explicit timer is running
             def _on_status_changed(status):  # type: ignore[no-redef]
                 from PySide6.QtMultimedia import QMediaPlayer as _QMP
+
                 if status == _QMP.MediaStatus.EndOfMedia and not self._timer.isActive():
                     self.hide()
 

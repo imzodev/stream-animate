@@ -62,7 +62,8 @@ def main() -> None:
         configurator.run_configurator()
     else:
         ensure_assets_exist()
-        application.run_application(registry.iter_shortcuts())
+        stt_config = registry.get_stt_config()
+        application.run_application(registry.iter_shortcuts(), stt_config=stt_config)
 
 
 if __name__ == "__main__":

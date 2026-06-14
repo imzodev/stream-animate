@@ -53,6 +53,20 @@ Future-facing improvements that can be scheduled after the core experience ships
 - Profile management (switch shortcut sets on the fly).
 - Optional cloud sync for configurations.
 
+## Phase 6 – Speech-to-Text Typing (Complete)
+Goal: Add a configurable voice-to-text pipeline that types into whichever window is focused, with hotkey or always-on activation.
+
+- ✅ `STTConfig` dataclass with `enabled`, `always_on`, `hotkey`, `language`, `model`, `device`, `chunk_seconds`, `sample_rate`, `append_space`, `silence_rms_threshold`, `dedup_window`.
+- ✅ `whisper` Python API wrapped by `WhisperTranscriber` with lazy model loading.
+- ✅ `sounddevice` capture with rolling buffer, RMS silence gating, and pluggable module for tests.
+- ✅ `pynput.keyboard.Controller` based `TextTyper` with rolling-window dedup to avoid double-typing overlapping chunks.
+- ✅ Background `STTEngine` orchestrator: capture → transcribe → type on a daemon thread; safe to start/stop from any thread; toggleable active state.
+- ✅ Application wiring: `Application.start()` boots the engine; `always_on` activates immediately, `hotkey` registers a toggle in `HotkeyManager`.
+- ✅ System tray: live "Start/Stop STT" entry plus tooltip reflecting engine state.
+- ✅ Configurator: dedicated **Speech-to-Text** tab with model/language/device selectors, capture and typing options, and per-field validation.
+- ✅ JSON schema extended (`config/schema.json`) and `save_config()` preserves the `stt` block across partial saves.
+- ✅ Unit tests: capture lifecycle, chunk framing, transcriber lazy-load + language handling, typer dedup, engine hotkey vs always-on modes, silence gating, config round-trip.
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.

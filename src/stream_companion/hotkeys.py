@@ -110,7 +110,9 @@ class HotkeyManager:
             self._hotkeys[normalized] = _Binding(combination, callback, hotkey)
         self._logger.info("Registered hotkey %s", combination)
 
-    def configure_chord(self, activator: str, timeout_ms: int, suffix_map: Dict[str, Callback]) -> None:
+    def configure_chord(
+        self, activator: str, timeout_ms: int, suffix_map: Dict[str, Callback]
+    ) -> None:
         """Enable chorded shortcuts with a global activator and a map of suffix keys.
 
         MVP supports press-mode only: activator press arms for timeout_ms; next key triggers suffix.
@@ -122,6 +124,7 @@ class HotkeyManager:
 
         # Register activator as a normal hotkey whose callback arms the manager
         self._activator_combo = self._normalize_combination(activator)
+
         def _arm_cb() -> None:
             self._arm(timeout_ms)
 
@@ -129,10 +132,12 @@ class HotkeyManager:
         self.register_hotkey(activator, _arm_cb)
         with self._lock:
             # Back-compat: wrap single-key map into sequence map
-            self._suffix_seq_map = { (k,): cb for k, cb in suffix_map.items() }
+            self._suffix_seq_map = {(k,): cb for k, cb in suffix_map.items()}
             self._arm_timeout_ms = max(100, int(timeout_ms))
 
-    def configure_chord_sequences(self, activator: str, timeout_ms: int, seq_map: Dict[Tuple[str, ...], Callback]) -> None:
+    def configure_chord_sequences(
+        self, activator: str, timeout_ms: int, seq_map: Dict[Tuple[str, ...], Callback]
+    ) -> None:
         """Enable chorded shortcuts using sequential suffix sequences.
 
         seq_map keys are tuples of tokens, e.g. ("g","h").
@@ -143,8 +148,10 @@ class HotkeyManager:
             raise ValueError("Sequence map must not be empty")
 
         self._activator_combo = self._normalize_combination(activator)
+
         def _arm_cb() -> None:
             self._arm(timeout_ms)
+
         self.register_hotkey(activator, _arm_cb)
         with self._lock:
             self._suffix_seq_map = dict(seq_map)
@@ -226,10 +233,12 @@ class HotkeyManager:
                 try:
                     callback()
                 except Exception:
-                    self._logger.exception("Chord sequence callback for %s raised", "+".join(seq))
+                    self._logger.exception(
+                        "Chord sequence callback for %s raised", "+".join(seq)
+                    )
                 return
             # Prefix of any sequence?
-            if any(s[:len(seq)] == seq for s in self._suffix_seq_map.keys()):
+            if any(s[: len(seq)] == seq for s in self._suffix_seq_map.keys()):
                 # Keep waiting for more keys within the same arming window
                 return
             # No match and not a prefix -> disarm and clear buffer
@@ -243,7 +252,9 @@ class HotkeyManager:
             self._armed = True
             self._buffer.clear()
             self._ignore_next = True
-            self._arm_timer = threading.Timer(max(0.1, timeout_ms / 1000.0), self._disarm)
+            self._arm_timer = threading.Timer(
+                max(0.1, timeout_ms / 1000.0), self._disarm
+            )
             self._arm_timer.daemon = True
             self._arm_timer.start()
             self._logger.debug("Activator armed for %d ms", timeout_ms)
@@ -279,9 +290,18 @@ class HotkeyManager:
             keyboard.Key.end: "end",
             keyboard.Key.page_up: "pageup",
             keyboard.Key.page_down: "pagedown",
-            keyboard.Key.f1: "f1", keyboard.Key.f2: "f2", keyboard.Key.f3: "f3", keyboard.Key.f4: "f4",
-            keyboard.Key.f5: "f5", keyboard.Key.f6: "f6", keyboard.Key.f7: "f7", keyboard.Key.f8: "f8",
-            keyboard.Key.f9: "f9", keyboard.Key.f10: "f10", keyboard.Key.f11: "f11", keyboard.Key.f12: "f12",
+            keyboard.Key.f1: "f1",
+            keyboard.Key.f2: "f2",
+            keyboard.Key.f3: "f3",
+            keyboard.Key.f4: "f4",
+            keyboard.Key.f5: "f5",
+            keyboard.Key.f6: "f6",
+            keyboard.Key.f7: "f7",
+            keyboard.Key.f8: "f8",
+            keyboard.Key.f9: "f9",
+            keyboard.Key.f10: "f10",
+            keyboard.Key.f11: "f11",
+            keyboard.Key.f12: "f12",
         }
         if key in specials:
             return specials[key]
