@@ -113,6 +113,12 @@ def _expected_sha256(model_name: str) -> Optional[str]:
     url = _WHISPER_MODELS.get(model_name)
     if not url:
         return None
+    return _sha256_from_url(url)
+
+
+def _sha256_from_url(url: str) -> Optional[str]:
+    """Extract the SHA256 hash embedded in a Whisper model URL."""
+
     parts = url.rstrip("/").split("/")
     return parts[-2] if len(parts) >= 2 else None
 
@@ -192,7 +198,11 @@ class _LoggerTqdm:
             next_pct = int(pct // 10) * 10 + 10
             self._next_milestone = max(
                 self._next_milestone + self._log_every,
-                int(self._total * next_pct / 100) if self._total else self._current + self._log_every,
+                (
+                    int(self._total * next_pct / 100)
+                    if self._total
+                    else self._current + self._log_every
+                ),
             )
         else:
             _LOGGER.debug(
@@ -297,7 +307,7 @@ def download_model(
     # response without touching the network.
     os.makedirs(target_dir, exist_ok=True)
     target_path = os.path.join(target_dir, os.path.basename(url))
-    expected_sha = url.split("/")[-2]
+    expected_sha = _sha256_from_url(url)
     downloader_bar = _LoggerTqdm(total=0, model_name=model_name)
 
     try:
@@ -354,14 +364,6 @@ def download_model(
     # Reference whisper module to avoid unused-import warnings; it is
     # imported here so static analyzers can see the dependency.
     del _whisper_module
-    return final_path
-
-    final_path = result if isinstance(result, str) else target
-    _LOGGER.info(
-        "Whisper model '%s' download complete: %s",
-        model_name,
-        final_path,
-    )
     return final_path
 
 

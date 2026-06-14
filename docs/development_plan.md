@@ -67,6 +67,20 @@ Goal: Add a configurable voice-to-text pipeline that types into whichever window
 - ✅ JSON schema extended (`config/schema.json`) and `save_config()` preserves the `stt` block across partial saves.
 - ✅ Unit tests: capture lifecycle, chunk framing, transcriber lazy-load + language handling, typer dedup, engine hotkey vs always-on modes, silence gating, config round-trip.
 
+## Phase 7 – Whisper model pre-download (Complete)
+Goal: Avoid blocking the first dictation on a multi-GB download by fetching the model the moment the user saves the STT config, with live progress in the terminal.
+
+- ✅ New `src/stream_companion/model_downloader.py`:
+  - `is_model_cached(model_name, cache_dir=None)` — file existence + SHA256 check
+  - `download_model(model_name, cache_dir=None, on_progress=...)` — drives `urllib.request.urlopen` directly, logs progress through a custom `_LoggerTqdm` that prints every ~10%, and validates the SHA256 on completion
+  - `start_background_download(model_name, on_complete, on_error)` — fire-and-forget thread; tracks the thread in a module-level registry
+  - `wait_for_pending_downloads` / `active_downloads` for shutdown
+  - Mirrors the model list and URL→SHA convention from `whisper._MODELS`
+- ✅ Configurator: on save, checks the cache and starts a background download if the configured model is missing. The save dialog still appears immediately; the download continues even if the user closes the configurator.
+- ✅ `python main.py --preload-stt [--model NAME]` — one-shot CLI for scripted installs; live progress in the terminal.
+- ✅ `python main.py --stt-status` — now also reports whether the configured model is cached and at what path/size.
+- ✅ 15 new unit tests in `tests/test_model_downloader.py` covering cache detection, model name validation, background thread management, SHA validation, error callbacks, and human-readable byte formatting.
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.

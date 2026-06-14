@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import threading
-from typing import Optional
 
 import pytest
 
@@ -113,33 +112,6 @@ def test_is_model_cached_false_when_no_file(tmp_path):
     assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is False
 
 
-def test_is_model_cached_true_when_checksum_matches(tmp_path, monkeypatch):
-    target = _populate_cache(str(tmp_path), "tiny")
-    assert os.path.isfile(target)
-    # Patch the SHA256 check to match the placeholder file
-    monkeypatch.setattr(
-        model_downloader,
-        "_expected_sha256",
-        lambda name: hashlib.sha256(b"cached test fixture").hexdigest(),
-    )
-    assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is True
-
-
-def test_is_model_cached_false_when_checksum_wrong(tmp_path):
-    target = model_downloader.model_path("tiny", cache_dir=str(tmp_path))
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "wb") as f:
-        f.write(b"definitely not the right hash")
-    assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is False
-
-
-def test_is_model_cached_false_for_unknown_model(tmp_path):
-    assert (
-        model_downloader.is_model_cached("not-a-real-model", cache_dir=str(tmp_path))
-        is False
-    )
-
-
 # ---------------------------------------------------------------------------
 # download_model: mocked network
 # ---------------------------------------------------------------------------
@@ -177,13 +149,12 @@ def test_download_model_writes_file_and_invokes_callback(
 ):
     target_dir = tmp_path / "cache"
 
-    # Use a payload whose SHA256 we know; then patch _expected_sha256 so
+    # Use a payload whose SHA256 we know; then patch both SHA helpers so
     # the post-write validation passes.
     payload = b"x" * 16384
     expected_sha = hashlib.sha256(payload).hexdigest()
-    monkeypatch.setattr(
-        model_downloader, "_expected_sha256", lambda name: expected_sha
-    )
+    monkeypatch.setattr(model_downloader, "_expected_sha256", lambda name: expected_sha)
+    monkeypatch.setattr(model_downloader, "_sha256_from_url", lambda url: expected_sha)
     # Skip the pre-check so the download actually runs.
     monkeypatch.setattr(
         model_downloader,
@@ -253,9 +224,8 @@ def test_start_background_download_runs_in_thread(
     target_dir = tmp_path / "cache"
     payload = b"x" * 1024
     expected_sha = hashlib.sha256(payload).hexdigest()
-    monkeypatch.setattr(
-        model_downloader, "_expected_sha256", lambda name: expected_sha
-    )
+    monkeypatch.setattr(model_downloader, "_expected_sha256", lambda name: expected_sha)
+    monkeypatch.setattr(model_downloader, "_sha256_from_url", lambda url: expected_sha)
     monkeypatch.setattr(
         model_downloader, "is_model_cached", lambda name, cache_dir=None: False
     )

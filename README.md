@@ -117,12 +117,28 @@ Stream Companion can transcribe your voice in real time and type the result into
 4. Pick a **Whisper model**. `turbo` is recommended for live dictation; use `base` or `small` on lower-end hardware.
 5. Select your **Language** (`auto` lets Whisper detect, or pick a specific code).
 6. Pick an **Input device** (or leave it on *System default*).
-7. Click **Save STT Settings** and re-launch the listener (`python main.py --log-level INFO`).
-8. Click into any text field (chat box, OBS title, browser, terminal) and start speaking. Each phrase is typed into the focused window followed by a space.
+7. Click **Save STT Settings**. The save returns immediately, but if the model is not yet cached the tool will start downloading it in the background. **Watch the terminal for the progress log** — you'll see lines like:
+   ```
+   [INFO] stream_companion.model_downloader: Whisper model 'large' not cached; downloading (~2.9 GiB) to /home/irving/.cache/whisper/large-v3.pt …
+   [INFO] stream_companion.model_downloader: Whisper model 'large' download: 500.0 MiB / 2.9 GiB (17%)
+   [INFO] stream_companion.model_downloader: Whisper model 'large' download: 1000.0 MiB / 2.9 GiB (34%)
+   …
+   [INFO] stream_companion.model_downloader: Whisper model 'large' download complete: /home/irving/.cache/whisper/large-v3.pt
+   ```
+   You can close the configurator during the download; it continues in the background.
+8. Re-launch the listener (`python main.py --log-level INFO`) and click into any text field. Start speaking — each phrase is typed into the focused window followed by a space.
 
 ### Tray / Hotkey Controls
 - The tray menu shows **Start STT** / **Stop STT** based on the current state.
 - In hotkey mode, the configured hotkey toggles listening on/off at any time.
+
+### Pre-downloading the Whisper model
+The first time Whisper transcribes audio for a given model, it has to download a multi-gigabyte checkpoint. To avoid that surprise mid-stream, the configurator checks the cache when you click **Save STT Settings**:
+
+- If the model is already cached, nothing happens — the save just persists.
+- If the model is not cached, a background thread starts the download and logs live progress to the terminal at roughly every 10% (`stream_companion.model_downloader: Whisper model 'X' download: …%`).
+
+The download continues even if you close the configurator; you can check on it with `python main.py --stt-status` (which now also reports cache state) or trigger it explicitly with `python main.py --preload-stt [--model NAME]`.
 
 ### Tips
 - **First run downloads the Whisper model** (a few hundred MB for `turbo`); subsequent starts are instant.
@@ -191,7 +207,8 @@ STT settings can also be edited directly in `config/shortcuts.json`:
   - The microphone device couldn't be opened (e.g. wrong device index, missing PortAudio, permission denied). Look for `Cannot start STT microphone:` in the log.
   - The Whisper model failed to load (network blocked on first use, or insufficient disk/memory).
 - **Debugging STT interactively:**
-  - `python main.py --stt-status` prints the parsed STT configuration and exits without starting the listener. Use this to confirm the config file is being read correctly.
+  - `python main.py --stt-status` prints the parsed STT configuration and exits without starting the listener. Use this to confirm the config file is being read correctly. The output also shows whether the configured Whisper model is already cached locally.
+  - `python main.py --preload-stt` downloads the Whisper model declared in the config and exits. Combine with `--model NAME` (e.g. `tiny`, `base`, `small`, `medium`, `large`, `turbo`) to download a specific model. Useful for scripted installs: `python main.py --preload-stt --model turbo` will fetch the model with live progress in the terminal and exit before the GUI ever starts.
   - `python main.py --log-level DEBUG` shows every state transition (engine start/stop, hotkey toggle, mic open/close, transcription calls, typed character counts).
   - The `STTEngine.status()` method returns a JSON-serializable dict with `running`, `active`, `mic_open`, `transcriber_loaded`, `model`, `language`, `device`, `chunk_seconds`, `always_on`, `hotkey`, `typed_chars`, `started_at`, and `last_error` — useful for custom diagnostics.
 
