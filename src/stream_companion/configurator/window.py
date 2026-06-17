@@ -100,16 +100,13 @@ class ConfiguratorWindow(QMainWindow):
         self._shortcut_section = ShortcutSection()
         shortcut_layout.addWidget(self._shortcut_section)
 
-        # Action buttons (Preview / Save) for the selected shortcut.
-        # These are global actions so they live in the window, not the
-        # section widget.
+        # Action buttons (Preview) for the selected shortcut. Saving
+        # is handled by the global "Save All Settings" button at the
+        # bottom of the window, which is visible from every tab.
         action_buttons = QHBoxLayout()
         self._preview_btn = QPushButton("Preview")
         self._preview_btn.clicked.connect(self._preview_shortcut)
-        self._save_btn = QPushButton("Save Changes")
-        self._save_btn.clicked.connect(self._save_changes)
         action_buttons.addWidget(self._preview_btn)
-        action_buttons.addWidget(self._save_btn)
         shortcut_layout.addLayout(action_buttons)
 
         tabs.addTab(global_panel, "Global Settings")
@@ -117,8 +114,19 @@ class ConfiguratorWindow(QMainWindow):
         tabs.addTab(self._llm_section, "AI Assistant")
         tabs.addTab(shortcut_panel, "Shortcuts")
 
+        # Footer with a single "Save All Settings" button. Visible from
+        # every tab so the user can always save regardless of which
+        # tab they edited.
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        self._save_btn = QPushButton("Save All Settings")
+        self._save_btn.setDefault(True)
+        self._save_btn.clicked.connect(self._save_changes)
+        footer.addWidget(self._save_btn)
+
         main_layout.addLayout(left_panel, 1)
         main_layout.addWidget(tabs, 2)
+        main_layout.addLayout(footer)
         central.setLayout(main_layout)
 
         self._update_ui_state()
@@ -149,12 +157,9 @@ class ConfiguratorWindow(QMainWindow):
         mode_layout.addWidget(self._timeout_input)
         global_layout.addLayout(mode_layout)
 
-        global_buttons = QHBoxLayout()
-        self._global_save_btn = QPushButton("Save Global Settings")
-        self._global_save_btn.clicked.connect(self._save_changes)
-        global_buttons.addStretch(1)
-        global_buttons.addWidget(self._global_save_btn)
-        global_layout.addLayout(global_buttons)
+        # Saving is handled by the global "Save All Settings" button
+        # at the bottom of the window, so this tab has no per-tab
+        # action button.
         global_layout.addStretch()
         return global_panel
 
