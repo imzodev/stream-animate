@@ -46,6 +46,12 @@ _LOGGER = logging.getLogger(__name__)
 _SILENCE_CHUNKS_TO_END = 3
 # RMS below this is "silent" for the fact-checker (same scale as STT).
 _SILENCE_RMS = 0.005
+# Minimum number of chunks (~0.5s each) the loop must see before
+# silence is allowed to end the question. Without this, a single
+# 0.5s loud chunk followed by trailing silence ends the question
+# immediately and the speaker never gets a chance to start their
+# real sentence.
+_MIN_LISTEN_CHUNKS = 3
 
 
 @dataclass
@@ -258,7 +264,10 @@ class FactCheckerEngine:
         try:
             self._stream_answer(question)
         except LLMError as exc:
-            self._fail(f"llm: {exc}")
+            # _stream_answer already called _fail (so the error event
+            # is delivered to the panel and the phase is "error"). Log
+            # the full exception here for diagnostics, then return.
+            _LOGGER.error("LLM call failed: %s", exc)
             return
         except Exception as exc:  # pragma: no cover - defensive
             self._fail(f"unexpected: {exc}")
@@ -271,7 +280,19 @@ class FactCheckerEngine:
         _LOGGER.info("Fact-checker done")
 
     def _listen_loop(self) -> str:
-        """Listen until silence or stop, return the accumulated text."""
+        """Listen until silence or stop, return the accumulated text.
+
+        The loop ends the question when:
+        - the user presses the toggle hotkey again (stop event), or
+        - 1.5s of trailing silence follow at least one loud chunk, or
+        - 6 silent chunks pass with nothing heard (caller wasn't there), or
+        - a 30s safety cap is reached.
+
+        A minimum listen window of ``_MIN_LISTEN_CHUNKS`` (~1.5s) is
+        enforced before silence can end the question, so a short
+        utterance that starts with a single word is not cut off
+        before the speaker has a chance to continue.
+        """
         accumulated_parts: List[str] = []
         silent_streak = 0
         chunks_above = 0
@@ -288,7 +309,11 @@ class FactCheckerEngine:
                 rms = float(np.sqrt(np.mean(np.square(chunk)))) if chunk.size else 0.0
                 if rms < _SILENCE_RMS:
                     silent_streak += 1
-                    if silent_streak >= _SILENCE_CHUNKS_TO_END and chunks_above > 0:
+                    if (
+                        silent_streak >= _SILENCE_CHUNKS_TO_END
+                        and chunks_above > 0
+                        and chunks_seen >= _MIN_LISTEN_CHUNKS
+                    ):
                         # Question complete.
                         break
                     # If we have never heard anything and the user has
@@ -315,21 +340,60 @@ class FactCheckerEngine:
         return " ".join(accumulated_parts)
 
     def _stream_answer(self, question: str) -> None:
-        """Stream the LLM answer, emitting one event per token delta."""
+        """Stream the LLM answer, emitting one event per token delta.
+
+        On LLM error, the user-friendly message is surfaced via
+        ``_fail`` (which sets phase to "error" and emits the error
+        event) and the exception is re-raised so the caller in
+        ``_run`` can short-circuit and skip the "done" phase. The full
+        error is logged at ERROR level by the caller.
+        """
         self._set_phase("streaming")
         streamed: List[str] = []
-        for token in self._client.stream(question):
-            if self._stop_event.is_set():
-                _LOGGER.info("Fact-checker: user cancelled mid-stream")
-                break
-            streamed.append(token)
-            self._emit(
-                FactCheckerEvent(
-                    phase="streaming",
-                    text="".join(streamed),
-                    delta=token,
+        try:
+            for token in self._client.stream(question):
+                if self._stop_event.is_set():
+                    _LOGGER.info("Fact-checker: user cancelled mid-stream")
+                    break
+                streamed.append(token)
+                self._emit(
+                    FactCheckerEvent(
+                        phase="streaming",
+                        text="".join(streamed),
+                        delta=token,
+                    )
                 )
+        except LLMError as exc:
+            self._fail(self._summarize_llm_error(exc))
+            raise
+
+    def _summarize_llm_error(self, exc: "LLMError") -> str:
+        """Return a short, user-facing error string for the panel.
+
+        Keeps the panel readable when the server returns an HTML 404
+        page or a multi-line JSON dump. The full body is still
+        available in the application log.
+        """
+        status = exc.status
+        if status == 401 or status == 403:
+            return (
+                f"Auth failed ({status}). Check that the API key in env "
+                f"var '{self._config.api_key_env}' is valid for the "
+                f"configured base URL."
             )
+        if status == 404:
+            return (
+                f"Endpoint not found (404). Check that the model name "
+                f"{self._config.model!r} is valid for the configured "
+                f"base URL ({self._config.base_url})."
+            )
+        if status == 429:
+            return "Rate limited (429). Try again in a moment."
+        if status is not None and status >= 500:
+            return f"LLM service error ({status}). Try again."
+        if status is None:
+            return f"Network error: {exc.body or 'unreachable'}"
+        return f"LLM error ({status}): {exc.body[:120]}"
 
     # ------------------------------------------------------------------
     # Internals

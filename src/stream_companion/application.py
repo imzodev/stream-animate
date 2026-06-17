@@ -714,7 +714,13 @@ def run_application(
 
     tray_holder: Dict[str, Optional[TrayIcon]] = {"tray": None}
 
-    def _refresh_tray_label() -> None:
+    def _refresh_tray_label(event=None) -> None:
+        # The signature accepts the optional event argument so the same
+        # function can be wired to both engines: ``STTEngine.add_observer``
+        # fires observers with no arguments, while
+        # ``FactCheckerEngine.add_observer`` fires them with a
+        # ``FactCheckerEvent`` instance. We don't need the event here
+        # — we just want the tray icon to repaint.
         tray = tray_holder.get("tray")
         if tray is not None:
             tray.refresh_stt_label()

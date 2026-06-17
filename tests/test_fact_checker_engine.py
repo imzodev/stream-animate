@@ -275,7 +275,56 @@ def test_llm_error_surfaces_error_event(
     assert engine.phase == "error"
     assert engine.last_error and "500" in engine.last_error
     error_event = next(e for e in events if e.phase == "error")
+    # The user-facing message should be friendly, NOT the raw body
+    # "oops" (which could be HTML or multi-line JSON in real life).
     assert "500" in error_event.text
+    assert "oops" not in error_event.text
+    assert "service error" in error_event.text.lower()
+    engine.close()
+
+
+@pytest.mark.parametrize(
+    "status,expected_keyword",
+    [
+        (401, "auth failed"),
+        (403, "auth failed"),
+        (404, "not found"),
+        (429, "rate limited"),
+        (500, "service error"),
+        (502, "service error"),
+        (503, "service error"),
+    ],
+)
+def test_llm_error_summarises_status_for_panel(
+    monkeypatch: pytest.MonkeyPatch, status: int, expected_keyword: str
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    audio = FakeAudioCapture()
+    audio.feed("hi")
+    transcriber = FakeTranscriber()
+    transcriber.scripted = ["hi"]
+    client = FakeClient(
+        raise_after=LLMError(
+            f"http {status}", status=status, body="<html>big response</html>"
+        )
+    )
+    events: List[FactCheckerEvent] = []
+    engine = FactCheckerEngine(
+        LLMConfig(),
+        audio_capture=audio,
+        transcriber=transcriber,
+        client=client,
+    )
+    engine.add_observer(events.append)
+    engine.toggle()
+    _wait_for(lambda: not engine.is_running, timeout=2.0)
+    assert engine.phase == "error"
+    error_event = next(e for e in events if e.phase == "error")
+    # The raw HTML body must NOT be in the panel message.
+    assert "<html>" not in error_event.text
+    assert "big response" not in error_event.text
+    # The friendly message must mention the status in a useful way.
+    assert expected_keyword in error_event.text.lower()
     engine.close()
 
 
