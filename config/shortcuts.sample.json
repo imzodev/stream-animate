@@ -1,11 +1,13 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "shortcuts": [
     {"hotkey": "<ctrl>+<alt>+1", "sound": "assets/sounds/sample.wav"},
     {"hotkey": "<ctrl>+<alt>+2", "overlay": {"file": "assets/overlays/sample.mp4", "x": 800, "y": 450, "duration": 0}},
 
     {"suffix": "b", "overlay": {"file": "assets/overlays/sample.gif", "x": 960, "y": 540, "duration": 1500}},
-    {"suffix": ["g", "h"], "sound": "assets/sounds/sample2.mp3"}
+    {"suffix": ["g", "h"], "sound": "assets/sounds/sample2.mp3"},
+
+    {"hotkey": "<ctrl>+<alt>+q", "fact_check": true}
   ],
   "activator": {"hotkey": "<ctrl>+<alt>+a", "mode": "press", "timeout_ms": 1500},
   "stt": {
@@ -23,6 +25,17 @@
     "trigger_cooldown_ms": 1500,
     "type_into_focused_window": true,
     "voice_triggers_enabled": true
+  },
+  "llm": {
+    "base_url": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini",
+    "api_key_env": "LLM_API_KEY",
+    "persona": "fact_checker",
+    "system_prompt": null,
+    "temperature": 0.3,
+    "max_tokens": 512,
+    "toggle_hotkey": "<ctrl>+<alt>+q",
+    "timeout_seconds": 30
   }
 }
 

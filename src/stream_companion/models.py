@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+from .llm.personas import resolve_system_prompt
+
+# Environment-variable name pattern (uppercase + underscores, must start
+# with a letter, no leading digits).
+_ENV_VAR_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -39,6 +47,12 @@ class Shortcut:
     # and requires the tokens to appear contiguously in the transcribed
     # phrase. Multiple phrases on the same shortcut are all checked.
     trigger_phrases: Optional[Tuple[str, ...]] = None
+    # Reserved for future use: when True, this shortcut can be bound
+    # to a fact-check trigger (currently the global toggle_hotkey in
+    # LLMConfig is the only activation; the per-shortcut flag is a
+    # no-op in v1 but lets us build per-shortcut personas later
+    # without a schema bump).
+    fact_check: bool = False
 
     def sound_id(self) -> Optional[str]:
         """Derive a reusable sound identifier from the configured path."""
@@ -83,6 +97,17 @@ class Shortcut:
                     out.append(normalized)
         return out
 
+    @classmethod
+    def all_fact_check_shortcuts(cls, shortcuts: List["Shortcut"]) -> List["Shortcut"]:
+        """Return all shortcuts flagged with ``fact_check=True``.
+
+        Reserved for v1.1 (per-shortcut persona binding). v1 has a
+        single global toggle hotkey, so the returned list is not
+        consulted by the engine.
+        """
+
+        return [s for s in shortcuts if s.fact_check]
+
 
 @dataclass(frozen=True)
 class ActivatorConfig:
@@ -91,6 +116,43 @@ class ActivatorConfig:
     hotkey: str  # e.g. "<ctrl>+<alt>+a"
     mode: str = "press"  # "press" | "hold"
     timeout_ms: int = 1500
+
+
+@dataclass(frozen=True)
+class LLMConfig:
+    """Configuration for the LLM fact-checker / concept explainer.
+
+    The engine talks to any OpenAI-compatible ``/v1/chat/completions``
+    endpoint (OpenAI, DeepSeek, MiniMax, Together, Groq, Ollama,
+    LM Studio, vLLM, etc.). API keys are read from an environment
+    variable named by ``api_key_env`` — they are never stored in the
+    config file.
+    """
+
+    base_url: str = "https://api.openai.com/v1"
+    model: str = "gpt-4o-mini"
+    api_key_env: str = "LLM_API_KEY"
+    persona: str = "fact_checker"
+    system_prompt: Optional[str] = None
+    temperature: float = 0.3
+    max_tokens: int = 512
+    # Global toggle hotkey (press once to start listening, again to stop).
+    # When None, the engine cannot be toggled via keyboard; the user can
+    # still trigger it programmatically (e.g. from a tray menu).
+    toggle_hotkey: Optional[str] = None
+    timeout_seconds: int = 30
+
+    def resolved_system_prompt(self) -> str:
+        """Return the active system prompt (custom → preset → default)."""
+        return resolve_system_prompt(self.persona, self.system_prompt)
+
+    def api_key(self) -> Optional[str]:
+        """Read the API key from the environment, or return None if unset."""
+        return os.environ.get(self.api_key_env)
+
+    def is_valid_api_key_env(self) -> bool:
+        """Return True when ``api_key_env`` is a syntactically valid env name."""
+        return bool(self.api_key_env and _ENV_VAR_NAME.match(self.api_key_env))
 
 
 @dataclass(frozen=True)

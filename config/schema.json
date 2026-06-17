@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Streaming Companion Shortcuts",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "object",
   "required": ["shortcuts"],
   "properties": {
@@ -47,6 +47,22 @@
         "voice_triggers_enabled": { "type": "boolean", "default": true, "description": "Whether the STT engine scans phrases for shortcut trigger words" }
       },
       "additionalProperties": false
+    },
+    "llm": {
+      "type": "object",
+      "description": "LLM fact-checker / concept explainer configuration (OpenAI-compatible). The API key is read from the environment variable named by api_key_env; it is never stored in this file.",
+      "properties": {
+        "base_url": { "type": "string", "default": "https://api.openai.com/v1", "description": "Base URL of an OpenAI-compatible /v1/chat/completions endpoint (e.g. https://api.openai.com/v1, https://api.deepseek.com/v1, http://localhost:11434/v1)" },
+        "model": { "type": "string", "default": "gpt-4o-mini", "description": "Model name to send in the request" },
+        "api_key_env": { "type": "string", "default": "LLM_API_KEY", "description": "Name of the environment variable holding the API key", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "persona": { "type": "string", "default": "fact_checker", "enum": ["fact_checker", "eli5", "socratic", "devils_advocate", "custom"], "description": "Built-in persona preset. Use 'custom' to provide your own system_prompt." },
+        "system_prompt": { "type": ["string", "null"], "description": "Override the persona's system prompt. Required when persona is 'custom'." },
+        "temperature": { "type": "number", "default": 0.3, "minimum": 0.0, "maximum": 2.0 },
+        "max_tokens": { "type": "integer", "default": 512, "minimum": 1, "maximum": 4096, "description": "Per-response cap to bound cost" },
+        "toggle_hotkey": { "type": ["string", "null"], "description": "Global press-to-toggle hotkey for the fact-checker" },
+        "timeout_seconds": { "type": "integer", "default": 30, "minimum": 5, "maximum": 300 }
+      },
+      "additionalProperties": false
     }
   },
   "definitions": {
@@ -83,6 +99,11 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "List of multi-word phrases. When STT transcribes a phrase that contains a candidate phrase as a contiguous, case-insensitive, word-boundary subsequence, the shortcut fires."
+        },
+        "fact_check": {
+          "type": "boolean",
+          "default": false,
+          "description": "Reserved for v1.1: when True, this shortcut can be bound to a fact-check trigger. v1 uses a single global toggle hotkey defined in the 'llm' block."
         }
       },
       "additionalProperties": false
