@@ -136,6 +136,46 @@ Goal: Extend the existing voice-trigger system so a single shortcut can fire on 
   - 3 new round-trip tests in `tests/test_config_loader.py` for `trigger_phrases` save/load, omitted, and single-string coercion.
 - Total: 159 tests passing.
 
+## Phase 11 – LLM Fact-Checker / Concept Explainer (Complete)
+
+Press a global hotkey, speak a question, and an LLM streams a short answer into a floating on-screen panel. Independent of the STT pipeline (separate mic handle, separate Whisper instance) so voice triggers and dictation keep working while the answer renders.
+
+### Goals
+- Listen to the microphone, transcribe the spoken question with Whisper, send the question to an OpenAI-compatible `/v1/chat/completions` endpoint, and stream the answer token-by-token into a small always-on-top Qt panel.
+- Per-chunk streaming transcription (re-uses `AudioCapture` + `WhisperTranscriber` with its own lock), ends on 1.5s of trailing silence, with a 30s safety cap.
+- Persona presets (fact-checker, ELI5, Socratic tutor, devil's advocate, custom) + editable system prompt.
+- Tray icon gains a third indicator dot (top-left) with phase colour (green = listening, purple = thinking, sky = streaming).
+- API key is read from a configurable environment variable name — never written to the config file.
+
+### Implementation
+- `src/stream_companion/llm/` package
+  - `llm/config.py` — `LLMConfig` frozen dataclass: `base_url`, `model`, `api_key_env`, `persona`, `system_prompt`, `temperature`, `max_tokens`, `toggle_hotkey`, `timeout_seconds`. `api_key()` resolves the env var; `is_valid_api_key_env()` validates the env-var name pattern.
+  - `llm/personas.py` — `PERSONA_PRESETS` dict + `resolve_system_prompt(persona, custom)` helper (custom → preset → fact-checker fallback).
+  - `llm/client.py` — `FactCheckerClient` (httpx-based, OpenAI-compatible). Validates `base_url` ends in `/v1`. Streams SSE `data:` lines, skips malformed JSON, tolerates the common alternative shapes (`delta.content`, `delta` as a string, `message.content` for older Ollama). `LLMError` carries `status` and a redacted body (API keys stripped before any log line).
+- `src/stream_companion/fact_checker/` package
+  - `fact_checker/engine.py` — `FactCheckerEngine` orchestrator. Dedicated `AudioCapture` (0.5s chunks, 16 kHz mono) and `WhisperTranscriber` (no contention with the STT engine). Press-to-toggle: starts listening, ends on silence, transcribes, streams the question to the LLM, emits one `FactCheckerEvent` per token. Observer pattern for tray refresh. Cancellation honored between chunks and between tokens. Fixed a race where the engine could clear `_thread = None` before emitting the terminal event (the fix emits first, then clears state — verified by 10 consecutive full-suite runs).
+  - `fact_checker/answer_panel.py` — `AnswerPanel` frameless, always-on-top, draggable Qt widget. Thread-safe via a `QObject` bridge that emits Qt `Signal`s across threads (`QMetaObject.invokeMethod` + `Qt.QueuedConnection`).
+- Schema bumped to **1.5.0**. New top-level `llm` block with the same partial-save semantics as `stt`. New `fact_check: bool` shortcut field (reserved for v1.1 per-shortcut persona binding — unused in v1).
+- Configurator: new **AI Assistant** tab (`configurator/llm_section.py`) with Connection / Persona / Behaviour groups, an API-key status indicator (loaded / not set / invalid, no secret ever displayed), and a Custom system prompt text area visible only when persona = "custom".
+- Tray icon: third indicator dot in the top-left corner with phase colour. New `FactCheckerIndicatorState` and `compose_fact_check_state()` helper. `tray_icon.py` gains an `on_toggle_fact_check` callback wired to a "Toggle Fact-Checker" menu entry.
+- `application.py`: `Application.__init__` accepts `llm_config`, `fact_checker`, `answer_panel`. Engine is built only when both config and API key are present. New `_on_fact_check_event` callback marshals events to the GUI thread via `ShortcutSignals.fact_check_event`. New `set_llm_config()` for hot-reload. `run_application` builds an `AnswerPanel` eagerly and composes the full tray state (STT + fact-check) in `_build_tray_state()`.
+
+### Tests
+- `tests/test_llm_personas.py` (23 tests): persona resolution, env-var name validation, `fact_check` field, `all_fact_check_shortcuts` filter.
+- `tests/test_llm_client.py` (25 tests): uses `httpx.MockTransport` (no network). Covers happy path, HTTP 4xx/5xx, network errors, missing API key, malformed SSE lines, SSE comments, early-break cancellation, Ollama-style chunks, base_url validation, redaction of API keys in error bodies, context manager.
+- `tests/test_fact_checker_engine.py` (10 tests): toggle on → question → answer, toggle off mid-silence, mic-busy refusal, LLM error surfaces, empty question returns to idle, observer add/remove, observer exception isolation, status shape.
+- `tests/test_fact_checker_answer_panel.py` (8 tests, `QT_QPA_PLATFORM=offscreen`): token append, clear, phase label, persona label, cross-thread marshalling.
+- `tests/test_llm_section.py` (15 tests, `QT_QPA_PLATFORM=offscreen`): round-trip, persona selection, API-key status (loaded / not set / invalid), validation bounds.
+- `tests/test_config_loader.py` (+5 tests): LLM round-trip, omitted-returns-None, partial-save preservation, fact_check shortcut round-trip, version-1.5.0.
+- `tests/test_tray_indicators.py` (+9 tests): `FactCheckerIndicatorState`, `compose_fact_check_state`, top-left dot painted, unconfigured/idle hide the dot, state-key includes the phase.
+- `tests/test_tray_icon.py` (+1 test): state-key distinguishes fact-check phase.
+- `tests/test_application.py` (+8 tests): engine wiring, observer subscription, toggle handler, event-driven panel updates, hotkey registration, `set_llm_config` rebuild/disable.
+
+### Totals
+- 263 tests passing (was 159 before phase 11).
+- 6 new modules: `llm/{config,personas,client}.py`, `fact_checker/{engine,answer_panel}.py`, `configurator/llm_section.py`.
+- Schema 1.4.0 → 1.5.0 (additive; old configs load with default `LLMConfig()`).
+
 ## Ongoing Engineering Practices
 - Maintain automated formatting/linting/testing via `run_checks.py`.
 - Add unit/integration tests as features land; expand coverage per phase.

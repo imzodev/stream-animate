@@ -6,6 +6,7 @@ Turn your keyboard into a live-production command center. The Streaming Companio
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
 - **Instant reactions:** Fire sound bites (WAV/MP3) and overlays (PNG/GIF/JPG/Video) with a tap.
 - **Speech-to-text typing:** Use OpenAI Whisper to dictate into any focused text field. Toggle with a hotkey or run it always-on, in 99+ languages with auto-detect.
+- **AI Assistant:** Press a hotkey, speak a question, and an LLM streams a short answer (fact-checker, explainer, tutor, or custom persona) into a floating on-screen panel. Works with any OpenAI-compatible provider.
 - **Configurable visuals:** Choose overlay positions, screen duration, and transparency to match your brand.
 - **Desktop configurator:** A streamlined UI with file-browser selection, live preview, and hotkey capture makes setup effortless—no manual JSON editing required.
 - **Low footprint:** Runs quietly in the background so you can focus on the show.
@@ -113,15 +114,16 @@ When running in listener mode, the application displays a system tray icon for e
 A single left-click on the tray icon **toggles STT** (same as the menu's "Start/Stop STT" item). Right-click for the menu.
 
 ### Status indicators
-The tray icon shows two independent colored dots so you can tell at a glance what the engine is doing:
+The tray icon shows three independent colored dots so you can tell at a glance what the engine is doing:
 
 | Dot | Color | Meaning |
 |-----|-------|---------|
 | Top-right | 🔴 Red | **STT is active** — the engine is running and listening to the microphone. Independent of typing: you can have STT on with no typing (voice triggers only). |
 | Bottom-right | 🔵 Blue | **Typing into the focused window is active** — transcribed text is being typed via pynput. Independent of triggers: you can have typing on with no triggers. |
+| Top-left | 🟢 Green / 🟣 Purple / 🩵 Sky | **AI Assistant (fact-checker) phase** — see below. |
 
-The two dots can be on simultaneously, so the icon shows four visual states:
-- **No dots** — STT is off or disabled.
+The two STT dots can be on simultaneously, so the icon shows four visual states:
+- **No STT dots** — STT is off or disabled.
 - **Red only** — STT is listening for trigger words (typing disabled).
 - **Blue only** — Engine is typing; this rarely happens alone in practice because the engine only transcribes when one of typing/triggers is on.
 - **Red + Blue** — STT is on and typing into the focused window (the default "always-on" mode).
@@ -252,6 +254,67 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - `append_space` — append a space after each phrase so concatenated chunks don't run together.
 - `silence_rms_threshold` — skip chunks whose RMS volume is below this value.
 - `dedup_window` — number of recent characters used for tail-based dedup.
+
+## AI Assistant (Fact-Checker)
+Press a global hotkey, speak a question, and an LLM streams a short answer into a small always-on-top panel. The fact-checker runs on a **separate microphone handle and separate Whisper instance** from the STT engine, so voice triggers and dictation keep working while the answer renders.
+
+### Setup
+1. Set an environment variable with your API key. The name is configurable; the default is `LLM_API_KEY`.
+   ```bash
+   export LLM_API_KEY=sk-...
+   ```
+2. Open the **Configurator → AI Assistant** tab. The status line shows "✓ loaded from environment variable 'LLM_API_KEY'" when the key is present, or a red "✗ not set" otherwise. The key is never displayed, only its presence.
+3. Pick a **base URL** and **model**. Anything that speaks the OpenAI Chat Completions streaming protocol works:
+   - `https://api.openai.com/v1` — `gpt-4o-mini`, `gpt-4o`, …
+   - `https://api.deepseek.com/v1` — `deepseek-chat`
+   - `https://api.minimax.com/v1` — your MiniMax model name
+   - `http://localhost:11434/v1` — local Ollama
+4. Pick a **persona**. Built-in presets:
+   - **Fact-checker** — verifies a claim with verdict + reasoning + one source.
+   - **Explain like I'm 5** — three sentences, one analogy.
+   - **Socratic tutor** — responds with a single probing question.
+   - **Devil's advocate** — steel-mans the strongest counter-argument.
+   - **Custom** — supply your own system prompt.
+5. Set a **toggle hotkey** (e.g. `<ctrl>+<alt>+q`).
+6. Save the configuration. The fact-checker is now active.
+
+### How it works
+- **Press the hotkey** → a daemon thread opens a microphone stream and starts transcribing audio with Whisper.
+- **Speak your question.** Transcribed chunks are concatenated; the question "ends" after 1.5 seconds of silence (or 30 seconds, whichever comes first).
+- **The question is sent to the LLM.** Tokens stream back over Server-Sent Events.
+- **The answer panel** appears in the bottom-right of the screen, typewriter-style, with the persona label and current phase ("listening" / "thinking" / "streaming" / "done" / "error"). Click and drag the title bar to move it; click × to hide.
+- **Press the hotkey again** mid-stream to cancel. The connection is closed and the panel hides.
+
+### Tray indicator
+The top-left dot shows the fact-checker phase:
+- 🟢 **Green** — listening (microphone open, capturing your question)
+- 🟣 **Purple** — thinking (transcribed, waiting on the LLM)
+- 🩵 **Sky blue** — streaming (tokens flowing into the panel)
+- (no dot) — idle (the feature is wired but you haven't started a question) or unconfigured
+
+The "Toggle Fact-Checker" entry in the right-click tray menu has the same effect as the hotkey.
+
+### Troubleshooting
+- **"API key not set":** set the environment variable in the same shell that launches the app. Restart the app after changing it.
+- **"Auth failed":** the API key is wrong or the base URL is for a different provider. Double-check both.
+- **"Could not reach LLM":** check the base URL and your network connection. For local Ollama, make sure the server is running.
+- **Empty answer:** the LLM service is reachable but returned no tokens. Check the model's `max_tokens` setting — a low value can cause empty responses.
+- **API key safety:** the key is read from the environment at request time and never written to `config/shortcuts.json`. The configurator shows only "loaded" or "not set" status, never the key itself. Error bodies in logs are redacted.
+
+### Config block reference
+```json
+"llm": {
+  "base_url": "https://api.openai.com/v1",
+  "model": "gpt-4o-mini",
+  "api_key_env": "LLM_API_KEY",
+  "persona": "fact_checker",
+  "system_prompt": null,
+  "temperature": 0.3,
+  "max_tokens": 512,
+  "toggle_hotkey": "<ctrl>+<alt>+q",
+  "timeout_seconds": 30
+}
+```
 
 ## Logging & Troubleshooting
 - **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.
