@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 import os
@@ -17,6 +18,36 @@ if str(SRC_DIR) not in sys.path:
 
 # Default to disabling XCB GLX integration to avoid GLX requirements for video rendering
 os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
+
+
+def _load_dotenv(path: Path) -> None:
+    """Tiny .env loader: KEY=VALUE per line, no quoting/escape support.
+
+    Loads into ``os.environ`` only when the variable is not already
+    set, so an explicit shell export always wins. Lines starting with
+    ``#`` and blank lines are ignored.
+    """
+
+    if not path.is_file():
+        return
+    pattern = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        match = pattern.match(line)
+        if match is None:
+            continue
+        key, value = match.group(1), match.group(2).strip()
+        # Strip surrounding single or double quotes if present.
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        os.environ.setdefault(key, value)
+
+
+# Auto-load a .env file from the project root (git-ignored). The
+# .env.example file in the repo shows the format.
+_load_dotenv(ROOT_DIR / ".env")
 
 from stream_companion import application, model_downloader, registry  # noqa: E402
 
@@ -189,7 +220,31 @@ def main() -> None:
             )
         else:
             _LOGGER.info("No STT config in shortcuts.json (STT disabled)")
-        application.run_application(registry.iter_shortcuts(), stt_config=stt_config)
+        llm_config = registry.get_llm_config()
+        if llm_config is not None:
+            api_key = llm_config.api_key()
+            _LOGGER.info(
+                "Loaded LLM config: model=%r persona=%r api_key_env=%r key_loaded=%s",
+                llm_config.model,
+                llm_config.persona,
+                llm_config.api_key_env,
+                "yes" if api_key else "no",
+            )
+            if not api_key:
+                _LOGGER.warning(
+                    "LLM fact-checker disabled: env var %r is not set. "
+                    "Export it (e.g. `export %s=sk-...`) before launching, "
+                    "or use a launcher that sources your .env file.",
+                    llm_config.api_key_env,
+                    llm_config.api_key_env,
+                )
+        else:
+            _LOGGER.info("No LLM config in shortcuts.json (fact-checker disabled)")
+        application.run_application(
+            registry.iter_shortcuts(),
+            stt_config=stt_config,
+            llm_config=llm_config,
+        )
 
 
 if __name__ == "__main__":
