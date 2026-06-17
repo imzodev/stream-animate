@@ -5,9 +5,14 @@ from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from stream_companion.tray_indicators import (
+    COLOR_FACT_LISTENING,
+    COLOR_FACT_STREAMING,
+    COLOR_FACT_THINKING,
     COLOR_STT_ACTIVE,
     COLOR_TYPING_ACTIVE,
+    FactCheckerIndicatorState,
     TrayIndicatorState,
+    compose_fact_check_state,
     compose_state,
     compose_tray_icon,
 )
@@ -269,3 +274,97 @@ def _color_near(
             ):
                 return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Fact-checker indicator (third dot)
+# ---------------------------------------------------------------------------
+
+
+def test_fact_check_state_unconfigured_has_no_color() -> None:
+    fc = FactCheckerIndicatorState(configured=False, phase="listening")
+    assert fc.any_active is False
+    assert fc.color is None
+
+
+def test_fact_check_state_idle_has_no_color() -> None:
+    fc = FactCheckerIndicatorState(configured=True, phase="idle")
+    assert fc.any_active is False
+    assert fc.color is None
+
+
+@pytest.mark.parametrize(
+    "phase,expected",
+    [
+        ("listening", COLOR_FACT_LISTENING),
+        ("thinking", COLOR_FACT_THINKING),
+        ("streaming", COLOR_FACT_STREAMING),
+    ],
+)
+def test_fact_check_state_phase_color(phase: str, expected: QColor) -> None:
+    fc = FactCheckerIndicatorState(configured=True, phase=phase)
+    assert fc.any_active is True
+    assert fc.color == expected
+
+
+def test_compose_fact_check_state() -> None:
+    fc = compose_fact_check_state(configured=True, phase="listening")
+    assert fc.configured is True
+    assert fc.phase == "listening"
+
+
+def test_compose_tray_icon_paints_fact_check_dot(qt_app) -> None:
+    """A non-idle fact-checker phase must paint a top-left dot."""
+    state = TrayIndicatorState(
+        stt_active=False,
+        typing_active=False,
+        enabled=True,
+        fact_check=FactCheckerIndicatorState(
+            configured=True, phase="listening"
+        ),
+    )
+    icon = compose_tray_icon(state, size=64)
+    pix = icon.pixmap(64, 64)
+    assert not pix.isNull()
+    image = pix.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    # Top-left region: dot centre is at (0.22, 0.12) of 64 = (14, 8).
+    assert _color_near(image, 14, 8, COLOR_FACT_LISTENING)
+
+
+def test_compose_tray_icon_no_fact_check_dot_when_unconfigured(qt_app) -> None:
+    """An unconfigured fact-checker must not paint a third dot."""
+    state = TrayIndicatorState(
+        stt_active=False,
+        typing_active=False,
+        enabled=True,
+        fact_check=FactCheckerIndicatorState(configured=False),
+    )
+    icon = compose_tray_icon(state, size=64)
+    pix = icon.pixmap(64, 64)
+    image = pix.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    # Top-left should still be the base icon background, not green.
+    color = QColor(image.pixel(14, 8))
+    is_green = (
+        color.green() > color.red() + 30
+        and color.green() > color.blue() + 30
+    )
+    assert not is_green
+
+
+def test_compose_tray_icon_idle_fact_check_paints_no_dot(qt_app) -> None:
+    """A configured-but-idle fact-checker must not paint a third dot."""
+    state = TrayIndicatorState(
+        stt_active=False,
+        typing_active=False,
+        enabled=True,
+        fact_check=FactCheckerIndicatorState(configured=True, phase="idle"),
+    )
+    icon = compose_tray_icon(state, size=64)
+    pix = icon.pixmap(64, 64)
+    image = pix.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    color = QColor(image.pixel(14, 8))
+    is_green = (
+        color.green() > color.red() + 30
+        and color.green() > color.blue() + 30
+    )
+    assert not is_green

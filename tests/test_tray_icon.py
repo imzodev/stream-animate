@@ -109,10 +109,30 @@ def test_state_key_handles_none_and_state():
     assert tray._state_key(None) == ("none",)
     state_off = TrayIndicatorState(enabled=False)
     state_on = TrayIndicatorState(enabled=True, stt_active=True, typing_active=False)
-    assert tray._state_key(state_off) == ("off", False, False)
-    assert tray._state_key(state_on) == ("on", True, False)
+    # The 4th element of the key is a (fact_check_configured, fact_phase)
+    # tuple; both states have no fact_check configured, so it's
+    # ("none", "idle") in both cases.
+    assert tray._state_key(state_off) == ("off", False, False, ("none", "idle"))
+    assert tray._state_key(state_on) == ("on", True, False, ("none", "idle"))
     # Different states produce different keys
     assert tray._state_key(state_on) != tray._state_key(state_off)
+
+
+def test_state_key_distinguishes_fact_check_phase():
+    """The state key changes when the fact-checker phase changes."""
+
+    from stream_companion.tray_indicators import FactCheckerIndicatorState
+
+    tray = TrayIcon()
+    s_idle = TrayIndicatorState(
+        enabled=True,
+        fact_check=FactCheckerIndicatorState(configured=True, phase="idle"),
+    )
+    s_listening = TrayIndicatorState(
+        enabled=True,
+        fact_check=FactCheckerIndicatorState(configured=True, phase="listening"),
+    )
+    assert tray._state_key(s_idle) != tray._state_key(s_listening)
 
 
 def test_refresh_skips_when_state_unchanged(qt_app):

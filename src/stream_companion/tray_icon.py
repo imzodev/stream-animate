@@ -8,7 +8,11 @@ from typing import Callable, Optional
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from .tray_indicators import TrayIndicatorState, compose_tray_icon
+from .tray_indicators import (
+    FactCheckerIndicatorState,
+    TrayIndicatorState,
+    compose_tray_icon,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +40,7 @@ class TrayIcon:
         on_quit: Optional[Callable[[], None]] = None,
         on_open_configurator: Optional[Callable[[], None]] = None,
         on_toggle_stt: Optional[Callable[[], None]] = None,
+        on_toggle_fact_check: Optional[Callable[[], None]] = None,
         stt_state_provider: Optional[Callable[[], Optional[TrayIndicatorState]]] = None,
     ) -> None:
         """Initialize the system tray icon.
@@ -45,6 +50,7 @@ class TrayIcon:
             on_open_configurator: Callback for the Open Configurator item.
             on_toggle_stt: Callback for the Start/Stop STT menu item (and
                 also fired when the user left-clicks the tray icon).
+            on_toggle_fact_check: Callback for the Toggle Fact-Checker item.
             stt_state_provider: Callable returning a
                 :class:`TrayIndicatorState` or ``None``. ``None`` hides
                 the STT-related menu entries; otherwise the state drives
@@ -53,10 +59,12 @@ class TrayIcon:
         self._on_quit = on_quit
         self._on_open_configurator = on_open_configurator
         self._on_toggle_stt = on_toggle_stt
+        self._on_toggle_fact_check = on_toggle_fact_check
         self._stt_state_provider = stt_state_provider
         self._tray_icon: Optional[QSystemTrayIcon] = None
         self._menu: Optional[QMenu] = None
         self._stt_toggle_action: Optional[QAction] = None
+        self._fact_check_action: Optional[QAction] = None
         self._base_icon: Optional[QIcon] = None
         self._last_state_key: Optional[tuple] = None
         # Disable the dot menu entries until state is provided.
@@ -98,6 +106,11 @@ class TrayIcon:
             self._stt_toggle_action = QAction("Start STT", self._menu)
             self._stt_toggle_action.triggered.connect(self._handle_toggle_stt)
             self._menu.addAction(self._stt_toggle_action)
+
+        if self._on_toggle_fact_check is not None:
+            self._fact_check_action = QAction("Toggle Fact-Checker", self._menu)
+            self._fact_check_action.triggered.connect(self._handle_toggle_fact_check)
+            self._menu.addAction(self._fact_check_action)
 
         if self._menu.actions():
             self._menu.addSeparator()
@@ -192,10 +205,18 @@ class TrayIcon:
 
         if state is None:
             return ("none",)
+        if state.fact_check is None:
+            fact_key = ("none", "idle")
+        else:
+            fact_key = (
+                "on" if state.fact_check.configured else "off",
+                state.fact_check.phase,
+            )
         return (
             "on" if state.enabled else "off",
             bool(state.stt_active),
             bool(state.typing_active),
+            fact_key,
         )
 
     def _update_menu(self, state: Optional[TrayIndicatorState]) -> None:
@@ -207,6 +228,7 @@ class TrayIcon:
             # STT not configured: hide the toggle entirely
             self._stt_toggle_action.setVisible(False)
             self._stt_menu_hidden = True
+            self._update_fact_check_menu(None)
             return
         # STT is configured (the engine is or could be running).
         self._stt_toggle_action.setVisible(True)
@@ -214,14 +236,37 @@ class TrayIcon:
         if not state.enabled:
             self._stt_toggle_action.setText("STT (disabled in config)")
             self._stt_toggle_action.setEnabled(False)
-            return
-        if state.typing_active:
-            self._stt_toggle_action.setText("Stop STT (currently typing)")
-        elif state.stt_active:
-            self._stt_toggle_action.setText("Stop STT (listening for triggers)")
         else:
-            self._stt_toggle_action.setText("Start STT")
-        self._stt_toggle_action.setEnabled(True)
+            if state.typing_active:
+                self._stt_toggle_action.setText("Stop STT (currently typing)")
+            elif state.stt_active:
+                self._stt_toggle_action.setText("Stop STT (listening for triggers)")
+            else:
+                self._stt_toggle_action.setText("Start STT")
+            self._stt_toggle_action.setEnabled(True)
+        self._update_fact_check_menu(state.fact_check)
+
+    def _update_fact_check_menu(
+        self, fact_state: Optional["FactCheckerIndicatorState"]
+    ) -> None:
+        """Show / label / disable the fact-checker menu entry."""
+
+        if self._fact_check_action is None:
+            return
+        if fact_state is None or not fact_state.configured:
+            self._fact_check_action.setVisible(False)
+            return
+        self._fact_check_action.setVisible(True)
+        phase = fact_state.phase
+        if phase == "listening":
+            self._fact_check_action.setText("Stop Fact-Checker (listening)")
+        elif phase == "thinking":
+            self._fact_check_action.setText("Stop Fact-Checker (thinking)")
+        elif phase == "streaming":
+            self._fact_check_action.setText("Stop Fact-Checker (answering)")
+        else:
+            self._fact_check_action.setText("Start Fact-Checker")
+        self._fact_check_action.setEnabled(True)
 
     # ------------------------------------------------------------------
     # Click / menu handlers
@@ -266,4 +311,12 @@ class TrayIcon:
         # observer; we also call refresh directly in case the observer
         # wasn't wired (e.g. when the toggle is invoked from a one-off
         # CLI path).
+        self.refresh_stt_label()
+
+    def _handle_toggle_fact_check(self) -> None:
+        """Handle fact-checker toggle from the tray menu."""
+
+        _LOGGER.info("Fact-checker toggle requested from system tray")
+        if self._on_toggle_fact_check:
+            self._on_toggle_fact_check()
         self.refresh_stt_label()

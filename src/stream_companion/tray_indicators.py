@@ -1,6 +1,6 @@
 """Tray-icon state and painting for the Streaming Companion Tool.
 
-The tray icon has two independent status indicators:
+The tray icon has three independent status indicators:
 
 * **STT active** (red dot, top-right corner) — the STT engine is
   running, the mic is open, and the engine is processing audio. Always
@@ -10,6 +10,10 @@ The tray icon has two independent status indicators:
   This is independent of the STT indicator: the user can have STT
   on (red) without typing (no blue) and vice versa, although in
   practice the engine only transcribes when one or the other is on.
+* **Fact-checker** (green dot, top-left corner) — the LLM fact-checker
+  is listening, thinking, or streaming a response. Phases use
+  different greens so the user can tell at a glance whether the
+  engine is waiting for input, waiting on the LLM, or showing tokens.
 
 The :class:`TrayIndicatorState` dataclass captures the current
 state, and :func:`compose_tray_icon` renders the icon by overlaying
@@ -41,12 +45,47 @@ COLOR_TYPING_ACTIVE = QColor(37, 99, 235)  # blue
 COLOR_LISTENING = QColor(245, 158, 11)  # amber — STT running, no triggers
 COLOR_DISABLED = QColor(120, 120, 120)  # gray
 COLOR_BORDER = QColor(255, 255, 255)  # white ring around each dot
+COLOR_FACT_LISTENING = QColor(34, 197, 94)  # green — mic open, capturing
+COLOR_FACT_THINKING = QColor(168, 85, 247)  # purple — waiting on the LLM
+COLOR_FACT_STREAMING = QColor(14, 165, 233)  # sky blue — tokens streaming
 
-# Where on the icon each dot is anchored (top-right vs bottom-right).
+# Where on the icon each dot is anchored.
 # Values are (x_anchor, y_anchor) where (0,0) is top-left and (1,1) is
 # bottom-right of the rendered icon.
 DOT_TOP_RIGHT = (0.78, 0.12)
 DOT_BOTTOM_RIGHT = (0.78, 0.72)
+DOT_TOP_LEFT = (0.22, 0.12)
+
+
+@dataclass(frozen=True)
+class FactCheckerIndicatorState:
+    """Visual state of the LLM fact-checker indicator.
+
+    Attributes:
+        configured: True when the LLM is configured at all. When
+            False, the third dot is hidden entirely.
+        phase: One of ``"idle"``, ``"listening"``, ``"thinking"``,
+            ``"streaming"``. Each non-idle phase has its own color.
+    """
+
+    configured: bool = False
+    phase: str = "idle"
+
+    @property
+    def any_active(self) -> bool:
+        return self.configured and self.phase != "idle"
+
+    @property
+    def color(self) -> Optional[QColor]:
+        if not self.configured:
+            return None
+        if self.phase == "listening":
+            return COLOR_FACT_LISTENING
+        if self.phase == "thinking":
+            return COLOR_FACT_THINKING
+        if self.phase == "streaming":
+            return COLOR_FACT_STREAMING
+        return None
 
 
 @dataclass(frozen=True)
@@ -60,15 +99,20 @@ class TrayIndicatorState:
         typing_active: True when the engine is currently typing into
             the focused window. Drives the blue dot in the bottom-right.
         enabled: True when STT is configured at all. When False, the
-            icon shows no dots (idle / grayed out).
+            STT dots are hidden.
+        fact_check: Visual state of the third (top-left) dot for the
+            LLM fact-checker. When ``None``, the dot is hidden.
     """
 
     stt_active: bool = False
     typing_active: bool = False
     enabled: bool = True
+    fact_check: Optional[FactCheckerIndicatorState] = None
 
     @property
     def any_active(self) -> bool:
+        if self.fact_check is not None and self.fact_check.any_active:
+            return True
         return self.enabled and (self.stt_active or self.typing_active)
 
     @property
@@ -85,6 +129,9 @@ class TrayIndicatorState:
             parts.append("STT: " + " + ".join(flags))
         else:
             parts.append("STT: idle")
+        if self.fact_check is not None and self.fact_check.configured:
+            phase = self.fact_check.phase
+            parts.append(f"AI: {phase if phase != 'idle' else 'idle'}")
         return " — ".join(parts)
 
 
@@ -222,6 +269,17 @@ def compose_tray_icon(
                 dot_diameter,
             )
             _draw_dot(painter, rect=rect, fill=COLOR_TYPING_ACTIVE)
+        if state.fact_check is not None:
+            fill = state.fact_check.color
+            if fill is not None:
+                x, y = DOT_TOP_LEFT
+                rect = QRect(
+                    int(size * x) - dot_diameter // 2,
+                    int(size * y) - dot_diameter // 2,
+                    dot_diameter,
+                    dot_diameter,
+                )
+                _draw_dot(painter, rect=rect, fill=fill)
     finally:
         painter.end()
 
@@ -263,6 +321,21 @@ def compose_state(
         typing_active=typing_active,
         enabled=True,
     )
+
+
+def compose_fact_check_state(
+    *,
+    configured: bool,
+    phase: str,
+) -> FactCheckerIndicatorState:
+    """Build a :class:`FactCheckerIndicatorState` from the engine phase.
+
+    ``configured=False`` hides the dot entirely. ``phase="idle"`` shows
+    no dot but is still ``configured=True`` so the user can see the
+    AI Assistant is wired up.
+    """
+
+    return FactCheckerIndicatorState(configured=configured, phase=phase)
 
 
 # ---------------------------------------------------------------------------

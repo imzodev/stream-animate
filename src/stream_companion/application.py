@@ -8,12 +8,17 @@ from typing import Dict, Iterable, List, Optional
 from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
+from .fact_checker import AnswerPanel, FactCheckerEngine, FactCheckerEvent
 from .hotkeys import HotkeyManager
+from .llm.config import LLMConfig
 from .models import OverlayConfig, Shortcut, STTConfig
 from .overlay import OverlayWindow
 from .sound import SoundPlayer
 from .stt import STTEngine
-from .tray_indicators import TrayIndicatorState
+from .tray_indicators import (
+    TrayIndicatorState,
+    compose_fact_check_state,
+)
 from .triggers import TriggerMatcher, build_matcher_from_shortcuts
 from . import registry
 
@@ -26,6 +31,7 @@ class ShortcutSignals(QObject):
     triggered = Signal(Shortcut)
     stt_status = Signal(str)
     stt_phrase = Signal(str)  # emitted whenever a phrase is finalized
+    fact_check_event = Signal(object)  # FactCheckerEvent for GUI-thread observers
 
 
 class Application:
@@ -41,6 +47,9 @@ class Application:
         stt_config: Optional[STTConfig] = None,
         stt_engine: Optional[STTEngine] = None,
         trigger_matcher: Optional[TriggerMatcher] = None,
+        llm_config: Optional[LLMConfig] = None,
+        fact_checker: Optional[FactCheckerEngine] = None,
+        answer_panel: Optional[AnswerPanel] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._shortcuts: List[Shortcut] = list(shortcuts)
@@ -84,6 +93,20 @@ class Application:
                     label,
                 )
 
+        # LLM fact-checker. The engine is only constructed when both a
+        # config and an API key are present; otherwise the feature is
+        # silently absent.
+        self._llm_config = llm_config
+        self._answer_panel: Optional[AnswerPanel] = answer_panel
+        if fact_checker is not None:
+            self._fact_checker: Optional[FactCheckerEngine] = fact_checker
+        elif llm_config is not None and llm_config.api_key():
+            self._fact_checker = FactCheckerEngine(llm_config)
+        else:
+            self._fact_checker = None
+        if self._fact_checker is not None:
+            self._fact_checker.add_observer(self._on_fact_check_event)
+
         # Create signals for thread-safe communication
         self._signals = ShortcutSignals()
         self._signals.triggered.connect(
@@ -94,6 +117,10 @@ class Application:
         )
         self._signals.stt_phrase.connect(
             self._handle_stt_phrase_in_main_thread, Qt.ConnectionType.QueuedConnection
+        )
+        self._signals.fact_check_event.connect(
+            self._handle_fact_check_event_in_main_thread,
+            Qt.ConnectionType.QueuedConnection,
         )
 
     def start(self) -> None:
@@ -126,6 +153,7 @@ class Application:
         self._hotkey_manager.stop()
         self._sound_player.shutdown()
         self._stop_stt()
+        self._stop_fact_checker()
         self._registered = False
         self._logger.info("Application stopped")
 
@@ -134,6 +162,51 @@ class Application:
 
     def trigger_matcher(self) -> TriggerMatcher:
         return self._trigger_matcher
+
+    def fact_checker(self) -> Optional[FactCheckerEngine]:
+        return self._fact_checker
+
+    def llm_config(self) -> Optional[LLMConfig]:
+        return self._llm_config
+
+    def answer_panel(self) -> Optional[AnswerPanel]:
+        return self._answer_panel
+
+    def set_answer_panel(self, panel: Optional[AnswerPanel]) -> None:
+        """Attach (or replace) the streaming answer panel.
+
+        The application holds a reference but does not own the panel —
+        callers (typically ``run_application``) are responsible for
+        showing/hiding and destroying it.
+        """
+
+        self._answer_panel = panel
+
+    def set_llm_config(self, config: Optional[LLMConfig]) -> None:
+        """Replace the active LLM config/engine at runtime.
+
+        Restarts the engine so new settings (base_url, model, persona)
+        take effect without restarting the whole application. The
+        toggle hotkey is re-registered on the next ``_register_hotkeys``
+        call so the new key takes effect.
+        """
+
+        self._stop_fact_checker()
+        self._llm_config = config
+        if config is not None and config.api_key():
+            self._fact_checker = FactCheckerEngine(config)
+            self._fact_checker.add_observer(self._on_fact_check_event)
+        else:
+            self._fact_checker = None
+        self._logger.info(
+            "LLM config replaced: configured=%s model=%s persona=%s hotkey=%s",
+            bool(config),
+            getattr(config, "model", None) if config else None,
+            getattr(config, "persona", None) if config else None,
+            getattr(config, "toggle_hotkey", None) if config else None,
+        )
+        if self._registered:
+            self._register_hotkeys()
 
     def set_stt_config(self, config: Optional[STTConfig]) -> None:
         """Replace the active STT config/engine at runtime.
@@ -294,6 +367,71 @@ class Application:
                     self._signals.triggered.emit(shortcut)
                     break
 
+    # ------------------------------------------------------------------
+    # Fact-checker
+    # ------------------------------------------------------------------
+
+    def _on_fact_check_event(self, event: FactCheckerEvent) -> None:
+        """Observer callback fired on the engine's background thread.
+
+        Emits a Qt signal so the panel and tray observers run on the
+        main thread.
+        """
+
+        try:
+            self._signals.fact_check_event.emit(event)
+        except Exception:  # pragma: no cover - defensive
+            self._logger.exception("Failed to emit fact_check_event signal")
+
+    def _handle_fact_check_event_in_main_thread(self, event: FactCheckerEvent) -> None:
+        """GUI-thread handler for fact-checker events.
+
+        Drives the answer panel (clear on new question, append tokens
+        during streaming) and the persona label.
+        """
+
+        self._logger.debug("Fact-checker event: phase=%s", event.phase)
+        if self._answer_panel is not None:
+            if event.phase == "listening":
+                self._answer_panel.clear()
+                self._answer_panel.set_phase("listening")
+                if self._llm_config is not None:
+                    self._answer_panel.set_persona_label(self._llm_config.persona)
+                self._answer_panel.show()
+            elif event.phase == "thinking":
+                self._answer_panel.set_phase("thinking")
+            elif event.phase == "streaming":
+                self._answer_panel.set_phase("streaming")
+                if event.delta:
+                    self._answer_panel.append_token(event.delta)
+            elif event.phase == "done":
+                self._answer_panel.set_phase("done")
+            elif event.phase == "error":
+                self._answer_panel.set_phase("error")
+                self._answer_panel.append_token(f"\n[error: {event.text}]")
+            elif event.phase == "idle":
+                # Hidden by the close button; do not re-show.
+                pass
+
+    def _on_fact_check_toggle(self) -> None:
+        """Hotkey handler: toggle fact-checker listening."""
+        if self._fact_checker is None:
+            self._logger.warning(
+                "Fact-checker hotkey pressed but no engine is configured"
+            )
+            return
+        self._logger.info("Fact-checker toggle hotkey pressed")
+        self._fact_checker.toggle()
+
+    def _stop_fact_checker(self) -> None:
+        if self._fact_checker is not None:
+            self._logger.info("Fact-checker stopping")
+            try:
+                self._fact_checker.close()
+            except Exception:  # pragma: no cover - defensive
+                self._logger.exception("Error closing fact-checker engine")
+            self._fact_checker = None
+
     def _preload_sounds(self) -> None:
         for shortcut in self._shortcuts:
             path = shortcut.sound_path
@@ -380,6 +518,21 @@ class Application:
             except ValueError as exc:
                 self._logger.warning("Failed to register STT toggle hotkey: %s", exc)
 
+        # Fact-checker toggle hotkey. Independent of the STT toggle.
+        if self._fact_checker is not None and self._llm_config is not None:
+            hk = self._llm_config.toggle_hotkey
+            if hk:
+                try:
+                    self._hotkey_manager.register_hotkey(
+                        hk,
+                        self._on_fact_check_toggle,
+                    )
+                    self._logger.info("Fact-checker toggle hotkey registered: %s", hk)
+                except ValueError as exc:
+                    self._logger.warning(
+                        "Failed to register fact-checker toggle hotkey: %s", exc
+                    )
+
     def _on_stt_toggle(self) -> None:
         if self._stt_engine is None:
             self._logger.warning("STT hotkey pressed but no engine is configured")
@@ -441,6 +594,7 @@ class Application:
 def run_application(
     shortcuts: Iterable[Shortcut],
     stt_config: Optional[STTConfig] = None,
+    llm_config: Optional[LLMConfig] = None,
 ) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
     from .tray_icon import TrayIcon
@@ -453,7 +607,20 @@ def run_application(
         pass
 
     app = QApplication.instance() or QApplication([])
-    application = Application(shortcuts, stt_config=stt_config)
+
+    # Build the answer panel eagerly so we can attach it to the
+    # application before start() so the engine's first events have
+    # somewhere to land.
+    answer_panel: Optional[AnswerPanel] = None
+    if llm_config is not None:
+        answer_panel = AnswerPanel()
+
+    application = Application(
+        shortcuts,
+        stt_config=stt_config,
+        llm_config=llm_config,
+        answer_panel=answer_panel,
+    )
     application.start()
 
     _LOGGER.info(
@@ -468,35 +635,63 @@ def run_application(
             else "no stt config"
         ),
     )
+    _LOGGER.info(
+        "LLM initial state: engine=%s persona=%s",
+        "configured" if application.fact_checker() else "none",
+        llm_config.persona if llm_config is not None else "n/a",
+    )
 
-    def _stt_state() -> Optional[TrayIndicatorState]:
-        """Return the indicator state for the tray icon.
-
-        ``None`` means STT is not configured at all (the tray hides
-        the indicator menu entries). Otherwise the state encodes
-        whether STT is enabled, whether the engine is running, and
-        whether the typing/trigger sub-flags are on.
-        """
+    def _build_tray_state() -> Optional[TrayIndicatorState]:
+        """Compose the full tray state (STT dots + fact-check dot)."""
 
         from .tray_indicators import compose_state
 
+        # STT component
         engine = application.stt_engine()
-        stt_config = application._stt_config  # noqa: SLF001 — internal access
-        stt_configured = bool(stt_config and stt_config.enabled)
+        stt_cfg = application._stt_config  # noqa: SLF001
+        stt_configured = bool(stt_cfg and stt_cfg.enabled)
         if engine is None:
             if not stt_configured:
-                return None
-            return compose_state(
-                stt_configured=True,
-                engine_running=False,
-                triggers_enabled=False,
-                typing_active=False,
+                stt_state = None
+            else:
+                stt_state = compose_state(
+                    stt_configured=True,
+                    engine_running=False,
+                    triggers_enabled=False,
+                    typing_active=False,
+                )
+        else:
+            stt_state = compose_state(
+                stt_configured=stt_configured,
+                engine_running=engine.is_running,
+                triggers_enabled=engine.triggers_enabled,
+                typing_active=engine.is_active,
             )
-        return compose_state(
-            stt_configured=stt_configured,
-            engine_running=engine.is_running,
-            triggers_enabled=engine.triggers_enabled,
-            typing_active=engine.is_active,
+
+        # Fact-checker component
+        fc = application.fact_checker()
+        llm_cfg = application.llm_config()
+        if llm_cfg is not None and fc is not None:
+            fact_state = compose_fact_check_state(configured=True, phase=fc.phase)
+        elif llm_cfg is not None:
+            # Configured but engine not built (no API key) — show the
+            # dot in the "idle" color so the user knows the feature
+            # is wired but disabled.
+            fact_state = compose_fact_check_state(configured=True, phase="idle")
+        else:
+            fact_state = compose_fact_check_state(configured=False, phase="idle")
+
+        if stt_state is None:
+            # No STT at all, but a configured fact-checker still
+            # warrants an icon (just with the fact-check dot).
+            if fact_state.configured:
+                return TrayIndicatorState(enabled=False, fact_check=fact_state)
+            return None
+        return TrayIndicatorState(
+            stt_active=stt_state.stt_active,
+            typing_active=stt_state.typing_active,
+            enabled=stt_state.enabled,
+            fact_check=fact_state,
         )
 
     def _toggle_stt() -> None:
@@ -510,6 +705,13 @@ def run_application(
         engine.trigger()
         # tray.refresh_stt_label() is also called via the engine observer.
 
+    def _toggle_fact_check() -> None:
+        fc = application.fact_checker()
+        if fc is None:
+            _LOGGER.info("Tray fact-checker toggle ignored: no engine configured")
+            return
+        fc.toggle()
+
     tray_holder: Dict[str, Optional[TrayIcon]] = {"tray": None}
 
     def _refresh_tray_label() -> None:
@@ -517,17 +719,21 @@ def run_application(
         if tray is not None:
             tray.refresh_stt_label()
 
-    # Wire observer so the tray updates on every state change.
+    # Wire observers so the tray updates on every state change.
     engine = application.stt_engine()
     if engine is not None:
         engine.add_observer(_refresh_tray_label)
+    fc_engine = application.fact_checker()
+    if fc_engine is not None:
+        fc_engine.add_observer(_refresh_tray_label)
 
     # Create system tray icon with quit callback
     tray = TrayIcon(
         on_quit=lambda: (application.stop(), app.quit()),
         on_open_configurator=_open_configurator,
         on_toggle_stt=_toggle_stt,
-        stt_state_provider=_stt_state,
+        on_toggle_fact_check=_toggle_fact_check,
+        stt_state_provider=_build_tray_state,
     )
     tray_holder["tray"] = tray
     tray.show()
@@ -538,7 +744,11 @@ def run_application(
     finally:
         if engine is not None:
             engine.remove_observer(_refresh_tray_label)
+        if fc_engine is not None:
+            fc_engine.remove_observer(_refresh_tray_label)
         application.stop()
+        if answer_panel is not None:
+            answer_panel.close()
         tray.hide()
 
 
