@@ -71,7 +71,7 @@ def test_save_shortcuts_empty_list(temp_config_dir: Path, temp_schema: Path) -> 
 
     assert config_path.exists()
     data = json.loads(config_path.read_text())
-    assert data["version"] == "1.4.0"
+    assert data["version"] == "1.5.0"
     assert data["shortcuts"] == []
 
 

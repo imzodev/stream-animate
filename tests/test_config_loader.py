@@ -226,7 +226,7 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    _, shortcuts, stt = load_full_config(
+    _, shortcuts, stt, _ = load_full_config(
         config_path, schema_path=schema_path, sample_path=sample_path
     )
     assert len(shortcuts) == 1
@@ -243,7 +243,7 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
     save_config(
         None, shortcuts, config_path=config_path, schema_path=schema_path, stt=stt
     )
-    _, _, stt2 = load_full_config(
+    _, _, stt2, _ = load_full_config(
         config_path, schema_path=schema_path, sample_path=sample_path
     )
     assert stt2 == stt
@@ -259,7 +259,7 @@ def test_stt_omitted_returns_none(tmp_path: Path) -> None:
         json.dumps({"shortcuts": [{"hotkey": "a"}]}), encoding="utf-8"
     )
 
-    _, _, stt = load_full_config(
+    _, _, stt, _ = load_full_config(
         config_path, schema_path=schema_path, sample_path=sample_path
     )
     assert stt is None
@@ -289,7 +289,7 @@ def test_stt_save_without_stt_preserves_existing(tmp_path: Path) -> None:
 
     # Save without stt -> existing stt block should be preserved
     save_config(None, [], config_path=config_path, schema_path=schema_path)
-    _, _, stt = load_full_config(
+    _, _, stt, _ = load_full_config(
         config_path, schema_path=schema_path, sample_path=sample_path
     )
     assert stt is not None
@@ -483,3 +483,191 @@ def test_trigger_phrases_accepts_single_string(
 
     shortcuts = config_loader.load_shortcuts(config_path, schema_path=schema_path)
     assert shortcuts[0].trigger_phrases == ("just one",)
+
+
+# ---------------------------------------------------------------------------
+# LLM config (schema 1.5.0)
+# ---------------------------------------------------------------------------
+
+
+def _write_schema_with_llm(path: Path) -> None:
+    """Schema that also accepts the 'llm' and 'stt' sections."""
+
+    schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "required": ["shortcuts"],
+        "properties": {
+            "version": {"type": "string"},
+            "shortcuts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": ["hotkey"],
+                    "properties": {
+                        "hotkey": {"type": "string"},
+                        "fact_check": {"type": "boolean"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "stt": {"type": "object", "additionalProperties": False},
+            "llm": {
+                "type": "object",
+                "properties": {
+                    "base_url": {"type": "string"},
+                    "model": {"type": "string"},
+                    "api_key_env": {"type": "string"},
+                    "persona": {"type": "string"},
+                    "system_prompt": {"type": ["string", "null"]},
+                    "temperature": {"type": "number"},
+                    "max_tokens": {"type": "integer"},
+                    "toggle_hotkey": {"type": ["string", "null"]},
+                    "timeout_seconds": {"type": "integer"},
+                },
+                "additionalProperties": False,
+            },
+        },
+        "additionalProperties": False,
+    }
+    path.write_text(json.dumps(schema), encoding="utf-8")
+
+
+def test_llm_config_round_trip(tmp_path: Path) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+    sample_path = tmp_path / "shortcuts.sample.json"
+
+    _write_schema_with_llm(schema_path)
+    config_path.write_text(
+        json.dumps(
+            {
+                "shortcuts": [{"hotkey": "a"}],
+                "llm": {
+                    "base_url": "https://api.deepseek.com/v1",
+                    "model": "deepseek-chat",
+                    "api_key_env": "DEEPSEEK_KEY",
+                    "persona": "eli5",
+                    "system_prompt": None,
+                    "temperature": 0.7,
+                    "max_tokens": 1024,
+                    "toggle_hotkey": "<ctrl>+<alt>+q",
+                    "timeout_seconds": 45,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from stream_companion.llm.config import LLMConfig
+
+    _, _, _, llm = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert llm is not None
+    assert llm == LLMConfig(
+        base_url="https://api.deepseek.com/v1",
+        model="deepseek-chat",
+        api_key_env="DEEPSEEK_KEY",
+        persona="eli5",
+        system_prompt=None,
+        temperature=0.7,
+        max_tokens=1024,
+        toggle_hotkey="<ctrl>+<alt>+q",
+        timeout_seconds=45,
+    )
+
+    # Round-trip via save_config
+    save_config(
+        None,
+        [],
+        config_path=config_path,
+        schema_path=schema_path,
+        llm=llm,
+    )
+    _, _, _, llm2 = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert llm2 == llm
+
+
+def test_llm_omitted_returns_none(tmp_path: Path) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+    sample_path = tmp_path / "shortcuts.sample.json"
+
+    _write_schema_with_llm(schema_path)
+    config_path.write_text(
+        json.dumps({"shortcuts": [{"hotkey": "a"}]}), encoding="utf-8"
+    )
+
+    _, _, _, llm = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert llm is None
+
+
+def test_llm_save_without_llm_preserves_existing(tmp_path: Path) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+    sample_path = tmp_path / "shortcuts.sample.json"
+
+    _write_schema_with_llm(schema_path)
+    config_path.write_text(
+        json.dumps(
+            {
+                "shortcuts": [{"hotkey": "a"}],
+                "llm": {
+                    "base_url": "https://api.deepseek.com/v1",
+                    "model": "deepseek-chat",
+                    "api_key_env": "DEEPSEEK_KEY",
+                    "persona": "eli5",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    # Save without llm -> existing llm block must be preserved.
+    save_config(None, [], config_path=config_path, schema_path=schema_path)
+    _, _, _, llm = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert llm is not None
+    assert llm.base_url == "https://api.deepseek.com/v1"
+    assert llm.model == "deepseek-chat"
+
+
+def test_fact_check_shortcut_round_trip(tmp_path: Path) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+    sample_path = tmp_path / "shortcuts.sample.json"
+
+    _write_schema_with_llm(schema_path)
+    config_path.write_text(
+        json.dumps(
+            {
+                "shortcuts": [
+                    {"hotkey": "a"},
+                    {"hotkey": "b", "fact_check": True},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    _, shortcuts, _, _ = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert shortcuts[0].fact_check is False
+    assert shortcuts[1].fact_check is True
+
+
+def test_save_config_writes_version_1_5_0(tmp_path: Path) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+
+    _write_schema_with_llm(schema_path)
+    save_config(None, [], config_path=config_path, schema_path=schema_path)
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["version"] == "1.5.0"

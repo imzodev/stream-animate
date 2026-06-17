@@ -9,9 +9,14 @@ from typing import List, Optional, Tuple
 
 import jsonschema
 
+from .llm.config import LLMConfig
 from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
 
 _LOGGER = logging.getLogger(__name__)
+
+# Bump the schema version when adding new top-level blocks or fields.
+# Keep this in sync with config/schema.json.
+SCHEMA_VERSION = "1.5.0"
 
 
 class ConfigError(RuntimeError):
@@ -182,6 +187,7 @@ def _hydrate_config(data: dict) -> Tuple[Optional[ActivatorConfig], List[Shortcu
                 overlay=overlay,
                 trigger_word=raw.get("trigger_word"),
                 trigger_phrases=trigger_phrases_tuple,
+                fact_check=bool(raw.get("fact_check", False)),
             )
         except KeyError as exc:
             raise ConfigError(
@@ -223,8 +229,18 @@ def load_full_config(
     *,
     schema_path: Optional[Path] = None,
     sample_path: Optional[Path] = None,
-) -> Tuple[Optional[ActivatorConfig], List[Shortcut], Optional[STTConfig]]:
-    """Load full configuration: activator, shortcuts, and STT config."""
+) -> Tuple[
+    Optional[ActivatorConfig],
+    List[Shortcut],
+    Optional[STTConfig],
+    Optional[LLMConfig],
+]:
+    """Load full configuration: activator, shortcuts, STT, and LLM config.
+
+    Returns a 4-tuple. The LLM config defaults to ``LLMConfig()`` when
+    the file is older than schema 1.5.0 and has no ``llm`` block, so
+    existing 1.4.0 files keep working without a migration step.
+    """
 
     cfg_path, sch_path, samp_path = _resolve_paths(
         config_path, schema_path, sample_path
@@ -239,13 +255,15 @@ def load_full_config(
     _validate_config(data, sch_path)
     activator, shortcuts = _hydrate_config(data)
     stt = _hydrate_stt_config(data.get("stt"))
+    llm = _hydrate_llm_config(data.get("llm"))
     _LOGGER.info(
-        "Loaded %d shortcuts from %s (stt=%s)",
+        "Loaded %d shortcuts from %s (stt=%s, llm=%s)",
         len(shortcuts),
         cfg_path,
         "on" if stt and stt.enabled else "off",
+        "on" if llm else "off",
     )
-    return activator, shortcuts, stt
+    return activator, shortcuts, stt, llm
 
 
 def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
@@ -276,6 +294,44 @@ def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
         raise ConfigError(f"Invalid STT configuration: {exc}") from exc
 
 
+def _hydrate_llm_config(raw: Optional[dict]) -> Optional[LLMConfig]:
+    """Build an LLMConfig from the raw 'llm' section, or None if missing.
+
+    Returning None (rather than ``LLMConfig()`` defaults) when the
+    block is absent lets callers distinguish "user has not configured
+    the LLM" from "user wants the defaults". ``load_full_config``
+    currently converts None to a default; the loader returns None to
+    preserve the option for future callers.
+    """
+
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return LLMConfig(
+            base_url=str(raw.get("base_url", LLMConfig().base_url)),
+            model=str(raw.get("model", LLMConfig().model)),
+            api_key_env=str(raw.get("api_key_env", LLMConfig().api_key_env)),
+            persona=str(raw.get("persona", LLMConfig().persona)),
+            system_prompt=(
+                str(raw["system_prompt"])
+                if raw.get("system_prompt") is not None
+                else None
+            ),
+            temperature=float(raw.get("temperature", LLMConfig().temperature)),
+            max_tokens=int(raw.get("max_tokens", LLMConfig().max_tokens)),
+            toggle_hotkey=(
+                str(raw["toggle_hotkey"])
+                if raw.get("toggle_hotkey") is not None
+                else None
+            ),
+            timeout_seconds=int(
+                raw.get("timeout_seconds", LLMConfig().timeout_seconds)
+            ),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(f"Invalid LLM configuration: {exc}") from exc
+
+
 def save_shortcuts(
     shortcuts: List[Shortcut],
     config_path: Optional[Path] = None,
@@ -294,6 +350,7 @@ def _serialize(
     activator: Optional[ActivatorConfig],
     shortcuts: List[Shortcut],
     stt: Optional[STTConfig] = None,
+    llm: Optional[LLMConfig] = None,
 ) -> dict:
     """Convert config to JSON-serializable dictionary."""
 
@@ -327,9 +384,13 @@ def _serialize(
             entry["trigger_phrases"] = [
                 p for p in (raw.strip() for raw in shortcut.trigger_phrases) if p
             ]
+        if shortcut.fact_check:
+            # Only serialize the fact_check flag when True so the
+            # default-False case keeps old configs byte-identical.
+            entry["fact_check"] = True
         serialized.append(entry)
 
-    data: dict = {"version": "1.4.0", "shortcuts": serialized}
+    data: dict = {"version": SCHEMA_VERSION, "shortcuts": serialized}
     if activator is not None:
         data["activator"] = {
             "hotkey": activator.hotkey,
@@ -353,6 +414,18 @@ def _serialize(
             "type_into_focused_window": stt.type_into_focused_window,
             "voice_triggers_enabled": stt.voice_triggers_enabled,
         }
+    if llm is not None:
+        data["llm"] = {
+            "base_url": llm.base_url,
+            "model": llm.model,
+            "api_key_env": llm.api_key_env,
+            "persona": llm.persona,
+            "system_prompt": llm.system_prompt,
+            "temperature": llm.temperature,
+            "max_tokens": llm.max_tokens,
+            "toggle_hotkey": llm.toggle_hotkey,
+            "timeout_seconds": llm.timeout_seconds,
+        }
     return data
 
 
@@ -363,6 +436,7 @@ def save_config(
     config_path: Optional[Path] = None,
     schema_path: Optional[Path] = None,
     stt: Optional[STTConfig] = None,
+    llm: Optional[LLMConfig] = None,
 ) -> None:
     """Save full configuration including optional activator and shortcuts.
 
@@ -370,24 +444,29 @@ def save_config(
         stt: Optional STTConfig to persist. ``None`` means "do not touch the
             'stt' key" (preserves whatever is already on disk during a partial
             save). Pass an ``STTConfig`` to write it explicitly.
+        llm: Same partial-save semantics for the ``llm`` block.
     """
 
     cfg_path, sch_path, _ = _resolve_paths(config_path, schema_path, None)
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if stt is not None:
-        data = _serialize(activator, shortcuts, stt)
-    else:
-        # Preserve existing stt section if present
-        existing_stt: Optional[STTConfig] = None
-        if cfg_path.exists():
-            try:
-                raw = json.loads(cfg_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                raw = None
-            if isinstance(raw, dict):
-                existing_stt = _hydrate_stt_config(raw.get("stt"))
-        data = _serialize(activator, shortcuts, existing_stt)
+    existing_stt: Optional[STTConfig] = None
+    existing_llm: Optional[LLMConfig] = None
+    if cfg_path.exists():
+        try:
+            raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            raw = None
+        if isinstance(raw, dict):
+            existing_stt = _hydrate_stt_config(raw.get("stt"))
+            existing_llm = _hydrate_llm_config(raw.get("llm"))
+
+    data = _serialize(
+        activator,
+        shortcuts,
+        stt if stt is not None else existing_stt,
+        llm if llm is not None else existing_llm,
+    )
     _validate_config(data, sch_path)
 
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

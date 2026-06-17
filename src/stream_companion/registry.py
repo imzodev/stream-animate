@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Iterable, List, Optional
 
 from .config_loader import ConfigError, load_config, load_full_config
+from .llm.config import LLMConfig
 from .models import ActivatorConfig, Shortcut, STTConfig
-
 
 _LOGGER = logging.getLogger(__name__)
 _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
@@ -16,6 +16,7 @@ _ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
 _CACHED_ACTIVATOR: Optional[ActivatorConfig] = None
 _CACHED_SHORTCUTS: Optional[list[Shortcut]] = None
 _CACHED_STT: Optional[STTConfig] = None
+_CACHED_LLM: Optional[LLMConfig] = None
 _FULL_CONFIG_LOADED: bool = False
 
 
@@ -31,7 +32,8 @@ def default_shortcuts() -> List[Shortcut]:
 
 
 def _load_config_cached() -> tuple[Optional[ActivatorConfig], list[Shortcut]]:
-    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
+    global _CACHED_ACTIVATOR
+    global _CACHED_SHORTCUTS
     if _CACHED_SHORTCUTS is not None:
         return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
     try:
@@ -45,24 +47,33 @@ def _load_config_cached() -> tuple[Optional[ActivatorConfig], list[Shortcut]]:
     return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS
 
 
-def _load_full_config_cached() -> (
-    tuple[Optional[ActivatorConfig], list[Shortcut], Optional[STTConfig]]
-):
-    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _FULL_CONFIG_LOADED
+def _load_full_config_cached() -> tuple[
+    Optional[ActivatorConfig],
+    list[Shortcut],
+    Optional[STTConfig],
+    Optional[LLMConfig],
+]:
+    global _CACHED_ACTIVATOR
+    global _CACHED_SHORTCUTS
+    global _CACHED_STT
+    global _CACHED_LLM
+    global _FULL_CONFIG_LOADED
     if _FULL_CONFIG_LOADED:
-        return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
+        return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _CACHED_LLM
     try:
-        activator, shortcuts, stt = load_full_config()
+        activator, shortcuts, stt, llm = load_full_config()
         _CACHED_ACTIVATOR = activator
         _CACHED_SHORTCUTS = list(shortcuts)
         _CACHED_STT = stt
+        _CACHED_LLM = llm
     except ConfigError as exc:
         _LOGGER.warning("Falling back to built-in shortcuts: %s", exc)
         _CACHED_ACTIVATOR = None
         _CACHED_SHORTCUTS = list(default_shortcuts())
         _CACHED_STT = None
+        _CACHED_LLM = None
     _FULL_CONFIG_LOADED = True
-    return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT
+    return _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _CACHED_LLM
 
 
 def get_activator() -> Optional[ActivatorConfig]:
@@ -80,17 +91,33 @@ def iter_shortcuts() -> Iterable[Shortcut]:
 def get_stt_config() -> Optional[STTConfig]:
     """Return the speech-to-text configuration, if present."""
 
-    _, _, stt = _load_full_config_cached()
+    _, _, stt, _ = _load_full_config_cached()
     return stt
+
+
+def get_llm_config() -> Optional[LLMConfig]:
+    """Return the LLM fact-checker configuration, if present.
+
+    Returns ``None`` when the LLM block is absent from the config file
+    (i.e. schema < 1.5.0 or the user has not configured it).
+    """
+
+    _, _, _, llm = _load_full_config_cached()
+    return llm
 
 
 def reload_config() -> None:
     """Clear the config cache so the next call reloads from disk."""
 
-    global _CACHED_ACTIVATOR, _CACHED_SHORTCUTS, _CACHED_STT, _FULL_CONFIG_LOADED
+    global _CACHED_ACTIVATOR
+    global _CACHED_SHORTCUTS
+    global _CACHED_STT
+    global _CACHED_LLM
+    global _FULL_CONFIG_LOADED
     _CACHED_ACTIVATOR = None
     _CACHED_SHORTCUTS = None
     _CACHED_STT = None
+    _CACHED_LLM = None
     _FULL_CONFIG_LOADED = False
 
 
