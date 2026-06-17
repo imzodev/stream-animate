@@ -30,9 +30,11 @@ from PySide6.QtWidgets import (
 
 from .. import model_downloader
 from ..config_loader import ConfigError, load_full_config, save_config
+from ..llm.config import LLMConfig
 from ..models import ActivatorConfig, OverlayConfig, Shortcut
 from ..overlay import OverlayWindow
 from ..sound import SoundPlayer
+from .llm_section import LLMSection
 from .sections import STTSection, ShortcutSection
 from .widgets import HotkeyCapture
 
@@ -50,6 +52,7 @@ class ConfiguratorWindow(QMainWindow):
         self._shortcuts: List[Shortcut] = []
         self._activator: Optional[ActivatorConfig] = None
         self._stt_config = None
+        self._llm_config: Optional[LLMConfig] = None
         self._current_index: Optional[int] = None
         self._sound_player = SoundPlayer()
         self._overlay_window = OverlayWindow()
@@ -88,7 +91,9 @@ class ConfiguratorWindow(QMainWindow):
         global_panel = self._build_global_panel()
         # Tab 2: Speech-to-Text
         self._stt_section = STTSection()
-        # Tab 3: Shortcut Details
+        # Tab 3: AI Assistant (LLM)
+        self._llm_section = LLMSection()
+        # Tab 4: Shortcut Details
         shortcut_panel = QWidget()
         shortcut_layout = QVBoxLayout()
         shortcut_panel.setLayout(shortcut_layout)
@@ -109,6 +114,7 @@ class ConfiguratorWindow(QMainWindow):
 
         tabs.addTab(global_panel, "Global Settings")
         tabs.addTab(self._stt_section, "Speech-to-Text")
+        tabs.addTab(self._llm_section, "AI Assistant")
         tabs.addTab(shortcut_panel, "Shortcuts")
 
         main_layout.addLayout(left_panel, 1)
@@ -155,7 +161,12 @@ class ConfiguratorWindow(QMainWindow):
     def _load_shortcuts(self) -> None:
         """Load shortcuts from configuration file."""
         try:
-            self._activator, self._shortcuts, self._stt_config = load_full_config()
+            (
+                self._activator,
+                self._shortcuts,
+                self._stt_config,
+                self._llm_config,
+            ) = load_full_config()
             self._refresh_list()
             _LOGGER.info("Loaded %d shortcuts", len(self._shortcuts))
             if self._activator:
@@ -173,6 +184,7 @@ class ConfiguratorWindow(QMainWindow):
                 self._timeout_input.setValue(1500)
                 self._mode_press.setChecked(True)
             self._stt_section.populate(self._stt_config)
+            self._llm_section.populate(self._llm_config)
         except ConfigError as exc:
             QMessageBox.critical(self, "Configuration Error", str(exc))
             _LOGGER.error("Failed to load shortcuts: %s", exc)
@@ -308,6 +320,8 @@ class ConfiguratorWindow(QMainWindow):
         validation_errors = self._validate_shortcuts()
         stt_config = self._stt_section.read()
         validation_errors.extend(self._stt_section.validate(stt_config))
+        llm_config = self._llm_section.read()
+        validation_errors.extend(self._llm_section.validate(llm_config))
         if validation_errors:
             QMessageBox.warning(
                 self,
@@ -327,11 +341,13 @@ class ConfiguratorWindow(QMainWindow):
                     timeout_ms=self._timeout_input.value(),
                 )
             self._stt_config = stt_config
-            save_config(activator, self._shortcuts, stt=stt_config)
+            self._llm_config = llm_config
+            save_config(activator, self._shortcuts, stt=stt_config, llm=llm_config)
             _LOGGER.info(
-                "Saved %d shortcuts (stt=%s)",
+                "Saved %d shortcuts (stt=%s, llm=%s)",
                 len(self._shortcuts),
                 "on" if stt_config else "off",
+                llm_config.persona,
             )
             self._maybe_preload_stt_model(stt_config)
             QMessageBox.information(

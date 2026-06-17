@@ -183,12 +183,21 @@ class FactCheckerEngine:
                 daemon=True,
             )
             self._thread.start()
+            # Emit the "listening" event under the same lock so the
+            # observer list cannot be mutated between
+            # ``start()`` and ``_emit()`` by a concurrent add/remove.
+            self._phase = "listening"
+            observers = list(self._observers)
+        for cb in observers:
+            try:
+                cb(FactCheckerEvent(phase="listening"))
+            except Exception:  # pragma: no cover - user callback
+                _LOGGER.exception("Fact-checker observer raised")
         _LOGGER.info(
             "Fact-checker toggle: start (model=%s, persona=%s)",
             self._config.model,
             self._config.persona,
         )
-        self._emit(FactCheckerEvent(phase="listening"))
 
     def add_observer(self, callback: Callable[[FactCheckerEvent], None]) -> None:
         with self._lock:
@@ -227,19 +236,19 @@ class FactCheckerEngine:
         if self._stop_event.is_set():
             # User cancelled before the question completed; drop it.
             self._set_phase("idle")
+            self._emit(FactCheckerEvent(phase="idle"))
             with self._lock:
                 self._listening = False
                 self._thread = None
-            self._emit(FactCheckerEvent(phase="idle"))
             return
         question = accumulated.strip()
         if not question:
             _LOGGER.info("Fact-checker: empty question, returning to idle")
             self._set_phase("idle")
+            self._emit(FactCheckerEvent(phase="idle"))
             with self._lock:
                 self._listening = False
                 self._thread = None
-            self._emit(FactCheckerEvent(phase="idle"))
             return
         with self._lock:
             self._last_question = question
@@ -331,13 +340,16 @@ class FactCheckerEngine:
             self._phase = phase
 
     def _fail(self, message: str) -> None:
+        _LOGGER.error("Fact-checker error: %s", message)
+        self._set_phase("error")
+        # Emit the error event BEFORE clearing ``_thread`` so a caller
+        # polling ``is_running`` cannot observe the thread as gone
+        # before the event has been delivered to observers.
+        self._emit(FactCheckerEvent(phase="error", text=message))
         with self._lock:
             self._last_error = message
             self._listening = False
             self._thread = None
-        _LOGGER.error("Fact-checker error: %s", message)
-        self._set_phase("error")
-        self._emit(FactCheckerEvent(phase="error", text=message))
 
     def _emit(self, event: FactCheckerEvent) -> None:
         with self._lock:
