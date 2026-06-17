@@ -1,0 +1,353 @@
+"""Tests for the OpenAI-compatible streaming client."""
+
+from __future__ import annotations
+
+import json
+from typing import Callable, List
+
+import httpx
+import pytest
+
+from stream_companion.llm import FactCheckerClient, LLMError
+from stream_companion.models import LLMConfig
+
+# ---------------------------------------------------------------------------
+# Test helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_sse(chunks: List[dict]) -> bytes:
+    """Encode a list of chunk dicts as an SSE byte stream."""
+    parts: List[bytes] = []
+    for c in chunks:
+        parts.append(b"data: " + json.dumps(c).encode("utf-8") + b"\n\n")
+    parts.append(b"data: [DONE]\n\n")
+    return b"".join(parts)
+
+
+def _make_handler(
+    response_factory: Callable[[httpx.Request], httpx.Response],
+) -> httpx.MockTransport:
+    return httpx.MockTransport(response_factory)
+
+
+def _ok_response(chunks: List[dict]) -> httpx.Response:
+    return httpx.Response(
+        200,
+        headers={"content-type": "text/event-stream"},
+        content=_make_sse(chunks),
+    )
+
+
+def _chunks_with_tokens(*tokens: str) -> List[dict]:
+    return [
+        {
+            "id": "chatcmpl-1",
+            "object": "chat.completion.chunk",
+            "choices": [{"index": 0, "delta": {"content": t}}],
+        }
+        for t in tokens
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Construction
+# ---------------------------------------------------------------------------
+
+
+def test_construction_rejects_missing_v1(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    cfg = LLMConfig(base_url="https://api.example.com")
+    with pytest.raises(LLMError) as exc:
+        FactCheckerClient(cfg)
+    assert "config" == exc.value.message
+    assert "/v1" in exc.value.body
+
+
+def test_construction_rejects_non_http(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    cfg = LLMConfig(base_url="ftp://nope")
+    with pytest.raises(LLMError) as exc:
+        FactCheckerClient(cfg)
+    assert "config" == exc.value.message
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "https://api.openai.com/v1",
+        "https://api.openai.com/v1/",
+        "https://api.deepseek.com/v1",
+        "https://api.minimax.com/v1",
+        "http://localhost:11434/v1",  # Ollama default
+    ],
+)
+def test_construction_accepts_known_providers(
+    base_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    client = FactCheckerClient(LLMConfig(base_url=base_url))
+    client.close()
+
+
+# ---------------------------------------------------------------------------
+# Streaming — happy path
+# ---------------------------------------------------------------------------
+
+
+def test_stream_yields_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    captured: List[httpx.Request] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured.append(req)
+        return _ok_response(_chunks_with_tokens("Hello", " world", "!"))
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        tokens = list(client.stream("Why is the sky blue?"))
+    finally:
+        http_client.close()
+
+    assert tokens == ["Hello", " world", "!"]
+    assert len(captured) == 1
+    req = captured[0]
+    assert req.method == "POST"
+    assert str(req.url).endswith("/chat/completions")
+    body = json.loads(req.content.decode("utf-8"))
+    assert body["model"] == "gpt-4o-mini"
+    assert body["stream"] is True
+    assert body["messages"][0]["role"] == "system"
+    assert body["messages"][1] == {"role": "user", "content": "Why is the sky blue?"}
+    assert "Bearer sk-test" in req.headers["authorization"]
+
+
+def test_stream_sends_resolved_system_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    captured_body: List[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured_body.append(json.loads(req.content.decode("utf-8")))
+        return _ok_response(_chunks_with_tokens("ok"))
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(
+            LLMConfig(persona="eli5"),
+            http_client=http_client,
+        )
+        list(client.stream("q"))
+    finally:
+        http_client.close()
+
+    assert "like they are five" in captured_body[0]["messages"][0]["content"]
+
+
+def test_stream_handles_role_only_chunk(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    chunks = [
+        {"choices": [{"index": 0, "delta": {"role": "assistant"}}]},
+        *_chunks_with_tokens("Hi"),
+    ]
+    transport = _make_handler(lambda _r: _ok_response(chunks))
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        assert list(client.stream("q")) == ["Hi"]
+    finally:
+        http_client.close()
+
+
+def test_stream_handles_ollama_style_message_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    chunks = [
+        {
+            "choices": [
+                {"index": 0, "delta": {}, "message": {"content": "ollama-token"}}
+            ]
+        },
+    ]
+    transport = _make_handler(lambda _r: _ok_response(chunks))
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        assert list(client.stream("q")) == ["ollama-token"]
+    finally:
+        http_client.close()
+
+
+# ---------------------------------------------------------------------------
+# Streaming — error paths
+# ---------------------------------------------------------------------------
+
+
+def test_stream_raises_when_api_key_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+
+    # A handler that should never be reached.
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise AssertionError("HTTP should not be called without an API key")
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        with pytest.raises(LLMError) as exc:
+            list(client.stream("q"))
+        assert exc.value.message == "auth"
+    finally:
+        http_client.close()
+
+
+@pytest.mark.parametrize("status", [401, 403, 429, 500, 502, 503])
+def test_stream_raises_on_http_error(
+    status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, text="upstream error")
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        with pytest.raises(LLMError) as exc:
+            list(client.stream("q"))
+        assert exc.value.status == status
+        assert "upstream error" in exc.value.body
+    finally:
+        http_client.close()
+
+
+def test_stream_raises_on_network_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("dns blew up")
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        with pytest.raises(LLMError) as exc:
+            list(client.stream("q"))
+        assert exc.value.message == "network"
+        assert "dns blew up" in exc.value.body
+    finally:
+        http_client.close()
+
+
+def test_stream_skips_malformed_lines(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    body = (
+        b"data: not-json-at-all\n\n"
+        b"data: " + json.dumps(_chunks_with_tokens("A")[0]).encode() + b"\n\n"
+        b"data: {also-bad}\n\n"
+        b"data: " + json.dumps(_chunks_with_tokens("B")[0]).encode() + b"\n\n"
+        b"data: [DONE]\n\n"
+    )
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=body,
+        )
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        assert list(client.stream("q")) == ["A", "B"]
+    finally:
+        http_client.close()
+
+
+def test_stream_skips_sse_comments(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    body = (
+        b": this is a comment line\n\n"
+        b"data: " + json.dumps(_chunks_with_tokens("ok")[0]).encode() + b"\n\n"
+        b"data: [DONE]\n\n"
+    )
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=body,
+        )
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        assert list(client.stream("q")) == ["ok"]
+    finally:
+        http_client.close()
+
+
+def test_stream_early_break_closes_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    # Many chunks; the caller will stop after the first.
+    chunks = _chunks_with_tokens("a", "b", "c", "d", "e")
+    transport = _make_handler(lambda _r: _ok_response(chunks))
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(LLMConfig(), http_client=http_client)
+        gen = client.stream("q")
+        first = next(gen)
+        gen.close()
+        assert first == "a"
+    finally:
+        http_client.close()
+
+
+# ---------------------------------------------------------------------------
+# Redaction
+# ---------------------------------------------------------------------------
+
+
+def test_redact_body_strips_api_keys() -> None:
+    # This indirectly exercises _redact_body through the HTTP error path.
+    from stream_companion.llm.client import _redact_body
+
+    redacted = _redact_body("Authorization: Bearer sk-1234567890abcdef more text")
+    assert "sk-1234567890abcdef" not in redacted
+    assert "[REDACTED]" in redacted
+
+
+def test_error_body_truncated() -> None:
+    from stream_companion.llm.client import _MAX_ERROR_BODY, _redact_body
+
+    huge = "x" * (_MAX_ERROR_BODY * 4)
+    redacted = _redact_body(huge)
+    assert redacted.endswith("...[truncated]")
+
+
+# ---------------------------------------------------------------------------
+# context manager
+# ---------------------------------------------------------------------------
+
+
+def test_context_manager_closes_owned_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    with FactCheckerClient(LLMConfig()) as c:
+        assert c.config.model == "gpt-4o-mini"
+    # No assertion needed — close() on the default client is safe to call.
