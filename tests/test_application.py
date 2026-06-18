@@ -245,12 +245,14 @@ def test_application_fact_check_event_drives_panel(shortcut: Shortcut, qt_app) -
     class FakePanel:
         def __init__(self) -> None:
             self.tokens: List[str] = []
+            self.kinds: List[str] = []
             self.phases: List[str] = []
             self.cleared = False
             self.shown = False
 
-        def append_token(self, token: str) -> None:
+        def append_token(self, token: str, *, kind: str = "answer") -> None:
             self.tokens.append(token)
+            self.kinds.append(kind)
 
         def clear(self) -> None:
             self.cleared = True
@@ -289,7 +291,57 @@ def test_application_fact_check_event_drives_panel(shortcut: Shortcut, qt_app) -
     assert panel.cleared is True
     assert panel.shown is True
     assert panel.tokens == ["Hello", " world"]
+    assert panel.kinds == ["answer", "answer"]
     assert panel.phases == ["listening", "thinking", "streaming", "streaming", "done"]
+
+
+def test_application_fact_check_event_reasoning_kind(
+    shortcut: Shortcut, qt_app
+) -> None:
+    """Reasoning tokens are appended with kind='reasoning' so the
+    panel can render them differently from the final answer."""
+    from stream_companion.fact_checker import FactCheckerEvent
+
+    class FakePanel:
+        def __init__(self) -> None:
+            self.tokens: List[str] = []
+            self.kinds: List[str] = []
+
+        def append_token(self, token: str, *, kind: str = "answer") -> None:
+            self.tokens.append(token)
+            self.kinds.append(kind)
+
+        def clear(self) -> None:
+            pass
+
+        def set_phase(self, phase: str) -> None:
+            pass
+
+        def set_persona_label(self, name: str) -> None:
+            pass
+
+        def show(self) -> None:
+            pass
+
+    panel = FakePanel()
+    app = Application(
+        [shortcut],
+        sound_player=FakeSoundPlayer(),
+        overlay_window=FakeOverlayWindow(),
+        hotkey_manager=FakeHotkeyManager(),
+        fact_checker=FakeFactCheckerEngine(),
+        answer_panel=panel,  # type: ignore[arg-type]
+    )
+
+    thinking = FactCheckerEvent(
+        phase="streaming", text="hmm", delta="hmm", kind="reasoning"
+    )
+    answer = FactCheckerEvent(phase="streaming", text="4", delta="4", kind="answer")
+    app._handle_fact_check_event_in_main_thread(thinking)  # noqa: SLF001
+    app._handle_fact_check_event_in_main_thread(answer)  # noqa: SLF001
+
+    assert panel.tokens == ["hmm", "4"]
+    assert panel.kinds == ["reasoning", "answer"]
 
 
 def test_application_registers_fact_checker_toggle_hotkey(

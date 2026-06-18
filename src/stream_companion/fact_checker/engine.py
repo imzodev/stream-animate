@@ -67,11 +67,15 @@ class FactCheckerEvent:
             message. Empty for ``"listening"`` and ``"idle"``.
         delta: For ``"streaming"`` this is the latest token delta.
             Empty for all other phases.
+        kind: For ``"streaming"`` events, ``"answer"`` (default) or
+            ``"reasoning"`` (chain-of-thought tokens from a thinking
+            model). Lets the GUI render the two streams differently.
     """
 
     phase: str
     text: str = ""
     delta: str = ""
+    kind: str = "answer"
 
 
 @dataclass
@@ -340,7 +344,13 @@ class FactCheckerEngine:
         return " ".join(accumulated_parts)
 
     def _stream_answer(self, question: str) -> None:
-        """Stream the LLM answer, emitting one event per token delta.
+        """Stream the LLM answer, emitting one event per token chunk.
+
+        Reasoning tokens (from thinking models like DeepSeek Reasoner)
+        are emitted as ``kind="reasoning"`` events; final-answer
+        tokens are emitted as ``kind="answer"``. Both kinds carry the
+        same delta-accumulation semantics — the panel can render
+        them in different colors or styles.
 
         On LLM error, the user-friendly message is surfaced via
         ``_fail`` (which sets phase to "error" and emits the error
@@ -349,20 +359,33 @@ class FactCheckerEngine:
         error is logged at ERROR level by the caller.
         """
         self._set_phase("streaming")
-        streamed: List[str] = []
+        streamed_answer: List[str] = []
+        streamed_reasoning: List[str] = []
         try:
-            for token in self._client.stream(question):
+            for stream_chunk in self._client.stream(question):
                 if self._stop_event.is_set():
                     _LOGGER.info("Fact-checker: user cancelled mid-stream")
                     break
-                streamed.append(token)
-                self._emit(
-                    FactCheckerEvent(
-                        phase="streaming",
-                        text="".join(streamed),
-                        delta=token,
+                if stream_chunk.reasoning:
+                    streamed_reasoning.append(stream_chunk.reasoning)
+                    self._emit(
+                        FactCheckerEvent(
+                            phase="streaming",
+                            text="".join(streamed_reasoning),
+                            delta=stream_chunk.reasoning,
+                            kind="reasoning",
+                        )
                     )
-                )
+                if stream_chunk.content:
+                    streamed_answer.append(stream_chunk.content)
+                    self._emit(
+                        FactCheckerEvent(
+                            phase="streaming",
+                            text="".join(streamed_answer),
+                            delta=stream_chunk.content,
+                            kind="answer",
+                        )
+                    )
         except LLMError as exc:
             self._fail(self._summarize_llm_error(exc))
             raise

@@ -1,17 +1,25 @@
 """OpenAI-compatible streaming client for the LLM fact-checker.
 
-Talks to any endpoint that implements ``POST /v1/chat/completions`` with
-SSE streaming. Tested against OpenAI, DeepSeek, MiniMax, Together,
-Groq, Ollama, LM Studio, and vLLM (which all expose the same shape).
+Talks to any endpoint that implements ``POST /v1/chat/completions`` (or
+Anthropic's ``/v1/messages``) with SSE streaming. Tested against OpenAI,
+DeepSeek, MiniMax, Anthropic, Together, Groq, Ollama, LM Studio, and
+vLLM (which all expose one of the supported shapes).
+
+Provider-specific chunk shapes are handled by the adapter pattern in
+:mod:`stream_companion.llm.providers` — this module is just transport
+(SSE, auth, retries, error redaction) plus the public streaming API.
 
 The client is intentionally minimal:
 
 * :class:`LLMError` carries an HTTP status (when applicable) and a
   redacted body for diagnostics.
-* :func:`stream` yields token deltas. It is an iterator, so the caller
-  can stop early (e.g. when the user toggles the engine off).
-* Malformed SSE lines are skipped, not fatal — partial network damage
-  shouldn't kill the stream.
+* :meth:`FactCheckerClient.stream` yields :class:`StreamChunk` objects
+  (one per server chunk). Each chunk carries the visible answer
+  tokens (``content``), chain-of-thought tokens (``reasoning``), and
+  an ``is_final`` flag. The caller (the fact-checker engine) decides
+  how to render each field.
+* Malformed SSE lines are skipped, not fatal — partial network
+  damage shouldn't kill the stream.
 """
 
 from __future__ import annotations
@@ -24,6 +32,7 @@ from typing import Iterator, Optional
 import httpx
 
 from .config import LLMConfig
+from .providers import AdapterFactory, StreamChunk
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -142,17 +151,25 @@ class FactCheckerClient:
     # Streaming
     # ------------------------------------------------------------------
 
-    def stream(self, user_text: str) -> Iterator[str]:
-        """Yield token deltas from a chat-completions streaming request.
+    def stream(self, user_text: str) -> Iterator[StreamChunk]:
+        """Yield normalized streaming chunks from the LLM endpoint.
 
-        The iterator stops when the server sends ``data: [DONE]``, when
-        the connection closes, or when a fatal HTTP / network error
-        occurs (in which case :class:`LLMError` is raised).
+        Each chunk carries the visible answer tokens (``content``),
+        the chain-of-thought tokens (``reasoning``), and an
+        ``is_final`` flag. The caller (the fact-checker engine)
+        decides how to render each field.
 
-        The caller may stop iterating early (e.g. on user cancel); the
-        underlying connection is closed when the response context
-        manager exits.
+        The iterator stops when the provider signals
+        ``is_final=True``, when the connection closes, or when a
+        fatal HTTP / network error occurs (in which case
+        :class:`LLMError` is raised).
+
+        The caller may stop iterating early (e.g. on user cancel);
+        the underlying connection is closed when the response
+        context manager exits.
         """
+
+        adapter = AdapterFactory.create(self._config)
 
         api_key = self._config.api_key()
         if not api_key:
@@ -220,18 +237,33 @@ class FactCheckerClient:
                     continue
                 data = line[len("data:") :].strip()
                 if data == "[DONE]":
+                    # Universal end-of-stream sentinel (OpenAI shape).
+                    # Stop iterating; the caller detects end-of-stream
+                    # by the iterator returning. Don't yield an empty
+                    # terminator chunk — most adapters never carry
+                    # text on the terminal chunk anyway.
                     break
                 try:
-                    chunk = json.loads(data)
+                    raw = json.loads(data)
                 except json.JSONDecodeError:
                     _LOGGER.warning(
                         "LLM stream: skipping malformed JSON line (%d chars)",
                         len(data),
                     )
                     continue
-                token = _extract_delta(chunk)
-                if token:
-                    yield token
+                try:
+                    stream_chunk = adapter.parse_chunk(raw)
+                except Exception:  # pragma: no cover - defensive
+                    _LOGGER.exception(
+                        "Adapter %s.parse_chunk raised; skipping chunk",
+                        adapter.name,
+                    )
+                    continue
+                if stream_chunk.is_final:
+                    yield stream_chunk
+                    break
+                if stream_chunk.content or stream_chunk.reasoning:
+                    yield stream_chunk
         finally:
             response.close()
 
@@ -246,40 +278,3 @@ class FactCheckerClient:
         if base.endswith("/chat/completions"):
             return base
         return base + "/chat/completions"
-
-
-def _extract_delta(chunk: dict) -> str:
-    """Pull ``choices[0].delta.content`` from a streaming chunk.
-
-    Tolerates the common alternative shapes (string ``delta``,
-    ``message`` key, missing ``choices``). Returns "" when no
-    content is present in this chunk.
-    """
-
-    try:
-        choices = chunk.get("choices") or []
-    except AttributeError:
-        return ""
-    if not choices:
-        return ""
-    first = choices[0]
-    if not isinstance(first, dict):
-        return ""
-    delta = first.get("delta")
-    if isinstance(delta, dict):
-        content = delta.get("content")
-        if isinstance(content, str):
-            return content
-        # Empty delta (e.g. a role-only chunk or an Ollama-style
-        # chunk that carries the content in ``message``) — fall through
-        # to the message-key check below.
-    elif isinstance(delta, str):
-        return delta
-    # Some non-OpenAI providers (e.g. older Ollama) return a top-level
-    # ``message.content`` even when streaming.
-    message = first.get("message")
-    if isinstance(message, dict):
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
-    return ""

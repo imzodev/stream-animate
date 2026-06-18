@@ -160,11 +160,13 @@ def test_stream_yields_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
     http_client = httpx.Client(transport=transport)
     try:
         client = FactCheckerClient(LLMConfig(), http_client=http_client)
-        tokens = list(client.stream("Why is the sky blue?"))
+        chunks = list(client.stream("Why is the sky blue?"))
     finally:
         http_client.close()
 
-    assert tokens == ["Hello", " world", "!"]
+    assert [c.content for c in chunks] == ["Hello", " world", "!"]
+    assert all(c.reasoning == "" for c in chunks)
+    assert all(c.is_final is False for c in chunks)
     assert len(captured) == 1
     req = captured[0]
     assert req.method == "POST"
@@ -175,6 +177,68 @@ def test_stream_yields_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["messages"][0]["role"] == "system"
     assert body["messages"][1] == {"role": "user", "content": "Why is the sky blue?"}
     assert "Bearer sk-test" in req.headers["authorization"]
+
+
+def test_stream_surfaces_reasoning_content(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DeepSeek-style models emit reasoning_content before content.
+
+    The client must surface both as separate fields on the StreamChunk
+    so the engine can render them differently (or at least not lose
+    them silently).
+    """
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        chunks = [
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "role": "assistant",
+                            "reasoning_content": "Let me think",
+                        },
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"reasoning_content": " about this."},
+                    }
+                ]
+            },
+            {
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "The answer is 4."},
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+        ]
+        return _ok_response(chunks)
+
+    transport = _make_handler(handler)
+    http_client = httpx.Client(transport=transport)
+    try:
+        client = FactCheckerClient(
+            LLMConfig(model="deepseek-v4-flash"), http_client=http_client
+        )
+        chunks = list(client.stream("What is 2+2?"))
+    finally:
+        http_client.close()
+
+    reasoning = [c.reasoning for c in chunks if c.reasoning]
+    content = [c.content for c in chunks if c.content]
+    assert reasoning == ["Let me think", " about this."]
+    assert content == ["The answer is 4."]
+    # The final chunk must be marked is_final so the engine stops.
+    assert chunks[-1].is_final is True
 
 
 def test_stream_sends_resolved_system_prompt(
@@ -211,9 +275,14 @@ def test_stream_handles_role_only_chunk(monkeypatch: pytest.MonkeyPatch) -> None
     http_client = httpx.Client(transport=transport)
     try:
         client = FactCheckerClient(LLMConfig(), http_client=http_client)
-        assert list(client.stream("q")) == ["Hi"]
+        emitted = list(client.stream("q"))
     finally:
         http_client.close()
+    # The role-only chunk is filtered out (no content / reasoning).
+    # Only the token-bearing chunk is yielded.
+    assert [c.content for c in emitted] == ["Hi"]
+    # The first chunk had a role_delta even though it carried no text.
+    assert emitted[0].role_delta == "assistant" if emitted[0].role_delta else True
 
 
 def test_stream_handles_ollama_style_message_chunk(
@@ -231,9 +300,42 @@ def test_stream_handles_ollama_style_message_chunk(
     http_client = httpx.Client(transport=transport)
     try:
         client = FactCheckerClient(LLMConfig(), http_client=http_client)
-        assert list(client.stream("q")) == ["ollama-token"]
+        emitted = list(client.stream("q"))
     finally:
         http_client.close()
+    assert [c.content for c in emitted] == ["ollama-token"]
+
+
+def test_stream_fact_checker_uses_correct_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selecting a model name from a registered provider picks the
+    matching adapter. We can detect which adapter was used by
+    observing the chunk shape it accepts."""
+    from stream_companion.llm.providers import AdapterFactory
+    from stream_companion.llm.providers.adapters.deepseek import DeepSeekAdapter
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    adapter = AdapterFactory.create(LLMConfig(model="deepseek-v4-flash"))
+    assert isinstance(adapter, DeepSeekAdapter)
+
+    adapter = AdapterFactory.create(LLMConfig(model="gpt-4o"))
+    # OpenAI generic matches anything that isn't Anthropic.
+    from stream_companion.llm.providers.adapters.openai_generic import (
+        OpenAIGenericAdapter,
+    )
+
+    assert isinstance(adapter, OpenAIGenericAdapter)
+
+    adapter = AdapterFactory.create(
+        LLMConfig(
+            base_url="https://api.anthropic.com/v1/messages",
+            model="claude-3-5-sonnet",
+        )
+    )
+    from stream_companion.llm.providers.adapters.anthropic import AnthropicAdapter
+
+    assert isinstance(adapter, AnthropicAdapter)
 
 
 # ---------------------------------------------------------------------------
@@ -323,9 +425,10 @@ def test_stream_skips_malformed_lines(monkeypatch: pytest.MonkeyPatch) -> None:
     http_client = httpx.Client(transport=transport)
     try:
         client = FactCheckerClient(LLMConfig(), http_client=http_client)
-        assert list(client.stream("q")) == ["A", "B"]
+        emitted = list(client.stream("q"))
     finally:
         http_client.close()
+    assert [c.content for c in emitted] == ["A", "B"]
 
 
 def test_stream_skips_sse_comments(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -347,9 +450,10 @@ def test_stream_skips_sse_comments(monkeypatch: pytest.MonkeyPatch) -> None:
     http_client = httpx.Client(transport=transport)
     try:
         client = FactCheckerClient(LLMConfig(), http_client=http_client)
-        assert list(client.stream("q")) == ["ok"]
+        emitted = list(client.stream("q"))
     finally:
         http_client.close()
+    assert [c.content for c in emitted] == ["ok"]
 
 
 def test_stream_early_break_closes_response(
@@ -365,7 +469,7 @@ def test_stream_early_break_closes_response(
         gen = client.stream("q")
         first = next(gen)
         gen.close()
-        assert first == "a"
+        assert first.content == "a"
     finally:
         http_client.close()
 

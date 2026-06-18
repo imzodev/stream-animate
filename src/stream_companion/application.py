@@ -401,9 +401,14 @@ class Application:
             elif event.phase == "thinking":
                 self._answer_panel.set_phase("thinking")
             elif event.phase == "streaming":
-                self._answer_panel.set_phase("streaming")
+                if event.kind == "reasoning":
+                    # Show a "thinking…" indicator the first time
+                    # reasoning tokens arrive.
+                    self._answer_panel.set_phase("thinking")
+                else:
+                    self._answer_panel.set_phase("streaming")
                 if event.delta:
-                    self._answer_panel.append_token(event.delta)
+                    self._answer_panel.append_token(event.delta, kind=event.kind)
             elif event.phase == "done":
                 self._answer_panel.set_phase("done")
             elif event.phase == "error":

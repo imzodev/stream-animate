@@ -38,7 +38,7 @@ class _PanelBridge(QObject):
     engine.
     """
 
-    token_appended = Signal(str)
+    token_appended = Signal(str, str)
     cleared = Signal()
     phase_changed = Signal(str)
     persona_changed = Signal(str)
@@ -106,11 +106,13 @@ class AnswerPanel(QWidget):
     # Public API (thread-safe)
     # ------------------------------------------------------------------
 
-    def append_token(self, token: str) -> None:
+    def append_token(self, token: str, *, kind: str = "answer") -> None:
         """Append a single token to the answer text.
 
         Safe to call from any thread. The actual mutation runs on the
-        GUI thread.
+        GUI thread. ``kind="reasoning"`` styles the token as italic
+        grey (chain-of-thought from a thinking model); ``kind="answer"``
+        is plain text.
         """
 
         if not token:
@@ -120,6 +122,7 @@ class AnswerPanel(QWidget):
             "token_appended",
             Qt.ConnectionType.QueuedConnection,
             Q_ARG(str, token),
+            Q_ARG(str, kind),
         )
 
     def clear(self) -> None:
@@ -152,8 +155,22 @@ class AnswerPanel(QWidget):
     # GUI-thread slots
     # ------------------------------------------------------------------
 
-    def _on_token(self, token: str) -> None:
+    def _on_token(self, token: str, kind: str = "answer") -> None:
         self._text.moveCursor(self._text.textCursor().MoveOperation.End)
+        if kind == "reasoning":
+            # Italic, lighter grey for chain-of-thought tokens so
+            # the user can tell thinking from the final answer.
+            fmt = self._text.currentCharFormat()
+            from PySide6.QtGui import QColor, QTextCharFormat
+
+            italic_grey = QTextCharFormat()
+            italic_grey.setFontItalic(True)
+            italic_grey.setForeground(QColor("#888"))
+            cursor = self._text.textCursor()
+            cursor.setCharFormat(italic_grey)
+            cursor.insertText(token)
+            cursor.setCharFormat(fmt)  # restore default format
+            return
         self._text.insertPlainText(token)
 
     def _on_clear(self) -> None:

@@ -98,11 +98,13 @@ class FakeClient:
         self.closed = False
 
     def stream(self, user_text: str):  # noqa: ARG002
+        from stream_companion.llm.providers import StreamChunk
+
         self.streamed.append(user_text)
         if self.raise_after is not None:
             raise self.raise_after
         for t in self.tokens:
-            yield t
+            yield StreamChunk(content=t)
 
     def close(self) -> None:
         self.closed = True
