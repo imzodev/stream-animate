@@ -114,9 +114,17 @@ class Application:
             # engines would use the same model — avoids a second
             # Whisper download + load. The transcriber's per-instance
             # lock makes the shared use thread-safe.
+            #
+            # Use the same language hint as the STT engine so the
+            # fact-checker recognizes the user's language without
+            # re-detecting it on every chunk.
+            fact_checker_language = (
+                self._stt_config.language if self._stt_config is not None else "auto"
+            )
             self._fact_checker = FactCheckerEngine(
                 llm_config,
                 transcriber=shared_transcriber,
+                language=fact_checker_language,
             )
         else:
             self._fact_checker = None

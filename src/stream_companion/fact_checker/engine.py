@@ -102,8 +102,10 @@ class FactCheckerEngine:
         audio_capture: Optional[AudioCapture] = None,
         transcriber: Optional[WhisperTranscriber] = None,
         client: Optional[FactCheckerClient] = None,
+        language: str = "auto",
     ) -> None:
         self._config = config
+        self._language = language or "auto"
         self._owns_client = client is None
         self._client = client or FactCheckerClient(config)
 
@@ -333,7 +335,9 @@ class FactCheckerEngine:
                 chunks_above += 1
                 silent_streak = 0
                 try:
-                    text = self._transcriber.transcribe(chunk, language="auto").strip()
+                    text = self._transcriber.transcribe(
+                        chunk, language=self._language
+                    ).strip()
                 except Exception as exc:  # pragma: no cover - model path
                     _LOGGER.exception("Fact-checker transcribe failed: %s", exc)
                     continue

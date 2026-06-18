@@ -463,3 +463,51 @@ def _wait_for(predicate, *, timeout: float) -> None:
             return
         time.sleep(0.01)
     raise AssertionError("timeout waiting for predicate")
+
+
+# ---------------------------------------------------------------------------
+# Language hint wiring
+# ---------------------------------------------------------------------------
+
+
+def test_fact_checker_uses_default_language_auto(monkeypatch):
+    """Without an explicit language, the engine passes 'auto' to Whisper."""
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    engine = FactCheckerEngine(LLMConfig())
+    assert engine._language == "auto"  # noqa: SLF001
+
+
+def test_fact_checker_passes_explicit_language_to_transcriber(
+    monkeypatch,
+):
+    """The language hint is forwarded to every transcriber.transcribe call."""
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    audio = FakeAudioCapture()
+    audio.feed("hola")
+    languages_used: List[str] = []
+
+    class _RecordingTranscriber(FakeTranscriber):
+        def transcribe(self, audio, language: str = "auto") -> str:  # noqa: ARG002
+            languages_used.append(language)
+            return super().transcribe(audio, language)
+
+    transcriber = _RecordingTranscriber()
+    transcriber.scripted = ["hola"]
+    engine = FactCheckerEngine(
+        LLMConfig(),
+        audio_capture=audio,
+        transcriber=transcriber,
+        language="es",
+    )
+    engine.toggle()
+    _wait_for(lambda: not engine.is_running, timeout=2.0)
+    assert languages_used, "transcriber was never called"
+    assert all(lang == "es" for lang in languages_used)
+    engine.close()
+
+
+def test_fact_checker_falsy_language_falls_back_to_auto(monkeypatch):
+    """An empty string is treated as 'auto' (defensive)."""
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    engine = FactCheckerEngine(LLMConfig(), language="")
+    assert engine._language == "auto"  # noqa: SLF001

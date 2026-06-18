@@ -447,3 +447,51 @@ def test_application_fact_checker_default_model_is_turbo(
     monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
     engine = FactCheckerEngine(LLMConfig())
     assert engine._transcriber.model_name == "turbo"  # noqa: SLF001
+
+
+def test_application_propagates_stt_language_to_fact_checker(
+    shortcut: Shortcut, qt_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the user picks a non-'auto' Whisper language for STT, the
+    fact-checker must use the same hint — so the question is
+    transcribed in the user's language without Whisper having to
+    re-detect it on every chunk."""
+    from stream_companion.models import STTConfig
+    from stream_companion.llm.config import LLMConfig
+    from stream_companion.stt.transcriber import WhisperTranscriber
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
+    app = Application(
+        [shortcut],
+        sound_player=FakeSoundPlayer(),
+        overlay_window=FakeOverlayWindow(),
+        hotkey_manager=FakeHotkeyManager(),
+        stt_config=STTConfig(enabled=True, model="turbo", language="es"),
+        llm_config=LLMConfig(model="deepseek-v4-flash"),
+    )
+    fc = app.fact_checker()
+    assert fc is not None
+    assert fc._language == "es"  # noqa: SLF001
+
+
+def test_application_fact_checker_falls_back_to_auto_language(
+    shortcut: Shortcut, qt_app, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When no STT config is present, the fact-checker defaults to
+    Whisper 'auto' language detection."""
+    from stream_companion.llm.config import LLMConfig
+    from stream_companion.stt.transcriber import WhisperTranscriber
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
+    app = Application(
+        [shortcut],
+        sound_player=FakeSoundPlayer(),
+        overlay_window=FakeOverlayWindow(),
+        hotkey_manager=FakeHotkeyManager(),
+        llm_config=LLMConfig(),
+    )
+    fc = app.fact_checker()
+    assert fc is not None
+    assert fc._language == "auto"  # noqa: SLF001
