@@ -177,7 +177,7 @@ class FactCheckerClient:
                 {"role": "user", "content": user_text},
             ],
         }
-        url = self._config.base_url.rstrip("/") + "/chat/completions"
+        url = self._chat_completions_url()
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -234,6 +234,18 @@ class FactCheckerClient:
                     yield token
         finally:
             response.close()
+
+    def _chat_completions_url(self) -> str:
+        """Return the full chat-completions URL.
+
+        If ``base_url`` already ends in ``/chat/completions`` (some
+        providers hard-code the full path in their docs), use it as
+        is. Otherwise append ``/chat/completions`` to the base.
+        """
+        base = self._config.base_url.rstrip("/")
+        if base.endswith("/chat/completions"):
+            return base
+        return base + "/chat/completions"
 
 
 def _extract_delta(chunk: dict) -> str:

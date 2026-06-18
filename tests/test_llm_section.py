@@ -171,3 +171,95 @@ def test_system_prompt_enabled_only_for_custom(section: LLMSection) -> None:
             section._persona_combo.setCurrentIndex(i)
             break
     assert section._system_prompt_input.isEnabled()
+
+
+# ---------------------------------------------------------------------------
+# Test Connection button
+# ---------------------------------------------------------------------------
+
+
+class _FakeStreamingClient:
+    """Stand-in for ``FactCheckerClient`` that yields a fixed sequence."""
+
+    def __init__(self, tokens=("ok",), raise_after=None):
+        self.tokens = list(tokens)
+        self.raise_after = raise_after
+        self.config = None
+        self.closed = False
+
+    def stream(self, user_text):
+        if self.raise_after is not None:
+            raise self.raise_after
+        for t in self.tokens:
+            yield t
+
+    def close(self):
+        self.closed = True
+
+
+def test_test_connection_reports_validation_errors(qapp, section, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    section.populate(LLMConfig(base_url="bad-url"))
+    section._on_test_clicked()
+    assert "highlighted issues" in section._test_status.text()
+
+
+def test_test_connection_reports_missing_api_key(qapp, section, monkeypatch):
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    section.populate(LLMConfig(api_key_env="MISSING_KEY"))
+    section._on_test_clicked()
+    assert "API key not found" in section._test_status.text()
+
+
+def test_test_connection_success(qapp, section, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    section.populate(LLMConfig(model="kimi-k2.7-code"))
+
+    fake = _FakeStreamingClient(tokens=("hello",))
+    import stream_companion.configurator.llm_section as ls
+
+    monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
+    section._on_test_clicked()
+    assert "Connected" in section._test_status.text()
+    assert "kimi-k2.7-code" in section._test_status.text()
+    assert fake.closed is True
+
+
+def test_test_connection_opencode_model_not_supported(qapp, section, monkeypatch):
+    """A 401 with ``ModelError`` body must show the model-specific hint."""
+    from stream_companion.llm.client import LLMError
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    section.populate(LLMConfig(model="deepseek-v4-flash"))
+    fake = _FakeStreamingClient(
+        raise_after=LLMError(
+            "http 401",
+            status=401,
+            body='{"type":"error","error":{"type":"ModelError","message":"Model X is not supported"}}',
+        )
+    )
+    import stream_companion.configurator.llm_section as ls
+
+    monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
+    section._on_test_clicked()
+    text = section._test_status.text().lower()
+    assert "not available" in text
+    assert "deepseek-v4-flash" in section._test_status.text()
+    assert "auth" not in text
+
+
+def test_test_connection_404(qapp, section, monkeypatch):
+    from stream_companion.llm.client import LLMError
+
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    section.populate(LLMConfig())
+    fake = _FakeStreamingClient(
+        raise_after=LLMError("http 404", status=404, body="<html>nope</html>")
+    )
+    import stream_companion.configurator.llm_section as ls
+
+    monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
+    section._on_test_clicked()
+    text = section._test_status.text()
+    assert "404" in text
+    assert "<html>" not in text

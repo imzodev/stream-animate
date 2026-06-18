@@ -90,6 +90,59 @@ def test_construction_accepts_known_providers(
     client.close()
 
 
+@pytest.mark.parametrize(
+    "base_url,expected",
+    [
+        ("https://api.openai.com/v1", "https://api.openai.com/v1/chat/completions"),
+        ("https://api.openai.com/v1/", "https://api.openai.com/v1/chat/completions"),
+        (
+            "https://opencode.ai/zen/go/v1/chat/completions",
+            "https://opencode.ai/zen/go/v1/chat/completions",
+        ),
+        (
+            "https://opencode.ai/zen/go/v1/chat/completions/",
+            "https://opencode.ai/zen/go/v1/chat/completions",
+        ),
+        (
+            "https://example.com/v1/chat/completions",
+            "https://example.com/v1/chat/completions",
+        ),
+    ],
+)
+def test_url_is_not_double_chat_completions(
+    base_url: str, expected: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """base_url may end with /chat/completions; we must not append it again."""
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    # Replace the http_client's transport with a MockTransport so we
+    # can observe the request URL without doing a real network call.
+    captured: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(str(request.url))
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=b'data: {"choices":[{"index":0,"delta":{"content":"ok"}}]}\n\n'
+            b"data: [DONE]\n\n",
+        )
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    try:
+        client = FactCheckerClient(
+            LLMConfig(base_url=base_url), http_client=http_client
+        )
+        try:
+            for _ in client.stream("ping"):
+                break
+        finally:
+            client.close()
+        assert captured, "no request was made"
+        assert captured[0] == expected
+    finally:
+        http_client.close()
+
+
 # ---------------------------------------------------------------------------
 # Streaming — happy path
 # ---------------------------------------------------------------------------

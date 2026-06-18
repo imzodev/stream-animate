@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ..llm.client import FactCheckerClient, LLMError
 from ..llm.config import LLMConfig
 from ..llm.personas import PERSONA_PRESETS
 from .widgets import HotkeyCapture
@@ -159,6 +160,18 @@ class LLMSection(QWidget):
         conn_layout.addLayout(row)
         self._api_key_status = QLabel("")
         conn_layout.addWidget(self._api_key_status)
+        # "Test Connection" sends a minimal chat-completions request
+        # to verify the configured base_url + model + API key without
+        # leaving the configurator. Surfaces the same friendly error
+        # messages the engine uses.
+        test_row = QHBoxLayout()
+        self._test_btn = QPushButton("Test Connection")
+        self._test_btn.clicked.connect(self._on_test_clicked)
+        test_row.addWidget(self._test_btn)
+        self._test_status = QLabel("")
+        self._test_status.setWordWrap(True)
+        test_row.addWidget(self._test_status, 1)
+        conn_layout.addLayout(test_row)
         note = QLabel(
             "<i>The API key is read from the named environment variable at "
             "runtime. It is never stored in the config file. Set the "
@@ -263,3 +276,83 @@ class LLMSection(QWidget):
         self._system_prompt_input.setEnabled(is_custom)
         # When switching away from "custom", leave the text in place so
         # the user can switch back without losing their work.
+
+    def _on_test_clicked(self) -> None:
+        """Send a minimal request to verify the configured endpoint."""
+        config = self.read()
+        validation = self.validate(config)
+        if validation:
+            self._test_status.setText(
+                "Fix the highlighted issues first, then test again."
+            )
+            self._test_status.setStyleSheet("color: #c0392b;")
+            return
+        if not config.api_key():
+            self._test_status.setText(
+                f"API key not found in env var {config.api_key_env!r}. "
+                "Set it before testing."
+            )
+            self._test_status.setStyleSheet("color: #c0392b;")
+            return
+        self._test_status.setText("Testing…")
+        self._test_status.setStyleSheet("color: #888;")
+        self._test_btn.setEnabled(False)
+        try:
+            client = FactCheckerClient(config)
+        except LLMError as exc:
+            self._render_test_error(exc)
+            return
+        try:
+            # The stream() generator sends at least one request when we
+            # pull the first token; we only need to confirm the server
+            # accepts the request, so we close after the first token
+            # (or the first error).
+            for _ in client.stream("ping"):
+                break
+        except LLMError as exc:
+            self._render_test_error(exc)
+        except Exception as exc:  # pragma: no cover - defensive
+            self._test_status.setText(f"Network error: {exc}")
+            self._test_status.setStyleSheet("color: #c0392b;")
+        else:
+            self._test_status.setText(
+                f"✓ Connected to {config.base_url} " f"using model {config.model!r}."
+            )
+            self._test_status.setStyleSheet("color: #27ae60;")
+        finally:
+            self._test_btn.setEnabled(True)
+            try:
+                client.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+
+    def _render_test_error(self, exc: LLMError) -> None:
+        """Render the same friendly message the engine shows in the panel."""
+        status = exc.status
+        body = exc.body or ""
+        if "ModelError" in body or "not supported" in body.lower():
+            msg = (
+                f"Model {self.read().model!r} is not available on the "
+                f"configured base URL. Check the provider's model "
+                f"list or pick a different model."
+            )
+        elif status in (401, 403):
+            msg = (
+                f"Auth failed ({status}). Check that the API key in env "
+                f"var {self.read().api_key_env!r} is valid for the "
+                f"configured base URL."
+            )
+        elif status == 404:
+            msg = (
+                f"Endpoint not found (404). Check that the model name "
+                f"{self.read().model!r} is valid for the configured "
+                f"base URL ({self.read().base_url})."
+            )
+        elif status == 429:
+            msg = "Rate limited (429). Try again in a moment."
+        elif status is not None and status >= 500:
+            msg = f"LLM service error ({status}). Try again."
+        else:
+            msg = f"Network error: {body or 'unreachable'}"
+        self._test_status.setText(msg)
+        self._test_status.setStyleSheet("color: #c0392b;")
