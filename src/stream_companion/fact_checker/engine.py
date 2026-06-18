@@ -115,10 +115,13 @@ class FactCheckerEngine:
             chunk_seconds=0.5,
             device=None,
         )
-        self._transcriber = transcriber or WhisperTranscriber(model_name="tiny")
-        # The transcribe lock is per-instance; we keep ours lightweight
-        # (we use the small "tiny" model by default; the user can
-        # override via a custom transcriber).
+        # The fact-checker shares the Whisper model with the STT engine
+        # when possible. We default to ``"turbo"`` here (matching the
+        # STT engine's default) so the user does not have to download
+        # a second model. The application wiring is responsible for
+        # passing in the STT engine's transcriber instance when both
+        # engines are active, so only one model is loaded into memory.
+        self._transcriber = transcriber or WhisperTranscriber(model_name="turbo")
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()

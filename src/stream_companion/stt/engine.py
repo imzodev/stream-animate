@@ -82,6 +82,17 @@ class STTEngine:
         return self._config
 
     @property
+    def transcriber(self) -> WhisperTranscriber:
+        """The shared :class:`WhisperTranscriber` instance.
+
+        The application layer can pass this to other engines (e.g.
+        the fact-checker) so the Whisper model is loaded into
+        memory only once.
+        """
+
+        return self._transcriber
+
+    @property
     def is_active(self) -> bool:
         return self._active
 

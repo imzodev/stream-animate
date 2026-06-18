@@ -73,6 +73,15 @@ class Application:
                 on_phrase=self._on_stt_phrase,
             )
 
+        # Share the STT engine's WhisperTranscriber with the fact-checker
+        # so we only load the Whisper model once. Both engines transcribe
+        # the same audio shape (16 kHz mono float32) with the same
+        # model, and the transcriber's per-instance lock makes the
+        # shared use thread-safe.
+        shared_transcriber = (
+            self._stt_engine.transcriber if self._stt_engine is not None else None
+        )
+
         # Trigger matcher for voice-triggered shortcuts. If the caller did
         # not inject one, build it from the current shortcut list + the
         # cooldown from the STT config (if any).
@@ -101,7 +110,14 @@ class Application:
         if fact_checker is not None:
             self._fact_checker: Optional[FactCheckerEngine] = fact_checker
         elif llm_config is not None and llm_config.api_key():
-            self._fact_checker = FactCheckerEngine(llm_config)
+            # Reuse the STT engine's WhisperTranscriber when both
+            # engines would use the same model — avoids a second
+            # Whisper download + load. The transcriber's per-instance
+            # lock makes the shared use thread-safe.
+            self._fact_checker = FactCheckerEngine(
+                llm_config,
+                transcriber=shared_transcriber,
+            )
         else:
             self._fact_checker = None
         if self._fact_checker is not None:
