@@ -375,6 +375,17 @@ class FactCheckerEngine:
         available in the application log.
         """
         status = exc.status
+        body = exc.body or ""
+        # Some providers (notably opencode's proxy) return 401 with a
+        # JSON ``ModelError`` body when the key is fine but the model
+        # name is unknown. Detect that before falling back to the
+        # generic auth message.
+        if "ModelError" in body or "not supported" in body.lower():
+            return (
+                f"Model {self._config.model!r} is not available on the "
+                f"configured base URL. Check the provider's model "
+                f"list or pick a different model."
+            )
         if status == 401 or status == 403:
             return (
                 f"Auth failed ({status}). Check that the API key in env "
@@ -392,8 +403,8 @@ class FactCheckerEngine:
         if status is not None and status >= 500:
             return f"LLM service error ({status}). Try again."
         if status is None:
-            return f"Network error: {exc.body or 'unreachable'}"
-        return f"LLM error ({status}): {exc.body[:120]}"
+            return f"Network error: {body or 'unreachable'}"
+        return f"LLM error ({status}): {body[:120]}"
 
     # ------------------------------------------------------------------
     # Internals

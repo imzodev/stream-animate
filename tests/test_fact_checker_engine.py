@@ -328,6 +328,45 @@ def test_llm_error_summarises_status_for_panel(
     engine.close()
 
 
+def test_llm_error_opencode_model_not_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 401 with a JSON ``ModelError`` body (opencode proxy style)
+    must NOT be reported as an auth failure — the key is fine, the
+    model just isn't provisioned on that gateway. The panel must
+    surface the model name so the user knows what to change.
+    """
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    audio = FakeAudioCapture()
+    audio.feed("hi")
+    transcriber = FakeTranscriber()
+    transcriber.scripted = ["hi"]
+    body = (
+        '{"type":"error","error":{"type":"ModelError",'
+        '"message":"Model opencode-go/deepseek-v4-flash is not supported"}}'
+    )
+    client = FakeClient(raise_after=LLMError("http 401", status=401, body=body))
+    events: List[FactCheckerEvent] = []
+    engine = FactCheckerEngine(
+        LLMConfig(model="deepseek-v4-flash"),
+        audio_capture=audio,
+        transcriber=transcriber,
+        client=client,
+    )
+    engine.add_observer(events.append)
+    engine.toggle()
+    _wait_for(lambda: not engine.is_running, timeout=2.0)
+    error_event = next(e for e in events if e.phase == "error")
+    # The message must identify the model and the cause, not the
+    # generic "auth failed" hint.
+    assert "deepseek-v4-flash" in error_event.text
+    assert "not available" in error_event.text.lower()
+    assert "auth" not in error_event.text.lower()
+    # Raw JSON must not leak.
+    assert "ModelError" not in error_event.text
+    engine.close()
+
+
 def test_empty_question_returns_to_idle(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
