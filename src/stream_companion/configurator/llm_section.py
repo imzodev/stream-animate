@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 from ..llm.client import FactCheckerClient, LLMError
 from ..llm.config import LLMConfig
 from ..llm.personas import PERSONA_PRESETS
+from ..llm.thinking import ThinkingStrategy
 from .widgets import HotkeyCapture
 
 _LOGGER = logging.getLogger(__name__)
@@ -68,6 +69,12 @@ class LLMSection(QWidget):
         self._temperature_input.setValue(float(cfg.temperature))
         self._max_tokens_input.setValue(int(cfg.max_tokens))
         self._timeout_input.setValue(int(cfg.timeout_seconds))
+        # Populate the thinking combo by data role (the value of
+        # each item is the ThinkingStrategy enum value).
+        for i in range(self._thinking_combo.count()):
+            if self._thinking_combo.itemData(i) == cfg.thinking.value:
+                self._thinking_combo.setCurrentIndex(i)
+                break
         self._toggle_hotkey_capture.set_hotkey(cfg.toggle_hotkey or "")
         self._refresh_api_key_status()
         self._on_persona_changed(self._persona_combo.currentText())
@@ -90,6 +97,7 @@ class LLMSection(QWidget):
             max_tokens=int(self._max_tokens_input.value()),
             toggle_hotkey=self._toggle_hotkey_capture.get_hotkey().strip() or None,
             timeout_seconds=int(self._timeout_input.value()),
+            thinking=ThinkingStrategy(self._thinking_combo.currentData()),
         )
 
     def validate(self, config: LLMConfig) -> List[str]:
@@ -237,6 +245,22 @@ class LLMSection(QWidget):
         self._timeout_input.setRange(5, 300)
         self._timeout_input.setValue(30)
         row.addWidget(self._timeout_input)
+        behavior_layout.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Thinking tags:"))
+        self._thinking_combo = QComboBox()
+        self._thinking_combo.addItem("Separate (default)", "separate")
+        self._thinking_combo.addItem("Strip (hide)", "strip")
+        self._thinking_combo.addItem("Keep (visible)", "keep")
+        self._thinking_combo.setToolTip(
+            "How to handle chain-of-thought wrapped in tags like "
+            "<thinking>...</thinking> that arrives inside the answer.\n"
+            "Separate: split into reasoning stream (italic grey).\n"
+            "Strip: drop entirely.\n"
+            "Keep: leave the tags visible in the answer."
+        )
+        row.addWidget(self._thinking_combo)
+        row.addStretch(1)
         behavior_layout.addLayout(row)
         row = QHBoxLayout()
         row.addWidget(QLabel("Toggle hotkey:"))
