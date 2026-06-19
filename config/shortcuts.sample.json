@@ -35,7 +35,9 @@
     "temperature": 0.3,
     "max_tokens": 512,
     "toggle_hotkey": "<ctrl>+<alt>+q",
-    "timeout_seconds": 30
+    "timeout_seconds": 30,
+    "silence_timeout": 5.0,
+    "esc_hotkey": "<esc>"
   }
 }
 

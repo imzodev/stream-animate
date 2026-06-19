@@ -524,6 +524,8 @@ def _write_schema_with_llm(path: Path) -> None:
                     "max_tokens": {"type": "integer"},
                     "toggle_hotkey": {"type": ["string", "null"]},
                     "timeout_seconds": {"type": "integer"},
+                    "silence_timeout": {"type": "number"},
+                    "esc_hotkey": {"type": ["string", "null"]},
                 },
                 "additionalProperties": False,
             },
@@ -553,6 +555,8 @@ def test_llm_config_round_trip(tmp_path: Path) -> None:
                     "max_tokens": 1024,
                     "toggle_hotkey": "<ctrl>+<alt>+q",
                     "timeout_seconds": 45,
+                    "silence_timeout": 7.0,
+                    "esc_hotkey": "<esc>",
                 },
             }
         ),
@@ -575,6 +579,8 @@ def test_llm_config_round_trip(tmp_path: Path) -> None:
         max_tokens=1024,
         toggle_hotkey="<ctrl>+<alt>+q",
         timeout_seconds=45,
+        silence_timeout=7.0,
+        esc_hotkey="<esc>",
     )
 
     # Round-trip via save_config

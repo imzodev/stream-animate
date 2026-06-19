@@ -327,6 +327,12 @@ def _hydrate_llm_config(raw: Optional[dict]) -> Optional[LLMConfig]:
             timeout_seconds=int(
                 raw.get("timeout_seconds", LLMConfig().timeout_seconds)
             ),
+            silence_timeout=float(
+                raw.get("silence_timeout", LLMConfig().silence_timeout)
+            ),
+            esc_hotkey=(
+                str(raw["esc_hotkey"]) if raw.get("esc_hotkey") is not None else None
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"Invalid LLM configuration: {exc}") from exc
@@ -425,6 +431,8 @@ def _serialize(
             "max_tokens": llm.max_tokens,
             "toggle_hotkey": llm.toggle_hotkey,
             "timeout_seconds": llm.timeout_seconds,
+            "silence_timeout": llm.silence_timeout,
+            "esc_hotkey": llm.esc_hotkey,
         }
     return data
 

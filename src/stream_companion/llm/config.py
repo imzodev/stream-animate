@@ -46,6 +46,23 @@ class LLMConfig:
     # still trigger it programmatically (e.g. from a tray menu).
     toggle_hotkey: Optional[str] = None
     timeout_seconds: int = 30
+    # Seconds of silence (no new STT phrase) after which the
+    # fact-checker finalises the buffered question and sends it to
+    # the LLM. The silence window is measured from the LAST phrase,
+    # not from the toggle press — the engine waits indefinitely for
+    # the first phrase (up to ``timeout_seconds``) so a slow STT
+    # engine does not cause premature "empty question" timeouts.
+    #
+    # The default (5.0s) is tuned for the bundled Whisper ``turbo``
+    # model which can take 2-4 seconds between transcriptions of
+    # consecutive audio chunks. If the user prefers explicit control
+    # (must press toggle twice), set this >= ``timeout_seconds``.
+    silence_timeout: float = 5.0
+    # Hotkey that aborts an in-flight LLM stream. Bound to the
+    # dedicated cancel path (``FactCheckerEngine.cancel``) so the
+    # toggle hotkey never accidentally kills the answer the user
+    # asked for. Set to ``None`` to disable.
+    esc_hotkey: Optional[str] = "<esc>"
 
     def resolved_system_prompt(self) -> str:
         """Return the active system prompt (custom → preset → default)."""

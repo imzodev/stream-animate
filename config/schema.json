@@ -60,7 +60,9 @@
         "temperature": { "type": "number", "default": 0.3, "minimum": 0.0, "maximum": 2.0 },
         "max_tokens": { "type": "integer", "default": 512, "minimum": 1, "maximum": 4096, "description": "Per-response cap to bound cost" },
         "toggle_hotkey": { "type": ["string", "null"], "description": "Global press-to-toggle hotkey for the fact-checker" },
-        "timeout_seconds": { "type": "integer", "default": 30, "minimum": 5, "maximum": 300 }
+        "timeout_seconds": { "type": "integer", "default": 30, "minimum": 5, "maximum": 300 },
+        "silence_timeout": { "type": "number", "default": 5.0, "minimum": 0.5, "maximum": 60.0, "description": "Seconds of silence (no new STT phrase) after which the fact-checker auto-sends the buffered question. Measured from the LAST phrase (not from toggle press). Set >= timeout_seconds to require explicit toggle-to-send." },
+        "esc_hotkey": { "type": ["string", "null"], "default": "<esc>", "description": "Hotkey that aborts an in-flight LLM stream. The toggle hotkey does NOT cancel mid-stream (so the user doesn't accidentally kill the answer they asked for). Set to null to disable." }
       },
       "additionalProperties": false
     }

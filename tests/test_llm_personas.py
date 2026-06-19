@@ -69,6 +69,18 @@ def test_llm_config_defaults() -> None:
     assert cfg.max_tokens == 512
     assert cfg.toggle_hotkey is None
     assert cfg.timeout_seconds == 30
+    # Default silence window is tuned for the bundled Whisper
+    # ``turbo`` model — long enough to bridge the 2-4s gaps
+    # between transcriptions of consecutive audio chunks.
+    assert cfg.silence_timeout == 5.0
+
+
+def test_llm_config_silence_timeout_overridable() -> None:
+    """The silence window is user-tunable so users who prefer
+    explicit control can set it to a value >= timeout_seconds to
+    effectively disable auto-send."""
+    cfg = LLMConfig(silence_timeout=30.0)
+    assert cfg.silence_timeout == 30.0
 
 
 def test_llm_config_resolved_system_prompt_default() -> None:
