@@ -320,6 +320,14 @@ class AnswerPanel(QWidget):
             # off by the fixed panel size.
             self._question_card.clear()
             self._answer_view.set_streaming(True)
+            # Force the container layout to re-lay out so the
+            # answer view moves up to where the (now hidden)
+            # question card was. Without this the answer view
+            # stays at its old y position and the bottom of the
+            # answer gets clipped.
+            self._container.layout().invalidate()
+            self._container.layout().activate()
+            self._fit_height_to_content()
         elif phase in ("done", "error", "idle"):
             self._answer_view.set_streaming(False)
         if phase == "done":
@@ -375,6 +383,14 @@ class AnswerPanel(QWidget):
         resize) and keeps the answer fully visible without the
         user having to scroll inside the answer view.
         """
+        # Force the container's layout to re-lay out so the
+        # answer view's reported height is the *current* height
+        # (after the just-hidden question card collapsed). Without
+        # this the answer view still reports its old y position
+        # and the panel ends up too short, clipping the answer.
+        self._container.layout().invalidate()
+        self._container.layout().activate()
+
         # Fixed chrome: status bar + footer + container margins
         # (2px top + 2px bottom per the container_layout) +
         # drop-shadow blur margin (~16px so the glow isn't clipped).
@@ -398,7 +414,13 @@ class AnswerPanel(QWidget):
         else:
             card_h = 0
         # Answer view: whatever height it has auto-grown to.
-        answer_h = self._answer_view.height()
+        # Use the document's intrinsic height if it's larger
+        # (the layout's reported height lags behind during streaming).
+        answer_doc_h = int(self._answer_view.document().size().height()) + 24
+        answer_h = max(self._answer_view.height(), answer_doc_h)
+        # Cap the answer view at its own _MAX_HEIGHT to keep the
+        # panel from growing past the screen.
+        answer_h = min(answer_h, 480)
         ideal = chrome_h + card_h + answer_h
 
         # Cap at the screen height (minus a margin so the panel

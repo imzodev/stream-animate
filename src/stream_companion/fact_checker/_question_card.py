@@ -113,8 +113,26 @@ class _QuestionCard(QWidget):
         self._run_appear_animation()
 
     def clear(self) -> None:
-        """Hide the question and reset the animation state."""
-        self._run_disappear_animation()
+        """Hide the question and reset the animation state.
+
+        We hide the widget immediately (not via the fade-out
+        animation) so the parent layout collapses the card's
+        space and the answer view takes its place. If we kept the
+        fade-out, the card would remain in the layout while
+        transparent, pushing the answer down by the card's height
+        and clipping the bottom of the answer.
+        """
+        # Stop any in-flight animation so the new state is
+        # deterministic.
+        if self._opacity_anim is not None:
+            self._opacity_anim.stop()
+            self._opacity_anim = None
+        # Reset opacity so the next ``set_question`` starts the
+        # fade-in from 0 again.
+        self._opacity_effect.setOpacity(0.0)
+        # Hide the widget — this removes it from the layout so the
+        # answer view moves up to where the card was.
+        self.hide()
         self._text.setText("")
 
     def set_persona(self, persona: str) -> None:

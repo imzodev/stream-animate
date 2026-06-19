@@ -47,12 +47,17 @@ class _AnswerView(QTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
         # Hide the default focus rectangle; this is a display widget.
+        # The right padding is wider than the left to compensate
+        # for the vertical scrollbar (6px) + its margin (4px on
+        # each side) sitting inside the viewport on the right edge.
+        # Without the extra right margin, the last word of a wrapped
+        # line gets visually clipped by the scrollbar.
         self.setStyleSheet(
             "QTextEdit {"
             "  background: transparent;"
             "  border: none;"
             "  color: #F9FAFB;"
-            "  padding: 4px 14px;"
+            "  padding: 4px 64px 4px 14px;"
             "  selection-background-color: rgba(99, 102, 241, 0.45);"
             "}"
             "QScrollBar:vertical {"
@@ -82,8 +87,12 @@ class _AnswerView(QTextEdit):
 
         self._streaming = False
         self._caret_animator = None
+        # Only set a minimum height. The parent panel's
+        # ``_fit_height_to_content`` grows the panel itself when
+        # the answer grows, so we don't cap the view here —
+        # otherwise the answer would scroll inside the view even
+        # when the panel has plenty of room.
         self.setMinimumHeight(_MIN_HEIGHT)
-        self.setMaximumHeight(_MAX_HEIGHT)
         self._adjust_height()
 
     # ------------------------------------------------------------------
@@ -159,14 +168,25 @@ class _AnswerView(QTextEdit):
         self.setWindowOpacity(1.0)
 
     def _adjust_height(self) -> None:
-        """Grow the widget vertically with content, up to _MAX_HEIGHT."""
+        """Grow the widget vertically with content.
+
+        Sets a minimum height that matches the document's intrinsic
+        height so the layout gives the view as much vertical space
+        as it needs. We don't set a maximum height here — the
+        parent panel's ``_fit_height_to_content`` handles the
+        overall sizing and will grow the panel to fit the answer.
+
+        If we set a maximum here, the answer view would be capped
+        at 480px regardless of how tall the panel is, and the
+        answer would scroll inside the view even when there's
+        plenty of panel space available.
+        """
         doc_height = int(self.document().size().height()) + 24
         target = max(_MIN_HEIGHT, min(_MAX_HEIGHT, doc_height))
         # Round up to the next step for less jittery resize.
         target = ((target + _HEIGHT_STEP - 1) // _HEIGHT_STEP) * _HEIGHT_STEP
-        if abs(self.height() - target) > 2:
+        if abs(self.minimumHeight() - target) > 2:
             self.setMinimumHeight(target)
-            self.setMaximumHeight(target)
 
 
 __all__ = ["_AnswerView"]

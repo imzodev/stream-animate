@@ -241,8 +241,9 @@ def test_clear_hides_question_card(panel: AnswerPanel) -> None:
     QApplication.processEvents()
     assert panel._question_card.isVisible()
     panel.clear()
-    # The clear() triggers a 150ms fade-out animation. Wait for
-    # it to finish before checking visibility.
+    # The clear() hides the card immediately (no fade-out) so the
+    # parent layout collapses the space and the answer view moves
+    # up. Wait briefly for the layout to settle.
     import time
 
     deadline = time.time() + 1.0
