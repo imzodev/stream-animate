@@ -401,12 +401,14 @@ def test_application_set_llm_config_to_none_disables(
     assert app.fact_checker() is None
 
 
-def test_application_shares_transcriber_between_stt_and_fact_checker(
+def test_application_wires_stt_engine_into_fact_checker(
     shortcut: Shortcut, qt_app, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """When Application builds both engines from their configs, the
-    WhisperTranscriber instance is shared so the model loads only once.
-    """
+    """The fact-checker reuses the STT engine's phrase stream —
+    no second mic handle, no second Whisper pass. ``using_stt_stream``
+    must be True when both engines are configured, and the STT
+    engine instance passed to the fact-checker must be the same
+    one Application is running."""
     from stream_companion.models import STTConfig
     from stream_companion.llm.config import LLMConfig
 
@@ -423,30 +425,10 @@ def test_application_shares_transcriber_between_stt_and_fact_checker(
     )
     assert app.stt_engine() is not None
     assert app.fact_checker() is not None
-    # The fact-checker must use the STT engine's transcriber, not a
-    # separate one with a default model name.
-    stt_transcriber = app.stt_engine().transcriber
-    fc_transcriber = app.fact_checker()._transcriber  # noqa: SLF001
-    assert fc_transcriber is stt_transcriber
-    assert fc_transcriber.model_name == "turbo"
-
-
-def test_application_fact_checker_default_model_is_turbo(
-    shortcut: Shortcut, qt_app, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Even when no STT engine is configured (no dictation), the
-    fact-checker's default Whisper model is ``turbo`` — the same
-    model the STT engine uses by default — so the user does not
-    need to download a separate small model for fact-checking.
-    """
-    from stream_companion.fact_checker.engine import FactCheckerEngine
-    from stream_companion.llm.config import LLMConfig
-    from stream_companion.stt.transcriber import WhisperTranscriber
-
-    monkeypatch.setenv("LLM_API_KEY", "sk-test")
-    monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
-    engine = FactCheckerEngine(LLMConfig())
-    assert engine._transcriber.model_name == "turbo"  # noqa: SLF001
+    assert app.fact_checker().using_stt_stream is True
+    # The fact-checker must hold a reference to the SAME STT
+    # engine instance Application built.
+    assert app.fact_checker()._stt_engine is app.stt_engine()  # noqa: SLF001
 
 
 def test_application_propagates_stt_language_to_fact_checker(

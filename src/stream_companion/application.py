@@ -73,15 +73,6 @@ class Application:
                 on_phrase=self._on_stt_phrase,
             )
 
-        # Share the STT engine's WhisperTranscriber with the fact-checker
-        # so we only load the Whisper model once. Both engines transcribe
-        # the same audio shape (16 kHz mono float32) with the same
-        # model, and the transcriber's per-instance lock makes the
-        # shared use thread-safe.
-        shared_transcriber = (
-            self._stt_engine.transcriber if self._stt_engine is not None else None
-        )
-
         # Trigger matcher for voice-triggered shortcuts. If the caller did
         # not inject one, build it from the current shortcut list + the
         # cooldown from the STT config (if any).
@@ -110,20 +101,17 @@ class Application:
         if fact_checker is not None:
             self._fact_checker: Optional[FactCheckerEngine] = fact_checker
         elif llm_config is not None and llm_config.api_key():
-            # Reuse the STT engine's WhisperTranscriber when both
-            # engines would use the same model — avoids a second
-            # Whisper download + load. The transcriber's per-instance
-            # lock makes the shared use thread-safe.
-            #
-            # Use the same language hint as the STT engine so the
-            # fact-checker recognizes the user's language without
-            # re-detecting it on every chunk.
+            # The fact-checker reuses the STT engine's phrase stream
+            # (no second mic handle, no second Whisper pass) and
+            # inherits the same language hint. When no STT engine
+            # is configured, the fact-checker degrades to a no-op
+            # (its toggle handler short-circuits and logs a warning).
             fact_checker_language = (
                 self._stt_config.language if self._stt_config is not None else "auto"
             )
             self._fact_checker = FactCheckerEngine(
                 llm_config,
-                transcriber=shared_transcriber,
+                stt_engine=self._stt_engine,
                 language=fact_checker_language,
             )
         else:
@@ -452,6 +440,21 @@ class Application:
         self._logger.info("Fact-checker toggle hotkey pressed")
         self._fact_checker.toggle()
 
+    def _on_fact_check_cancel(self) -> None:
+        """Hotkey handler: abort the in-flight LLM stream.
+
+        Bound to the dedicated cancel hotkey (ESC by default) so
+        the toggle hotkey never accidentally kills the answer the
+        user just asked for. No-op if the engine is idle.
+        """
+        if self._fact_checker is None:
+            self._logger.warning(
+                "Fact-checker cancel hotkey pressed but no engine is configured"
+            )
+            return
+        self._logger.info("Fact-checker cancel hotkey pressed")
+        self._fact_checker.cancel()
+
     def _stop_fact_checker(self) -> None:
         if self._fact_checker is not None:
             self._logger.info("Fact-checker stopping")
@@ -560,6 +563,23 @@ class Application:
                 except ValueError as exc:
                     self._logger.warning(
                         "Failed to register fact-checker toggle hotkey: %s", exc
+                    )
+            # Cancel hotkey. Aborts the in-flight LLM stream without
+            # affecting the toggle hotkey. Bound to ESC by default;
+            # set ``esc_hotkey`` to None in the config to disable.
+            cancel_hk = self._llm_config.esc_hotkey
+            if cancel_hk:
+                try:
+                    self._hotkey_manager.register_hotkey(
+                        cancel_hk,
+                        self._on_fact_check_cancel,
+                    )
+                    self._logger.info(
+                        "Fact-checker cancel hotkey registered: %s", cancel_hk
+                    )
+                except ValueError as exc:
+                    self._logger.warning(
+                        "Failed to register fact-checker cancel hotkey: %s", exc
                     )
 
     def _on_stt_toggle(self) -> None:

@@ -1,26 +1,18 @@
 """Fact-checker / concept-explainer engine.
 
-Mirrors :class:`stream_companion.stt.STTEngine`'s threading and observer
-patterns. The engine:
+The engine subscribes to the existing :class:`stream_companion.stt.STTEngine`
+phrase stream rather than opening its own microphone and running
+its own Whisper transcription pass. This avoids:
 
-1. Listens to the microphone (its own ``AudioCapture`` instance — does
-   not share the STT engine's mic handle).
-2. Transcribes each non-silent chunk with its own
-   :class:`WhisperTranscriber` and concatenates the partial transcripts
-   into a running "what the user is saying" buffer.
-3. When 1.5 seconds of silence follow a non-silent chunk, treats the
-   accumulated text as a complete question and stops listening.
-4. Sends the question to an OpenAI-compatible chat-completions endpoint
-   via :class:`FactCheckerClient` and emits a streaming event for each
-   token delta so the UI can render a typewriter-style answer.
-5. Emits phase transitions (``listening`` / ``thinking`` / ``streaming``
-   / ``done`` / ``error``) to all registered observers.
+* a second ``sounddevice.InputStream`` holding the same device,
+* a second set of Whisper calls on overlapping audio,
+* the well-known accuracy drop of Whisper on very short clips.
 
-Cancellation: calling :meth:`toggle` while the engine is listening or
-streaming will set a stop flag; the listening loop checks the flag
-between chunks, the streaming loop checks it between tokens. The
-caller is responsible for closing the client (the engine does not own
-the default httpx transport when one is injected).
+When the user presses the fact-checker hotkey, the engine starts
+buffering phrases emitted by STT. The question ends when the user
+presses the hotkey again or when no new phrase has arrived for
+``_SILENT_PHRASE_TIMEOUT`` seconds (1.5 s by default — generous enough
+to span the longest natural pause within a question).
 """
 
 from __future__ import annotations
@@ -31,27 +23,24 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
-import numpy as np
-
 from ..llm.client import FactCheckerClient, LLMError
 from ..llm.config import LLMConfig
-from ..stt.audio import AudioCapture, AudioCaptureError
-from ..stt.transcriber import WhisperTranscriber
+from ..stt.engine import STTEvent, STTEngine
 
 _LOGGER = logging.getLogger(__name__)
 
 
-# Number of consecutive sub-threshold chunks that end a question.
-# With 0.5s chunks, 3 chunks = 1.5s of silence.
-_SILENCE_CHUNKS_TO_END = 3
-# RMS below this is "silent" for the fact-checker (same scale as STT).
-_SILENCE_RMS = 0.005
-# Minimum number of chunks (~0.5s each) the loop must see before
-# silence is allowed to end the question. Without this, a single
-# 0.5s loud chunk followed by trailing silence ends the question
-# immediately and the speaker never gets a chance to start their
-# real sentence.
-_MIN_LISTEN_CHUNKS = 3
+# How long to wait without a new STT phrase before assuming the user
+# has stopped talking. Tuned for natural speech: longer than typical
+# intra-sentence pauses, shorter than the gap between sentences.
+_SILENT_PHRASE_TIMEOUT = 1.5
+
+# Hard safety cap on how long a single question can run.
+_MAX_QUESTION_SECONDS = 30.0
+
+# Hard cap on how many phrases we'll buffer before flushing. A
+# pathological STT loop cannot starve the LLM call forever.
+_MAX_BUFFERED_PHRASES = 64
 
 
 @dataclass
@@ -93,46 +82,62 @@ class FactCheckerStatus:
 
 
 class FactCheckerEngine:
-    """Top-level orchestrator: mic → whisper → LLM client."""
+    """Orchestrator: STT phrase stream → LLM client."""
 
     def __init__(
         self,
         config: LLMConfig,
         *,
-        audio_capture: Optional[AudioCapture] = None,
-        transcriber: Optional[WhisperTranscriber] = None,
+        stt_engine: Optional[STTEngine] = None,
         client: Optional[FactCheckerClient] = None,
         language: str = "auto",
+        silence_timeout: Optional[float] = None,
     ) -> None:
         self._config = config
         self._language = language or "auto"
+        # Resolve the silence timeout from (in order):
+        #   1. explicit constructor arg (tests)
+        #   2. config.silence_timeout (user-tunable via .json)
+        #   3. module-level default (production default)
+        # We read the module constant at runtime (not at function
+        # definition time) so tests can monkeypatch it.
+        if silence_timeout is not None:
+            self._silence_timeout = silence_timeout
+        elif config.silence_timeout > 0:
+            self._silence_timeout = config.silence_timeout
+        else:
+            self._silence_timeout = _SILENT_PHRASE_TIMEOUT
         self._owns_client = client is None
         self._client = client or FactCheckerClient(config)
-
-        # Audio: 0.5s chunks, 16kHz mono float32 (matches STT defaults
-        # except chunk size — shorter chunks = faster end-of-speech
-        # detection).
-        self._audio = audio_capture or AudioCapture(
-            sample_rate=16000,
-            chunk_seconds=0.5,
-            device=None,
-        )
-        # The fact-checker shares the Whisper model with the STT engine
-        # when possible. We default to ``"turbo"`` here (matching the
-        # STT engine's default) so the user does not have to download
-        # a second model. The application wiring is responsible for
-        # passing in the STT engine's transcriber instance when both
-        # engines are active, so only one model is loaded into memory.
-        self._transcriber = transcriber or WhisperTranscriber(model_name="turbo")
+        # STT engine is optional. When present, the fact-checker
+        # subscribes to its phrase stream. When absent (e.g. the user
+        # configured the LLM but not the STT engine), the
+        # fact-checker degrades gracefully: ``toggle()`` becomes a
+        # no-op and ``is_running`` stays False.
+        self._stt_engine: Optional[STTEngine] = stt_engine
 
         self._thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        # Separate cancellation flag for the in-flight LLM stream.
+        # The toggle hotkey never sets this — pressing the toggle
+        # again while the LLM is streaming is ignored (the stream
+        # runs to completion). To abort an in-flight stream the user
+        # presses the dedicated cancel hotkey (ESC by default), which
+        # routes through ``cancel()`` below.
+        self._cancel_event = threading.Event()
         self._lock = threading.Lock()
         self._phase = "idle"
         self._listening = False
         self._last_question = ""
         self._last_error: Optional[str] = None
         self._started_at: Optional[float] = None
+        # Buffer of STT phrases accumulated since the toggle. The
+        # engine concatenates them with single spaces when sending
+        # to the LLM.
+        self._phrase_buffer: List[str] = []
+        # Wall-clock time when the last STT phrase arrived. Used by
+        # the silence detector to decide when to stop listening.
+        self._last_phrase_at: float = 0.0
         self._observers: List[Callable[[FactCheckerEvent], None]] = []
 
     # ------------------------------------------------------------------
@@ -155,6 +160,18 @@ class FactCheckerEngine:
     def last_error(self) -> Optional[str]:
         return self._last_error
 
+    @property
+    def language(self) -> str:
+        return self._language
+
+    @property
+    def using_stt_stream(self) -> bool:
+        """True when the engine is reusing an existing STT engine's
+        phrase stream (the normal path). False means the engine was
+        constructed without an STT engine; ``toggle`` is a no-op.
+        """
+        return self._stt_engine is not None
+
     def status(self) -> dict:
         with self._lock:
             phase = self._phase
@@ -173,35 +190,59 @@ class FactCheckerEngine:
 
     def toggle(self) -> None:
         """Press-to-toggle: start listening, or stop and send."""
+        if self._stt_engine is None:
+            _LOGGER.warning(
+                "Fact-checker toggle ignored: no STT engine wired. "
+                "Configure the Speech-to-Text tab to enable the "
+                "fact-checker."
+            )
+            return
         with self._lock:
             if self._listening:
-                # User pressed again — stop listening, the loop will
-                # finalize the question and stream the answer.
+                # User pressed again — stop listening; the worker
+                # thread will finalize the question and stream the
+                # answer.
                 _LOGGER.info("Fact-checker toggle: stop listening")
                 self._stop_event.set()
                 return
             if self.is_running:
-                # Already processing (thinking/streaming) — ignore.
+                # Already processing (thinking/streaming). The toggle
+                # hotkey is reserved for "start" and "send" — it does
+                # NOT abort the in-flight LLM stream (that would be
+                # easy to do by accident). To cancel mid-stream the
+                # user presses the dedicated cancel hotkey (ESC).
                 _LOGGER.info(
-                    "Fact-checker toggle: ignored (already processing, phase=%s)",
+                    "Fact-checker toggle: ignored (already processing, "
+                    "phase=%s — press the cancel hotkey to abort)",
                     self._phase,
                 )
                 return
             self._listening = True
             self._stop_event.clear()
+            # Reset the cancel flag too so a previous run's ESC
+            # press doesn't bleed into this run.
+            self._cancel_event.clear()
             self._last_error = None
             self._last_question = ""
             self._started_at = time.time()
+            self._phrase_buffer = []
+            # 0.0 means "no phrase has arrived yet" — the silence
+            # detector in _run() ignores the silence timeout until at
+            # least one phrase is buffered, so a slow STT engine (which
+            # can take several seconds to produce its first phrase) does
+            # NOT cause us to give up with an empty question.
+            self._last_phrase_at = 0.0
             self._thread = threading.Thread(
                 target=self._run,
                 name="fact-checker",
                 daemon=True,
             )
             self._thread.start()
-            # Emit the "listening" event under the same lock so the
-            # observer list cannot be mutated between
-            # ``start()`` and ``_emit()`` by a concurrent add/remove.
             self._phase = "listening"
+            # Subscribe to STT phrases. We register the observer only
+            # while listening so we don't accumulate callbacks when
+            # idle.
+            self._stt_engine.add_phrase_observer(self._on_stt_phrase_for_fact_check)
             observers = list(self._observers)
         for cb in observers:
             try:
@@ -209,7 +250,8 @@ class FactCheckerEngine:
             except Exception:  # pragma: no cover - user callback
                 _LOGGER.exception("Fact-checker observer raised")
         _LOGGER.info(
-            "Fact-checker toggle: start (model=%s, persona=%s)",
+            "Fact-checker toggle: start (model=%s, persona=%s, "
+            "subscribed to STT phrase stream)",
             self._config.model,
             self._config.persona,
         )
@@ -225,9 +267,24 @@ class FactCheckerEngine:
             except ValueError:
                 pass
 
+    def cancel(self) -> None:
+        """Abort an in-flight LLM stream.
+
+        Bound to the dedicated cancel hotkey (ESC by default). The
+        toggle hotkey does NOT call this — pressing the toggle
+        again during streaming is a no-op so the user does not
+        accidentally abort the answer they asked for. To explicitly
+        cancel, they press the cancel hotkey.
+
+        Idempotent: calling this multiple times is harmless.
+        """
+        self._cancel_event.set()
+        _LOGGER.info("Fact-checker: cancel requested via hotkey")
+
     def close(self) -> None:
         """Stop any running thread and close owned resources."""
         self._stop_event.set()
+        self._cancel_event.set()
         thread = self._thread
         if thread is not None:
             thread.join(timeout=2.0)
@@ -235,34 +292,98 @@ class FactCheckerEngine:
             self._client.close()
 
     # ------------------------------------------------------------------
+    # STT phrase subscription
+    # ------------------------------------------------------------------
+
+    def _on_stt_phrase_for_fact_check(self, event: STTEvent) -> None:
+        """Called by the STT engine for every successfully transcribed chunk.
+
+        We append non-empty phrases to the buffer and note the
+        wall-clock time so the silence detector in ``_run`` knows
+        when to stop listening.
+
+        Note: ``event.text`` is the *typed* text (what got injected
+        into the focused window) and is empty when the STT engine
+        is in trigger-only mode (typing paused). We use
+        ``event.raw_text`` — the actual Whisper output — because
+        that is what the user said, regardless of whether the
+        typer is active.
+        """
+        with self._lock:
+            if not self._listening:
+                return
+            text = (event.raw_text or "").strip()
+            if not text:
+                return
+            self._phrase_buffer.append(text)
+            # Cap the buffer so a pathological STT loop can't starve
+            # the LLM call indefinitely.
+            if len(self._phrase_buffer) > _MAX_BUFFERED_PHRASES:
+                self._phrase_buffer = self._phrase_buffer[-_MAX_BUFFERED_PHRASES:]
+            self._last_phrase_at = time.time()
+
+    # ------------------------------------------------------------------
     # Background loop
     # ------------------------------------------------------------------
 
     def _run(self) -> None:
+        # Wait for one of:
+        # (a) the user presses the toggle again (set _stop_event), or
+        # (b) the user has spoken and then been silent for
+        #     self._silence_timeout seconds, or
+        # (c) the hard cap _MAX_QUESTION_SECONDS has elapsed.
+        #
+        # Note: we do NOT time out if no phrase has arrived yet. The
+        # STT engine is chunked and can take several seconds to
+        # produce its first phrase; we wait for it (up to the hard
+        # cap). The user can always re-press the toggle to cancel.
+        deadline = time.time() + _MAX_QUESTION_SECONDS
         try:
-            self._audio.start()
-        except AudioCaptureError as exc:
-            self._fail(f"microphone: {exc}")
-            return
-        try:
-            accumulated = self._listen_loop()
+            while True:
+                # Stop immediately when the user re-presses.
+                if self._stop_event.is_set():
+                    break
+                with self._lock:
+                    last_at = self._last_phrase_at
+                # Silence timeout only fires AFTER the first phrase.
+                # last_at == 0.0 means "no phrase buffered yet — keep
+                # waiting".
+                if last_at > 0 and time.time() - last_at >= self._silence_timeout:
+                    break
+                if time.time() >= deadline:
+                    _LOGGER.info(
+                        "Fact-checker: max question time reached, " "finalising"
+                    )
+                    break
+                # Cooperative short sleep so we don't burn CPU.
+                time.sleep(0.05)
         finally:
-            self._audio.stop()
-        if self._stop_event.is_set():
-            # User cancelled before the question completed; drop it.
-            self._set_phase("idle")
-            self._emit(FactCheckerEvent(phase="idle"))
+            # Unsubscribe from STT phrases BEFORE we emit the
+            # "thinking" event so observers polling is_listening see
+            # the transition cleanly.
+            if self._stt_engine is not None:
+                try:
+                    self._stt_engine.remove_phrase_observer(
+                        self._on_stt_phrase_for_fact_check
+                    )
+                except Exception:  # pragma: no cover - defensive
+                    pass
             with self._lock:
                 self._listening = False
-                self._thread = None
-            return
-        question = accumulated.strip()
+                question_parts = list(self._phrase_buffer)
+                self._phrase_buffer = []
+
+        question = " ".join(question_parts).strip()
+        _LOGGER.info(
+            "Fact-checker buffered STT phrases (%d): %r",
+            len(question_parts),
+            question_parts,
+        )
         if not question:
             _LOGGER.info("Fact-checker: empty question, returning to idle")
             self._set_phase("idle")
             self._emit(FactCheckerEvent(phase="idle"))
             with self._lock:
-                self._listening = False
                 self._thread = None
             return
         with self._lock:
@@ -277,6 +398,8 @@ class FactCheckerEngine:
             # is delivered to the panel and the phase is "error"). Log
             # the full exception here for diagnostics, then return.
             _LOGGER.error("LLM call failed: %s", exc)
+            with self._lock:
+                self._thread = None
             return
         except Exception as exc:  # pragma: no cover - defensive
             self._fail(f"unexpected: {exc}")
@@ -284,71 +407,8 @@ class FactCheckerEngine:
         self._set_phase("done")
         self._emit(FactCheckerEvent(phase="done", text=question))
         with self._lock:
-            self._listening = False
             self._thread = None
         _LOGGER.info("Fact-checker done")
-
-    def _listen_loop(self) -> str:
-        """Listen until silence or stop, return the accumulated text.
-
-        The loop ends the question when:
-        - the user presses the toggle hotkey again (stop event), or
-        - 1.5s of trailing silence follow at least one loud chunk, or
-        - 6 silent chunks pass with nothing heard (caller wasn't there), or
-        - a 30s safety cap is reached.
-
-        A minimum listen window of ``_MIN_LISTEN_CHUNKS`` (~1.5s) is
-        enforced before silence can end the question, so a short
-        utterance that starts with a single word is not cut off
-        before the speaker has a chance to continue.
-        """
-        accumulated_parts: List[str] = []
-        silent_streak = 0
-        chunks_above = 0
-        # Safety cap: if we never see silence, end after this many
-        # chunks (~30s of audio) so a runaway session can't loop forever.
-        max_chunks = 60
-        chunks_seen = 0
-        try:
-            while not self._stop_event.is_set():
-                chunk = self._audio.get_chunk(timeout=0.25)
-                if chunk is None:
-                    continue
-                chunks_seen += 1
-                rms = float(np.sqrt(np.mean(np.square(chunk)))) if chunk.size else 0.0
-                if rms < _SILENCE_RMS:
-                    silent_streak += 1
-                    if (
-                        silent_streak >= _SILENCE_CHUNKS_TO_END
-                        and chunks_above > 0
-                        and chunks_seen >= _MIN_LISTEN_CHUNKS
-                    ):
-                        # Question complete.
-                        break
-                    # If we have never heard anything and the user has
-                    # been silent for a long time, give up so the
-                    # engine can return to idle. 6 chunks of pure
-                    # silence is a 3-second "no one is here" signal.
-                    if silent_streak >= 6 and chunks_above == 0:
-                        break
-                    continue
-                chunks_above += 1
-                silent_streak = 0
-                try:
-                    text = self._transcriber.transcribe(
-                        chunk, language=self._language
-                    ).strip()
-                except Exception as exc:  # pragma: no cover - model path
-                    _LOGGER.exception("Fact-checker transcribe failed: %s", exc)
-                    continue
-                if text:
-                    accumulated_parts.append(text)
-                if chunks_seen >= max_chunks:
-                    _LOGGER.info("Fact-checker: max listen chunks reached, finalising")
-                    break
-        finally:
-            pass
-        return " ".join(accumulated_parts)
 
     def _stream_answer(self, question: str) -> None:
         """Stream the LLM answer, emitting one event per token chunk.
@@ -370,7 +430,12 @@ class FactCheckerEngine:
         streamed_reasoning: List[str] = []
         try:
             for stream_chunk in self._client.stream(question):
-                if self._stop_event.is_set():
+                # The cancel hotkey (ESC) sets _cancel_event. The
+                # toggle hotkey never touches this flag — pressing
+                # it again during streaming is a no-op so the user
+                # does not accidentally abort the answer they
+                # asked for.
+                if self._cancel_event.is_set():
                     _LOGGER.info("Fact-checker: user cancelled mid-stream")
                     break
                 if stream_chunk.reasoning:
