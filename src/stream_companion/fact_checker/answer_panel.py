@@ -156,21 +156,14 @@ class AnswerPanel(QWidget):
     # ------------------------------------------------------------------
 
     def _on_token(self, token: str, kind: str = "answer") -> None:
-        self._text.moveCursor(self._text.textCursor().MoveOperation.End)
+        # Reasoning tokens are dropped from the panel — the chain-
+        # of-thought is logged for debugging but never shown to the
+        # user. The final answer is the only thing that matters.
         if kind == "reasoning":
-            # Italic, lighter grey for chain-of-thought tokens so
-            # the user can tell thinking from the final answer.
-            fmt = self._text.currentCharFormat()
-            from PySide6.QtGui import QColor, QTextCharFormat
-
-            italic_grey = QTextCharFormat()
-            italic_grey.setFontItalic(True)
-            italic_grey.setForeground(QColor("#888"))
-            cursor = self._text.textCursor()
-            cursor.setCharFormat(italic_grey)
-            cursor.insertText(token)
-            cursor.setCharFormat(fmt)  # restore default format
             return
+        cursor = self._text.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self._text.setTextCursor(cursor)
         self._text.insertPlainText(token)
 
     def _on_clear(self) -> None:

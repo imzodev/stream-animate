@@ -61,13 +61,15 @@ def test_append_token_renders_text(panel: AnswerPanel) -> None:
     assert panel._text.toPlainText() == "Hello world"
 
 
-def test_append_token_reasoning_kind_preserved(panel: AnswerPanel) -> None:
-    """Tokens with kind='reasoning' must still render in the panel."""
+def test_append_token_reasoning_is_hidden(panel: AnswerPanel) -> None:
+    """Reasoning tokens are dropped from the panel — the chain-of-
+    thought is logged for debugging but never shown to the user.
+    Only the final answer text is rendered."""
     panel.append_token("thinking...", kind="reasoning")
     panel.append_token("answer.", kind="answer")
     QApplication.processEvents()
     text = panel._text.toPlainText()
-    assert "thinking..." in text
+    assert "thinking..." not in text
     assert "answer." in text
 
 
