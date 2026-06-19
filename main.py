@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import sys
+import warnings
 from pathlib import Path
 import os
 
@@ -18,6 +19,16 @@ if str(SRC_DIR) not in sys.path:
 
 # Default to disabling XCB GLX integration to avoid GLX requirements for video rendering
 os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
+
+# pygame 2.6.x imports the deprecated ``pkg_resources`` API at import
+# time, which emits a ``UserWarning`` on every Python launch starting
+# with setuptools 81. We don't use that API path — silence the noise
+# before any third-party imports happen below.
+warnings.filterwarnings(
+    "ignore",
+    message=r"pkg_resources is deprecated as an API.*",
+    category=UserWarning,
+)
 
 
 def _load_dotenv(path: Path) -> None:
