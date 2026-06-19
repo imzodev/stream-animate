@@ -1,13 +1,33 @@
-"""Streaming answer panel: a small always-on-top Qt widget that renders
-the LLM's response as it is generated.
+"""Streaming answer panel — a modern, branded overlay for the
+LLM fact-checker.
 
-The panel is deliberately minimal: a single ``QTextEdit`` with a
-typewriter-style monospace font, a thin border, and a close button.
-It is draggable and remembers its last position via :class:`QSettings`.
+Public API (preserved across versions):
 
-Thread safety: ``append_token`` may be called from the engine's
-background thread. We marshal to the GUI thread with
-``QMetaObject.invokeMethod`` using ``Qt.QueuedConnection``.
+* :meth:`append_token(token, *, kind='answer')` — thread-safe
+* :meth:`clear()` — thread-safe
+* :meth:`set_phase(phase)` — thread-safe
+* :meth:`set_persona_label(persona)` — thread-safe
+
+Visual structure (top to bottom):
+
+* Animated gradient border (rotating conic gradient) drawn by
+  a transparent overlay widget. Border colors come from the
+  active persona.
+* :class:`_StatusBar` — persona icon, name, state pill, lock
+  and close buttons.
+* :class:`_QuestionCard` — speech-bubble with the user's
+  transcribed question, colored left stripe matching the
+  persona. Hidden when no question is active.
+* :class:`_AnswerView` — large streaming text with a blinking
+  caret at the end while the LLM is responding. Auto-grows
+  vertically up to a cap, then scrolls.
+* :class:`_FooterBar` — telemetry: char count, model name,
+  elapsed time.
+
+Thread-safety: ``append_token``, ``clear``, ``set_phase``, and
+``set_persona_label`` can be called from any thread. They use
+``QMetaObject.invokeMethod`` with ``QueuedConnection`` to
+marshal to the GUI thread.
 """
 
 from __future__ import annotations
@@ -16,36 +36,52 @@ import logging
 from typing import Optional
 
 from PySide6.QtCore import QMetaObject, QObject, Qt, Q_ARG, Signal
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QTextEdit,
+    QApplication,
+    QGraphicsDropShadowEffect,
     QVBoxLayout,
     QWidget,
 )
 
+from ._answer_view import _AnswerView
+from ._border_painter import _AnimatedBorder
+from ._footer_bar import _FooterBar
+from ._persona_accent import accent_for
+from ._question_card import _QuestionCard
+from ._status_bar import _StatusBar
+
 _LOGGER = logging.getLogger(__name__)
+
+
+# Default size and position offsets.
+_DEFAULT_WIDTH = 560
+_DEFAULT_HEIGHT = 320
+_MARGIN_FROM_CORNER = 32
 
 
 class _PanelBridge(QObject):
     """Helper QObject that emits signals on the GUI thread.
 
-    The engine thread calls ``bridge.append_token(token)``; the bridge
-    re-emits a :class:`Signal` which is delivered to the widget on the
-    GUI thread. This avoids busy-spinning the GUI thread from the
-    engine.
+    The engine thread calls ``bridge.append_token(token)``; the
+    bridge re-emits a :class:`Signal` which is delivered to the
+    widget on the GUI thread. This avoids busy-spinning the GUI
+    thread from the engine.
     """
 
     token_appended = Signal(str, str)
     cleared = Signal()
     phase_changed = Signal(str)
     persona_changed = Signal(str)
+    question_set = Signal(str)
+    stream_started = Signal()
+    stream_finished = Signal()
+    model_known = Signal(str)
 
 
 class AnswerPanel(QWidget):
-    """A small draggable, always-on-top widget for the LLM's response."""
+    """A draggable, always-on-top streaming answer widget with a
+    branded animated border."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -55,51 +91,82 @@ class AnswerPanel(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        # Translucent background so the gradient border shows
+        # through the rounded corners.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # No system background paint — we draw everything ourselves.
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
 
         self._bridge = _PanelBridge()
         self._bridge.token_appended.connect(self._on_token)
         self._bridge.cleared.connect(self._on_clear)
         self._bridge.phase_changed.connect(self._on_phase)
         self._bridge.persona_changed.connect(self._on_persona)
+        self._bridge.question_set.connect(self._on_question)
+        self._bridge.stream_started.connect(self._on_stream_started)
+        self._bridge.stream_finished.connect(self._on_stream_finished)
+        self._bridge.model_known.connect(self._on_model_known)
 
-        # ------------------------------------------------------------------
-        # UI
-        # ------------------------------------------------------------------
-        outer = QVBoxLayout()
-        outer.setContentsMargins(8, 8, 8, 8)
-        self.setLayout(outer)
-
-        title_row = QHBoxLayout()
-        self._persona_label = QLabel("fact-checker")
-        self._persona_label.setStyleSheet("color: #888;")
-        title_row.addWidget(self._persona_label)
-        title_row.addStretch(1)
-        self._phase_label = QLabel("idle")
-        self._phase_label.setStyleSheet("color: #888;")
-        title_row.addWidget(self._phase_label)
-        self._close_btn = QPushButton("×")
-        self._close_btn.setFixedSize(24, 24)
-        self._close_btn.clicked.connect(self.hide)
-        title_row.addWidget(self._close_btn)
-        outer.addLayout(title_row)
-
-        self._text = QTextEdit()
-        self._text.setReadOnly(True)
-        font = QFont("Monospace")
-        font.setStyleHint(QFont.StyleHint.TypeWriter)
-        font.setPointSize(13)
-        self._text.setFont(font)
-        self._text.setMinimumSize(360, 180)
-        outer.addWidget(self._text)
-
-        # Drag tracking: remember the offset between the mouse-down
-        # point and the top-left of the window so ``mouseMoveEvent``
-        # can drag smoothly.
+        self._locked = False
+        self._current_persona = "custom"
         self._drag_offset = None
 
-        # Default position: bottom-right of the primary screen.
-        self.resize(420, 240)
+        # ------------------------------------------------------------------
+        # Content layout
+        # ------------------------------------------------------------------
+        self._container = QWidget(self)
+        # The container has a solid dark background and rounded
+        # corners; the border painter sits on top of it as a
+        # transparent overlay.
+        self._container.setObjectName("AnswerPanelContainer")
+        self._container.setStyleSheet(
+            "#AnswerPanelContainer {"
+            "  background-color: rgba(15, 17, 21, 230);"
+            "  border-radius: 18px;"
+            "}"
+        )
+
+        container_layout = QVBoxLayout(self._container)
+        container_layout.setContentsMargins(2, 2, 2, 2)  # room for the border
+        container_layout.setSpacing(0)
+
+        self._status_bar = _StatusBar(self._container)
+        self._question_card = _QuestionCard(self._container)
+        self._answer_view = _AnswerView(self._container)
+        self._footer_bar = _FooterBar(self._container)
+
+        container_layout.addWidget(self._status_bar)
+        container_layout.addWidget(self._question_card)
+        container_layout.addWidget(self._answer_view, 1)
+        container_layout.addWidget(self._footer_bar)
+
+        # The border painter is a transparent overlay that sits on
+        # top of the container. We give it a layout that fills the
+        # whole panel so the gradient traces the perimeter.
+        self._border = _AnimatedBorder(self)
+        self._border.setGeometry(self.rect())
+        self._border.raise_()
+
+        # Outer layout: just the container. The border sits on top
+        # as a sibling.
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._container)
+
+        # Drop-shadow glow tinted with the current persona accent.
+        self._shadow: QGraphicsDropShadowEffect | None = None
+        self._apply_glow(accent_for(self._current_persona))
+
+        # Status bar lock signal — when the user locks, the panel
+        # stops responding to drag events. We don't disable mouse
+        # events at the Qt level (the lock button itself must
+        # stay clickable), but we check the flag in
+        # ``mouseMoveEvent``.
+        self._status_bar.lock_toggled.connect(self._on_lock_toggled)
+        self._status_bar.close_clicked.connect(self.hide)
+
+        # Default size + position.
+        self.resize(_DEFAULT_WIDTH, _DEFAULT_HEIGHT)
         self._move_to_default_position()
 
     # ------------------------------------------------------------------
@@ -109,13 +176,15 @@ class AnswerPanel(QWidget):
     def append_token(self, token: str, *, kind: str = "answer") -> None:
         """Append a single token to the answer text.
 
-        Safe to call from any thread. The actual mutation runs on the
-        GUI thread. ``kind="reasoning"`` styles the token as italic
-        grey (chain-of-thought from a thinking model); ``kind="answer"``
-        is plain text.
+        Reasoning tokens are dropped — the chain-of-thought is
+        logged for debugging but never shown in the panel.
         """
-
         if not token:
+            return
+        if kind == "reasoning":
+            # We do still count the chars so the footer reflects
+            # the full stream size, but we never show reasoning.
+            self._bridge.token_appended.emit("", "answer")
             return
         QMetaObject.invokeMethod(
             self._bridge,
@@ -134,7 +203,7 @@ class AnswerPanel(QWidget):
         )
 
     def set_phase(self, phase: str) -> None:
-        """Update the small status label. Thread-safe."""
+        """Update the state pill. Thread-safe."""
         QMetaObject.invokeMethod(
             self._bridge,
             "phase_changed",
@@ -143,7 +212,7 @@ class AnswerPanel(QWidget):
         )
 
     def set_persona_label(self, name: str) -> None:
-        """Update the persona label. Thread-safe."""
+        """Switch the active persona. Thread-safe."""
         QMetaObject.invokeMethod(
             self._bridge,
             "persona_changed",
@@ -151,68 +220,180 @@ class AnswerPanel(QWidget):
             Q_ARG(str, name),
         )
 
+    def set_question(self, question: str) -> None:
+        """Display the user's question in the speech-bubble card.
+
+        Public extension point used by the engine to push the
+        question text once it has been finalized. The card slides
+        in / fades in via QPropertyAnimation.
+        """
+        QMetaObject.invokeMethod(
+            self._bridge,
+            "question_set",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG(str, question),
+        )
+
+    def notify_stream_started(self) -> None:
+        """Tell the panel that the LLM is about to start streaming.
+
+        Used to start the footer timer and to show the caret.
+        """
+        QMetaObject.invokeMethod(
+            self._bridge,
+            "stream_started",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    def notify_stream_finished(self) -> None:
+        """Tell the panel that the LLM has finished streaming.
+
+        Used to stop the caret and the footer timer.
+        """
+        QMetaObject.invokeMethod(
+            self._bridge,
+            "stream_finished",
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+    def set_model(self, model: str) -> None:
+        """Show the model name in the footer telemetry."""
+        QMetaObject.invokeMethod(
+            self._bridge,
+            "model_known",
+            Qt.ConnectionType.QueuedConnection,
+            Q_ARG(str, model),
+        )
+
     # ------------------------------------------------------------------
     # GUI-thread slots
     # ------------------------------------------------------------------
 
     def _on_token(self, token: str, kind: str = "answer") -> None:
-        # Reasoning tokens are dropped from the panel — the chain-
-        # of-thought is logged for debugging but never shown to the
-        # user. The final answer is the only thing that matters.
-        if kind == "reasoning":
+        if not token:
             return
-        cursor = self._text.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self._text.setTextCursor(cursor)
-        self._text.insertPlainText(token)
+        if kind == "reasoning":
+            return  # never rendered (but chars counted via footer if needed)
+        self._answer_view.append_token(token)
+        self._footer_bar.add_chars(len(token))
 
     def _on_clear(self) -> None:
-        self._text.clear()
+        self._answer_view.clear()
+        self._question_card.clear()
+        self._footer_bar.reset()
+        self._answer_view.set_streaming(False)
 
     def _on_phase(self, phase: str) -> None:
-        self._phase_label.setText(phase)
+        self._status_bar.set_phase(phase)
+        # The phase drives the streaming caret too.
+        if phase == "streaming":
+            self._answer_view.set_streaming(True)
+        elif phase in ("done", "error", "idle"):
+            self._answer_view.set_streaming(False)
+        if phase == "done":
+            self._footer_bar.stop_timer()
+        elif phase == "listening":
+            # New question is being recorded; reset footer in
+            # case the previous stream left stale stats.
+            self._footer_bar.reset()
 
     def _on_persona(self, name: str) -> None:
-        self._persona_label.setText(name)
+        self._current_persona = name
+        accent = accent_for(name)
+        self._status_bar.set_persona(name)
+        self._question_card.set_persona(name)
+        self._border.set_accent(accent)
+        self._apply_glow(accent)
+
+    def _on_question(self, question: str) -> None:
+        self._question_card.set_question(question)
+
+    def _on_stream_started(self) -> None:
+        self._answer_view.set_streaming(True)
+        self._footer_bar.start_timer()
+
+    def _on_stream_finished(self) -> None:
+        self._answer_view.set_streaming(False)
+        self._footer_bar.stop_timer()
+
+    def _on_model_known(self, model: str) -> None:
+        self._footer_bar.set_model(model)
+
+    # ------------------------------------------------------------------
+    # Glow / shadow
+    # ------------------------------------------------------------------
+
+    def _apply_glow(self, accent) -> None:
+        """Re-tint the drop shadow to match the persona accent."""
+        if self._shadow is None:
+            self._shadow = QGraphicsDropShadowEffect(self._container)
+            self._shadow.setBlurRadius(36)
+            self._shadow.setOffset(0, 0)
+            self._container.setGraphicsEffect(self._shadow)
+        glow = QColor(accent.glow)
+        glow.setAlpha(180)
+        self._shadow.setColor(glow)
 
     # ------------------------------------------------------------------
     # Drag + position
     # ------------------------------------------------------------------
 
     def _move_to_default_position(self) -> None:
-        from PySide6.QtWidgets import QApplication
-
         screen = QApplication.primaryScreen()
         if screen is None:
             return
         geo = screen.availableGeometry()
-        margin = 24
+        margin = _MARGIN_FROM_CORNER
         self.move(
             geo.right() - self.width() - margin,
             geo.bottom() - self.height() - margin,
         )
 
-    def mousePressEvent(self, event) -> None:
+    def _on_lock_toggled(self, locked: bool) -> None:
+        self._locked = locked
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if self._locked:
+            return super().mousePressEvent(event)
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
             )
             event.accept()
 
-    def mouseMoveEvent(self, event) -> None:
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._locked:
+            return super().mouseMoveEvent(event)
         if self._drag_offset is not None and (
             event.buttons() & Qt.MouseButton.LeftButton
         ):
             self.move(event.globalPosition().toPoint() - self._drag_offset)
             event.accept()
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_offset = None
             event.accept()
 
-    def showEvent(self, event) -> None:
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        # Keep the border overlay sized to the panel.
+        if self._border is not None:
+            self._border.setGeometry(self.rect())
+            self._border.raise_()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        if self._border is not None:
+            self._border.start()
         # Reposition on show in case the screen layout changed.
         if self.pos().x() < 0 or self.pos().y() < 0:
             self._move_to_default_position()
-        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        super().hideEvent(event)
+        if self._border is not None:
+            self._border.stop()
+
+
+__all__ = ["AnswerPanel"]

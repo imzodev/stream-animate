@@ -409,9 +409,16 @@ class Application:
                 self._answer_panel.set_phase("listening")
                 if self._llm_config is not None:
                     self._answer_panel.set_persona_label(self._llm_config.persona)
+                    self._answer_panel.set_model(self._llm_config.model)
                 self._answer_panel.show()
             elif event.phase == "thinking":
                 self._answer_panel.set_phase("thinking")
+                # The question text comes through on the thinking
+                # event (the engine has finalized the buffered
+                # phrases). Show it in the speech-bubble card.
+                if event.text:
+                    self._answer_panel.set_question(event.text)
+                self._answer_panel.notify_stream_started()
             elif event.phase == "streaming":
                 if event.kind == "reasoning":
                     # Show a "thinking…" indicator the first time
@@ -423,8 +430,10 @@ class Application:
                     self._answer_panel.append_token(event.delta, kind=event.kind)
             elif event.phase == "done":
                 self._answer_panel.set_phase("done")
+                self._answer_panel.notify_stream_finished()
             elif event.phase == "error":
                 self._answer_panel.set_phase("error")
+                self._answer_panel.notify_stream_finished()
                 self._answer_panel.append_token(f"\n[error: {event.text}]")
             elif event.phase == "idle":
                 # Hidden by the close button; do not re-show.

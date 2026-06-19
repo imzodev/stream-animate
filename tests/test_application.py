@@ -247,6 +247,10 @@ def test_application_fact_check_event_drives_panel(shortcut: Shortcut, qt_app) -
             self.tokens: List[str] = []
             self.kinds: List[str] = []
             self.phases: List[str] = []
+            self.questions: List[str] = []
+            self.models: List[str] = []
+            self.stream_started = 0
+            self.stream_finished = 0
             self.cleared = False
             self.shown = False
 
@@ -262,6 +266,18 @@ def test_application_fact_check_event_drives_panel(shortcut: Shortcut, qt_app) -
 
         def set_persona_label(self, name: str) -> None:
             pass
+
+        def set_model(self, model: str) -> None:
+            self.models.append(model)
+
+        def set_question(self, question: str) -> None:
+            self.questions.append(question)
+
+        def notify_stream_started(self) -> None:
+            self.stream_started += 1
+
+        def notify_stream_finished(self) -> None:
+            self.stream_finished += 1
 
         def show(self) -> None:
             self.shown = True
