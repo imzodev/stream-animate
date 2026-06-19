@@ -110,8 +110,8 @@ class LLMSection(QWidget):
             )
         if config.temperature < 0.0 or config.temperature > 2.0:
             errors.append("LLM: temperature must be between 0.0 and 2.0")
-        if config.max_tokens < 1 or config.max_tokens > 4096:
-            errors.append("LLM: max_tokens must be between 1 and 4096")
+        if config.max_tokens < 1 or config.max_tokens > 32768:
+            errors.append("LLM: max_tokens must be between 1 and 32768")
         if config.timeout_seconds < 5 or config.timeout_seconds > 300:
             errors.append("LLM: timeout_seconds must be between 5 and 300")
         if config.persona == "custom" and not (
@@ -228,7 +228,7 @@ class LLMSection(QWidget):
         row.addSpacing(20)
         row.addWidget(QLabel("Max tokens:"))
         self._max_tokens_input = QSpinBox()
-        self._max_tokens_input.setRange(1, 4096)
+        self._max_tokens_input.setRange(1, 32768)
         self._max_tokens_input.setValue(512)
         row.addWidget(self._max_tokens_input)
         row.addSpacing(20)

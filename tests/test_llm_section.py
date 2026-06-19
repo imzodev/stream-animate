@@ -139,7 +139,7 @@ def test_validate_rejects_out_of_range_temperature(section: LLMSection) -> None:
 
 
 def test_validate_rejects_out_of_range_max_tokens(section: LLMSection) -> None:
-    bad = LLMConfig(max_tokens=9999)
+    bad = LLMConfig(max_tokens=40000)
     errors = section.validate(bad)
     assert any("max_tokens" in e for e in errors)
 
