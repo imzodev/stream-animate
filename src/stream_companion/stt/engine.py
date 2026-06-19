@@ -76,6 +76,12 @@ class STTEngine:
         self._started_at: Optional[float] = None
         self._mic_open: bool = False
         self._observers: List[Callable[[], None]] = []
+        # Phrase observers receive the STTEvent for every successful
+        # transcription. They are independent of the ``on_phrase``
+        # constructor callback (which still fires too) so listeners
+        # like the fact-checker can subscribe and unsubscribe at
+        # runtime without losing the original wired callback.
+        self._phrase_observers: List[Callable[["STTEvent"], None]] = []
 
     @property
     def config(self) -> STTConfig:
@@ -424,18 +430,27 @@ class STTEngine:
             )
         # Always emit the phrase event so the trigger matcher (or any
         # other observer) can react, even when typing is skipped.
+        stt_event = STTEvent(
+            text=typed,
+            raw_text=text,
+            rms=rms,
+            language=self._config.language,
+        )
         if self._on_phrase is not None:
             try:
-                self._on_phrase(
-                    STTEvent(
-                        text=typed,
-                        raw_text=text,
-                        rms=rms,
-                        language=self._config.language,
-                    )
-                )
+                self._on_phrase(stt_event)
             except Exception:  # pragma: no cover - user callback
                 _LOGGER.exception("STT on_phrase callback raised")
+        # Fire the dynamic phrase-observers list (used by the
+        # fact-checker engine to reuse the STT transcription stream
+        # without re-running Whisper on overlapping audio).
+        with self._lock:
+            phrase_observers = list(self._phrase_observers)
+        for cb in phrase_observers:
+            try:
+                cb(stt_event)
+            except Exception:  # pragma: no cover - user callback
+                _LOGGER.exception("STT phrase observer raised")
         return "transcribed" if type_into_window else "trigger_only"
 
     def _emit_status(self, status: str) -> None:
@@ -461,6 +476,27 @@ class STTEngine:
         with self._lock:
             try:
                 self._observers.remove(callback)
+            except ValueError:
+                pass
+
+    def add_phrase_observer(self, callback: Callable[["STTEvent"], None]) -> None:
+        """Register a callback fired on every successfully
+        transcribed STT chunk.
+
+        Phrase observers receive an :class:`STTEvent` and run on
+        the STT engine's background thread. They are independent of
+        the ``on_phrase`` constructor callback (which still fires
+        in parallel), so a listener like the fact-checker engine
+        can subscribe and unsubscribe at runtime.
+        """
+
+        with self._lock:
+            self._phrase_observers.append(callback)
+
+    def remove_phrase_observer(self, callback: Callable[["STTEvent"], None]) -> None:
+        with self._lock:
+            try:
+                self._phrase_observers.remove(callback)
             except ValueError:
                 pass
 
