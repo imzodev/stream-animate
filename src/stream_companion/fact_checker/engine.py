@@ -440,6 +440,11 @@ class FactCheckerEngine:
                     break
                 if stream_chunk.reasoning:
                     streamed_reasoning.append(stream_chunk.reasoning)
+                    _LOGGER.info(
+                        "Fact-checker reasoning chunk: %r (total=%d chars)",
+                        stream_chunk.reasoning,
+                        len("".join(streamed_reasoning)),
+                    )
                     self._emit(
                         FactCheckerEvent(
                             phase="streaming",
@@ -450,6 +455,11 @@ class FactCheckerEngine:
                     )
                 if stream_chunk.content:
                     streamed_answer.append(stream_chunk.content)
+                    _LOGGER.info(
+                        "Fact-checker answer chunk: %r (total=%d chars)",
+                        stream_chunk.content,
+                        len("".join(streamed_answer)),
+                    )
                     self._emit(
                         FactCheckerEvent(
                             phase="streaming",
@@ -461,6 +471,20 @@ class FactCheckerEngine:
         except LLMError as exc:
             self._fail(self._summarize_llm_error(exc))
             raise
+
+        # Log the full cumulative streams for debugging — useful when
+        # the panel shows unexpected content and we need to see what
+        # actually came back from the model.
+        _LOGGER.info(
+            "Fact-checker final answer (%d chars): %r",
+            len("".join(streamed_answer)),
+            "".join(streamed_answer),
+        )
+        _LOGGER.info(
+            "Fact-checker final reasoning (%d chars): %r",
+            len("".join(streamed_reasoning)),
+            "".join(streamed_reasoning),
+        )
 
     def _summarize_llm_error(self, exc: "LLMError") -> str:
         """Return a short, user-facing error string for the panel.
