@@ -195,6 +195,13 @@ class FactCheckerClient:
             ],
         }
         url = self._chat_completions_url()
+        _LOGGER.info(
+            "Fact-checker LLM request: model=%s url=%s system=%r user=%r",
+            self._config.model,
+            url,
+            self._config.resolved_system_prompt(),
+            user_text,
+        )
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
