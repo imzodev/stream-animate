@@ -33,6 +33,7 @@ import httpx
 
 from .config import LLMConfig
 from .providers import AdapterFactory, StreamChunk
+from .thinking import ThinkingExtractor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -167,9 +168,16 @@ class FactCheckerClient:
         The caller may stop iterating early (e.g. on user cancel);
         the underlying connection is closed when the response
         context manager exits.
+
+        Inline ``<thinking>...</thinking>`` content inside
+        ``content`` is split out into ``reasoning`` according to
+        ``config.thinking`` (``SEPARATE`` / ``STRIP`` / ``KEEP``).
+        A fresh :class:`ThinkingExtractor` is created for each
+        stream so state never leaks between requests.
         """
 
         adapter = AdapterFactory.create(self._config)
+        extractor = ThinkingExtractor(strategy=self._config.thinking)
 
         api_key = self._config.api_key()
         if not api_key:
@@ -269,8 +277,24 @@ class FactCheckerClient:
                 if stream_chunk.is_final:
                     yield stream_chunk
                     break
-                if stream_chunk.content or stream_chunk.reasoning:
-                    yield stream_chunk
+                if not stream_chunk.content and not stream_chunk.reasoning:
+                    continue
+                # Run inline content through the thinking extractor
+                # so ``<thinking>...</thinking>`` regions are split
+                # into reasoning vs answer per the configured
+                # strategy. The extractor is stateful; partial tags
+                # spanning chunk boundaries are reassembled.
+                split = extractor.process(stream_chunk.content)
+                if split.reasoning or split.answer or stream_chunk.reasoning:
+                    yield StreamChunk(
+                        content=split.answer,
+                        reasoning=stream_chunk.reasoning + split.reasoning,
+                    )
+            # End of stream: flush any carry-over buffer so the
+            # final answer / reasoning chars are not lost.
+            tail = extractor.flush()
+            if tail.reasoning or tail.answer:
+                yield StreamChunk(content=tail.answer, reasoning=tail.reasoning)
         finally:
             response.close()
 

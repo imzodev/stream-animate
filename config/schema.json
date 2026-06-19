@@ -1,152 +1,260 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Streaming Companion Shortcuts",
-  "version": "1.5.0",
-  "type": "object",
-  "required": ["shortcuts"],
-  "properties": {
-    "version": {
-      "type": "string",
-      "description": "Schema version identifier",
-      "default": "1.0.0"
-    },
-    "activator": {
-      "type": "object",
-      "description": "Optional global activator for chorded shortcuts",
-      "properties": {
-        "hotkey": { "type": "string", "description": "Activator hotkey" },
-        "mode": { "type": "string", "enum": ["press", "hold"], "default": "press" },
-        "timeout_ms": { "type": "integer", "minimum": 100, "default": 1500 }
-      },
-      "required": ["hotkey"],
-      "additionalProperties": false
-    },
-    "shortcuts": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/shortcut"
-      }
-    },
-    "stt": {
-      "type": "object",
-      "description": "Speech-to-text configuration (Whisper)",
-      "properties": {
-        "enabled": { "type": "boolean", "default": false },
-        "always_on": { "type": "boolean", "default": false },
-        "hotkey": { "type": ["string", "null"], "description": "Toggle hotkey when always_on is false" },
-        "language": { "type": "string", "default": "auto", "description": "Whisper language code or 'auto'" },
-        "model": { "type": "string", "default": "turbo", "enum": ["tiny", "base", "small", "medium", "large", "turbo", "tiny.en", "base.en", "small.en", "medium.en"] },
-        "device": { "type": ["integer", "null"], "description": "sounddevice input device index, null for system default" },
-        "chunk_seconds": { "type": "number", "default": 4.0, "minimum": 0.5, "maximum": 30.0 },
-        "sample_rate": { "type": "integer", "default": 16000, "minimum": 8000, "maximum": 48000 },
-        "append_space": { "type": "boolean", "default": true },
-        "silence_rms_threshold": { "type": "number", "default": 0.005, "minimum": 0.0 },
-        "dedup_window": { "type": "integer", "default": 64, "minimum": 0, "maximum": 4096 },
-        "trigger_cooldown_ms": { "type": "integer", "default": 1500, "minimum": 0, "maximum": 60000, "description": "Per-shortcut cooldown for voice-triggered shortcuts" },
-        "type_into_focused_window": { "type": "boolean", "default": true, "description": "Whether the STT engine also types the dictated text into the focused window" },
-        "voice_triggers_enabled": { "type": "boolean", "default": true, "description": "Whether the STT engine scans phrases for shortcut trigger words" }
-      },
-      "additionalProperties": false
-    },
-    "llm": {
-      "type": "object",
-      "description": "LLM fact-checker / concept explainer configuration (OpenAI-compatible). The API key is read from the environment variable named by api_key_env; it is never stored in this file.",
-      "properties": {
-        "base_url": { "type": "string", "default": "https://api.openai.com/v1", "description": "Base URL of an OpenAI-compatible /v1/chat/completions endpoint (e.g. https://api.openai.com/v1, https://api.deepseek.com/v1, http://localhost:11434/v1)" },
-        "model": { "type": "string", "default": "gpt-4o-mini", "description": "Model name to send in the request" },
-        "api_key_env": { "type": "string", "default": "LLM_API_KEY", "description": "Name of the environment variable holding the API key", "pattern": "^[A-Z][A-Z0-9_]*$" },
-        "persona": { "type": "string", "default": "fact_checker", "enum": ["fact_checker", "eli5", "socratic", "devils_advocate", "custom"], "description": "Built-in persona preset. Use 'custom' to provide your own system_prompt." },
-        "system_prompt": { "type": ["string", "null"], "description": "Override the persona's system prompt. Required when persona is 'custom'." },
-        "temperature": { "type": "number", "default": 0.3, "minimum": 0.0, "maximum": 2.0 },
-        "max_tokens": { "type": "integer", "default": 512, "minimum": 1, "maximum": 32768, "description": "Per-response cap to bound cost" },
-        "toggle_hotkey": { "type": ["string", "null"], "description": "Global press-to-toggle hotkey for the fact-checker" },
-        "timeout_seconds": { "type": "integer", "default": 30, "minimum": 5, "maximum": 300 },
-        "silence_timeout": { "type": "number", "default": 5.0, "minimum": 0.5, "maximum": 60.0, "description": "Seconds of silence (no new STT phrase) after which the fact-checker auto-sends the buffered question. Measured from the LAST phrase (not from toggle press). Set >= timeout_seconds to require explicit toggle-to-send." },
-        "esc_hotkey": { "type": ["string", "null"], "default": "<esc>", "description": "Hotkey that aborts an in-flight LLM stream. The toggle hotkey does NOT cancel mid-stream (so the user doesn't accidentally kill the answer they asked for). Set to null to disable." }
-      },
-      "additionalProperties": false
-    }
-  },
-  "definitions": {
-    "shortcut": {
-      "type": "object",
-      "oneOf": [
-        { "required": ["hotkey"] },
-        { "required": ["suffix"] }
-      ],
-      "properties": {
-        "hotkey": {
-          "type": "string",
-          "description": "pynput-style hotkey definition"
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Streaming Companion Shortcuts",
+    "version": "1.5.0",
+    "type": "object",
+    "required": ["shortcuts"],
+    "properties": {
+        "version": {
+            "type": "string",
+            "description": "Schema version identifier",
+            "default": "1.0.0"
         },
-        "suffix": {
-          "description": "Suffix keys captured sequentially after activator (single string or array)",
-          "oneOf": [
-            { "type": "string" },
-            { "type": "array", "items": { "type": "string" }, "minItems": 1 }
-          ]
+        "activator": {
+            "type": "object",
+            "description": "Optional global activator for chorded shortcuts",
+            "properties": {
+                "hotkey": {"type": "string", "description": "Activator hotkey"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["press", "hold"],
+                    "default": "press"
+                },
+                "timeout_ms": {"type": "integer", "minimum": 100, "default": 1500}
+            },
+            "required": ["hotkey"],
+            "additionalProperties": false
         },
-        "sound": {
-          "type": "string",
-          "description": "Path to audio file"
+        "shortcuts": {"type": "array", "items": {"$ref": "#/definitions/shortcut"}},
+        "stt": {
+            "type": "object",
+            "description": "Speech-to-text configuration (Whisper)",
+            "properties": {
+                "enabled": {"type": "boolean", "default": false},
+                "always_on": {"type": "boolean", "default": false},
+                "hotkey": {
+                    "type": ["string", "null"],
+                    "description": "Toggle hotkey when always_on is false"
+                },
+                "language": {
+                    "type": "string",
+                    "default": "auto",
+                    "description": "Whisper language code or 'auto'"
+                },
+                "model": {
+                    "type": "string",
+                    "default": "turbo",
+                    "enum": [
+                        "tiny",
+                        "base",
+                        "small",
+                        "medium",
+                        "large",
+                        "turbo",
+                        "tiny.en",
+                        "base.en",
+                        "small.en",
+                        "medium.en"
+                    ]
+                },
+                "device": {
+                    "type": ["integer", "null"],
+                    "description": "sounddevice input device index, null for system default"
+                },
+                "chunk_seconds": {
+                    "type": "number",
+                    "default": 4.0,
+                    "minimum": 0.5,
+                    "maximum": 30.0
+                },
+                "sample_rate": {
+                    "type": "integer",
+                    "default": 16000,
+                    "minimum": 8000,
+                    "maximum": 48000
+                },
+                "append_space": {"type": "boolean", "default": true},
+                "silence_rms_threshold": {
+                    "type": "number",
+                    "default": 0.005,
+                    "minimum": 0.0
+                },
+                "dedup_window": {
+                    "type": "integer",
+                    "default": 64,
+                    "minimum": 0,
+                    "maximum": 4096
+                },
+                "trigger_cooldown_ms": {
+                    "type": "integer",
+                    "default": 1500,
+                    "minimum": 0,
+                    "maximum": 60000,
+                    "description": "Per-shortcut cooldown for voice-triggered shortcuts"
+                },
+                "type_into_focused_window": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether the STT engine also types the dictated text into the focused window"
+                },
+                "voice_triggers_enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether the STT engine scans phrases for shortcut trigger words"
+                }
+            },
+            "additionalProperties": false
+        },
+        "llm": {
+            "type": "object",
+            "description": "LLM fact-checker / concept explainer configuration (OpenAI-compatible). The API key is read from the environment variable named by api_key_env; it is never stored in this file.",
+            "properties": {
+                "base_url": {
+                    "type": "string",
+                    "default": "https://api.openai.com/v1",
+                    "description": "Base URL of an OpenAI-compatible /v1/chat/completions endpoint (e.g. https://api.openai.com/v1, https://api.deepseek.com/v1, http://localhost:11434/v1)"
+                },
+                "model": {
+                    "type": "string",
+                    "default": "gpt-4o-mini",
+                    "description": "Model name to send in the request"
+                },
+                "api_key_env": {
+                    "type": "string",
+                    "default": "LLM_API_KEY",
+                    "description": "Name of the environment variable holding the API key",
+                    "pattern": "^[A-Z][A-Z0-9_]*$"
+                },
+                "persona": {
+                    "type": "string",
+                    "default": "fact_checker",
+                    "enum": [
+                        "fact_checker",
+                        "eli5",
+                        "socratic",
+                        "devils_advocate",
+                        "custom"
+                    ],
+                    "description": "Built-in persona preset. Use 'custom' to provide your own system_prompt."
+                },
+                "system_prompt": {
+                    "type": ["string", "null"],
+                    "description": "Override the persona's system prompt. Required when persona is 'custom'."
+                },
+                "temperature": {
+                    "type": "number",
+                    "default": 0.3,
+                    "minimum": 0.0,
+                    "maximum": 2.0
+                },
+                "max_tokens": {
+                    "type": "integer",
+                    "default": 512,
+                    "minimum": 1,
+                    "maximum": 32768,
+                    "description": "Per-response cap to bound cost"
+                },
+                "toggle_hotkey": {
+                    "type": ["string", "null"],
+                    "description": "Global press-to-toggle hotkey for the fact-checker"
+                },
+                "timeout_seconds": {
+                    "type": "integer",
+                    "default": 30,
+                    "minimum": 5,
+                    "maximum": 300
+                },
+                "silence_timeout": {
+                    "type": "number",
+                    "default": 5.0,
+                    "minimum": 0.5,
+                    "maximum": 60.0,
+                    "description": "Seconds of silence (no new STT phrase) after which the fact-checker auto-sends the buffered question. Measured from the LAST phrase (not from toggle press). Set >= timeout_seconds to require explicit toggle-to-send."
+                },
+                "esc_hotkey": {
+                    "type": ["string", "null"],
+                    "default": "<esc>",
+                    "description": "Hotkey that aborts an in-flight LLM stream. The toggle hotkey does NOT cancel mid-stream (so the user doesn't accidentally kill the answer they asked for). Set to null to disable."
+                },
+                "thinking": {
+                    "type": "string",
+                    "enum": ["separate", "strip", "keep"],
+                    "default": "separate",
+                    "description": "How to handle chain-of-thought that arrives inline inside the answer wrapped in tags like <thinking>...</thinking>. 'separate' (default) splits it into the reasoning stream so the panel renders it as italic grey. 'strip' drops it entirely. 'keep' leaves the tags visible."
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "definitions": {
+        "shortcut": {
+            "type": "object",
+            "oneOf": [{"required": ["hotkey"]}, {"required": ["suffix"]}],
+            "properties": {
+                "hotkey": {
+                    "type": "string",
+                    "description": "pynput-style hotkey definition"
+                },
+                "suffix": {
+                    "description": "Suffix keys captured sequentially after activator (single string or array)",
+                    "oneOf": [
+                        {"type": "string"},
+                        {"type": "array", "items": {"type": "string"}, "minItems": 1}
+                    ]
+                },
+                "sound": {"type": "string", "description": "Path to audio file"},
+                "overlay": {"$ref": "#/definitions/overlay"},
+                "trigger_word": {
+                    "type": ["string", "null"],
+                    "description": "When STT transcribes a phrase containing this word (case-insensitive, word-boundary match), the shortcut fires. Set to null or omit to disable voice triggering for this shortcut."
+                },
+                "trigger_phrases": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "List of multi-word phrases. When STT transcribes a phrase that contains a candidate phrase as a contiguous, case-insensitive, word-boundary subsequence, the shortcut fires."
+                },
+                "fact_check": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Reserved for v1.1: when True, this shortcut can be bound to a fact-check trigger. v1 uses a single global toggle hotkey defined in the 'llm' block."
+                }
+            },
+            "additionalProperties": false
         },
         "overlay": {
-          "$ref": "#/definitions/overlay"
-        },
-        "trigger_word": {
-          "type": ["string", "null"],
-          "description": "When STT transcribes a phrase containing this word (case-insensitive, word-boundary match), the shortcut fires. Set to null or omit to disable voice triggering for this shortcut."
-        },
-        "trigger_phrases": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "List of multi-word phrases. When STT transcribes a phrase that contains a candidate phrase as a contiguous, case-insensitive, word-boundary subsequence, the shortcut fires."
-        },
-        "fact_check": {
-          "type": "boolean",
-          "default": false,
-          "description": "Reserved for v1.1: when True, this shortcut can be bound to a fact-check trigger. v1 uses a single global toggle hotkey defined in the 'llm' block."
+            "type": "object",
+            "required": ["file"],
+            "properties": {
+                "file": {"type": "string", "description": "Path to overlay asset"},
+                "x": {
+                    "type": "integer",
+                    "description": "Overlay X position",
+                    "default": 0
+                },
+                "y": {
+                    "type": "integer",
+                    "description": "Overlay Y position",
+                    "default": 0
+                },
+                "duration": {
+                    "type": "integer",
+                    "description": "Visibility duration in milliseconds",
+                    "default": 1500,
+                    "minimum": 0
+                },
+                "width": {
+                    "type": "integer",
+                    "description": "Overlay width in pixels (optional, uses original if not set)",
+                    "minimum": 1
+                },
+                "height": {
+                    "type": "integer",
+                    "description": "Overlay height in pixels (optional, uses original if not set)",
+                    "minimum": 1
+                }
+            },
+            "additionalProperties": false
         }
-      },
-      "additionalProperties": false
     },
-    "overlay": {
-      "type": "object",
-      "required": ["file"],
-      "properties": {
-        "file": {
-          "type": "string",
-          "description": "Path to overlay asset"
-        },
-        "x": {
-          "type": "integer",
-          "description": "Overlay X position",
-          "default": 0
-        },
-        "y": {
-          "type": "integer",
-          "description": "Overlay Y position",
-          "default": 0
-        },
-        "duration": {
-          "type": "integer",
-          "description": "Visibility duration in milliseconds",
-          "default": 1500,
-          "minimum": 0
-        },
-        "width": {
-          "type": "integer",
-          "description": "Overlay width in pixels (optional, uses original if not set)",
-          "minimum": 1
-        },
-        "height": {
-          "type": "integer",
-          "description": "Overlay height in pixels (optional, uses original if not set)",
-          "minimum": 1
-        }
-      },
-      "additionalProperties": false
-    }
-  },
-  "additionalProperties": false
+    "additionalProperties": false
 }

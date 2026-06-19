@@ -164,7 +164,11 @@ def test_stream_yields_deltas(monkeypatch: pytest.MonkeyPatch) -> None:
     finally:
         http_client.close()
 
-    assert [c.content for c in chunks] == ["Hello", " world", "!"]
+    # The thinking extractor buffers up to ``hold`` chars per call
+    # so tags that span chunk boundaries are recognised. For
+    # tag-free streams the cumulative content still equals the
+    # raw input; only the per-chunk boundaries change.
+    assert "".join(c.content for c in chunks) == "Hello world!"
     assert all(c.reasoning == "" for c in chunks)
     assert all(c.is_final is False for c in chunks)
     assert len(captured) == 1
@@ -279,10 +283,14 @@ def test_stream_handles_role_only_chunk(monkeypatch: pytest.MonkeyPatch) -> None
     finally:
         http_client.close()
     # The role-only chunk is filtered out (no content / reasoning).
-    # Only the token-bearing chunk is yielded.
-    assert [c.content for c in emitted] == ["Hi"]
-    # The first chunk had a role_delta even though it carried no text.
-    assert emitted[0].role_delta == "assistant" if emitted[0].role_delta else True
+    # Only the token-bearing chunk contributes content; the
+    # extractor may split it across multiple yield points but the
+    # cumulative content equals the raw input.
+    assert "".join(c.content for c in emitted) == "Hi"
+    # The first emitted chunk had a role_delta even though it
+    # carried no text (if it was yielded at all).
+    if emitted and emitted[0].role_delta:
+        assert emitted[0].role_delta == "assistant"
 
 
 def test_stream_handles_ollama_style_message_chunk(
@@ -303,7 +311,7 @@ def test_stream_handles_ollama_style_message_chunk(
         emitted = list(client.stream("q"))
     finally:
         http_client.close()
-    assert [c.content for c in emitted] == ["ollama-token"]
+    assert "".join(c.content for c in emitted) == "ollama-token"
 
 
 def test_stream_fact_checker_uses_correct_adapter(
@@ -428,7 +436,7 @@ def test_stream_skips_malformed_lines(monkeypatch: pytest.MonkeyPatch) -> None:
         emitted = list(client.stream("q"))
     finally:
         http_client.close()
-    assert [c.content for c in emitted] == ["A", "B"]
+    assert "".join(c.content for c in emitted) == "AB"
 
 
 def test_stream_skips_sse_comments(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -469,7 +477,10 @@ def test_stream_early_break_closes_response(
         gen = client.stream("q")
         first = next(gen)
         gen.close()
-        assert first.content == "a"
+        # The extractor buffers up to ``hold`` chars, so the first
+        # yielded chunk may not be the full "a" token — but it
+        # must start with "a".
+        assert first.content.startswith("a")
     finally:
         http_client.close()
 

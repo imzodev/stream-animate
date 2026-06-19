@@ -10,6 +10,7 @@ from typing import List, Optional, Tuple
 import jsonschema
 
 from .llm.config import LLMConfig
+from .llm.thinking import ThinkingStrategy
 from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
 
 _LOGGER = logging.getLogger(__name__)
@@ -333,6 +334,7 @@ def _hydrate_llm_config(raw: Optional[dict]) -> Optional[LLMConfig]:
             esc_hotkey=(
                 str(raw["esc_hotkey"]) if raw.get("esc_hotkey") is not None else None
             ),
+            thinking=ThinkingStrategy(raw.get("thinking", LLMConfig().thinking.value)),
         )
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"Invalid LLM configuration: {exc}") from exc
@@ -433,6 +435,7 @@ def _serialize(
             "timeout_seconds": llm.timeout_seconds,
             "silence_timeout": llm.silence_timeout,
             "esc_hotkey": llm.esc_hotkey,
+            "thinking": llm.thinking.value,
         }
     return data
 

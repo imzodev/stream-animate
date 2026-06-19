@@ -526,6 +526,7 @@ def _write_schema_with_llm(path: Path) -> None:
                     "timeout_seconds": {"type": "integer"},
                     "silence_timeout": {"type": "number"},
                     "esc_hotkey": {"type": ["string", "null"]},
+                    "thinking": {"type": "string"},
                 },
                 "additionalProperties": False,
             },
@@ -557,6 +558,7 @@ def test_llm_config_round_trip(tmp_path: Path) -> None:
                     "timeout_seconds": 45,
                     "silence_timeout": 7.0,
                     "esc_hotkey": "<esc>",
+                    "thinking": "strip",
                 },
             }
         ),
@@ -581,6 +583,7 @@ def test_llm_config_round_trip(tmp_path: Path) -> None:
         timeout_seconds=45,
         silence_timeout=7.0,
         esc_hotkey="<esc>",
+        thinking="strip",
     )
 
     # Round-trip via save_config

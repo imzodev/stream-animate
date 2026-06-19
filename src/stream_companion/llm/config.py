@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .personas import resolve_system_prompt
+from .thinking import ThinkingStrategy
 
 # Environment-variable name pattern (uppercase + underscores, must start
 # with a letter, no leading digits).
@@ -63,6 +64,12 @@ class LLMConfig:
     # toggle hotkey never accidentally kills the answer the user
     # asked for. Set to ``None`` to disable.
     esc_hotkey: Optional[str] = "<esc>"
+    # How to handle chain-of-thought content that arrives inline
+    # inside the answer wrapped in tags like ``<thinking>...</thinking>``.
+    # SEPARATE (default) splits it into the reasoning stream so the
+    # panel can render it as italic grey; STRIP drops it entirely;
+    # KEEP leaves the tags visible in the answer (debugging).
+    thinking: ThinkingStrategy = ThinkingStrategy.SEPARATE
 
     def resolved_system_prompt(self) -> str:
         """Return the active system prompt (custom → preset → default)."""
