@@ -15,8 +15,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import (
     QPropertyAnimation,
-    QEasingCurve,
-    QParallelAnimationGroup,
     Qt,
 )
 from PySide6.QtGui import QColor, QFont
@@ -101,9 +99,7 @@ class _QuestionCard(QWidget):
         bubble_layout.addWidget(self._text)
 
         # Animation state.
-        self._slide_anim: QPropertyAnimation | None = None
         self._opacity_anim: QPropertyAnimation | None = None
-        self._group: QParallelAnimationGroup | None = None
         self.hide()
 
     # ------------------------------------------------------------------
@@ -145,30 +141,32 @@ class _QuestionCard(QWidget):
         )
 
     def _run_appear_animation(self) -> None:
-        if self._group is not None:
-            self._group.stop()
-        # Slide in: move from -16px to 0px on x.
-        self._slide_anim = QPropertyAnimation(self, b"pos")
-        self._slide_anim.setDuration(_ANIM_MS)
-        self._slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
-        start_pos = self.pos()
-        self._slide_anim.setStartValue(start_pos)
-        self._slide_anim.setEndValue(start_pos)
+        # Cancel any in-flight disappear animation so the new
+        # fade-in starts cleanly.
+        if self._opacity_anim is not None:
+            self._opacity_anim.stop()
+            self._opacity_anim = None
 
-        # Fade in: 0 → 1.
+        # Reset the effect to 0 before starting so the fade is
+        # visible (the widget is shown immediately, then fades in).
+        self._opacity_effect.setOpacity(0.0)
+        self.show()
+
+        # Fade in: 0 → 1. The widget's position is managed by
+        # the parent's layout — animating ``pos`` on a layout-
+        # managed widget fights the layout, so we just fade.
         self._opacity_anim = QPropertyAnimation(self._opacity_effect, b"opacity")
         self._opacity_anim.setDuration(_ANIM_MS)
         self._opacity_anim.setStartValue(0.0)
         self._opacity_anim.setEndValue(1.0)
-
-        self._group = QParallelAnimationGroup(self)
-        self._group.addAnimation(self._slide_anim)
-        self._group.addAnimation(self._opacity_anim)
-
-        self.show()
-        self._group.start()
+        self._opacity_anim.start()
 
     def _run_disappear_animation(self) -> None:
+        # Stop any in-flight appear animation; the new fade-out
+        # will take over.
+        if self._opacity_anim is not None:
+            self._opacity_anim.stop()
+            self._opacity_anim = None
         anim = QPropertyAnimation(self._opacity_effect, b"opacity")
         anim.setDuration(_ANIM_MS // 2)
         anim.setStartValue(self._opacity_effect.opacity())

@@ -25,9 +25,8 @@ API.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtGui import QFont, QTextCursor
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QTextEdit
+from PySide6.QtWidgets import QTextEdit
 
 from ._animations import blink
 
@@ -36,9 +35,6 @@ from ._animations import blink
 _MIN_HEIGHT = 96
 _MAX_HEIGHT = 480
 _HEIGHT_STEP = 24  # grow by this much per content line block
-
-# Per-token fade-in duration (ms).
-_TOKEN_FADE_MS = 80
 
 # Caret character. A thin block works well in monospace fonts.
 _CARET = "▎"
@@ -86,8 +82,6 @@ class _AnswerView(QTextEdit):
 
         self._streaming = False
         self._caret_animator = None
-        self._last_token_effect: QGraphicsOpacityEffect | None = None
-        self._last_token_anim: QPropertyAnimation | None = None
         self.setMinimumHeight(_MIN_HEIGHT)
         self.setMaximumHeight(_MAX_HEIGHT)
         self._adjust_height()
@@ -99,8 +93,7 @@ class _AnswerView(QTextEdit):
     def append_token(self, token: str) -> None:
         """Append a token to the streaming answer.
 
-        If a stream is active, the caret is refreshed at the end
-        and the new text briefly fades in.
+        If a stream is active, the caret is refreshed at the end.
         """
         if not token:
             return
@@ -113,7 +106,6 @@ class _AnswerView(QTextEdit):
         cursor.insertText(token)
         if self._streaming:
             self._insert_caret()
-        self._animate_last_token()
         self._adjust_height()
 
     def clear(self) -> None:
@@ -165,29 +157,6 @@ class _AnswerView(QTextEdit):
             self._caret_animator = None
         # Make sure the document is fully opaque when the caret is gone.
         self.setWindowOpacity(1.0)
-
-    def _animate_last_token(self) -> None:
-        """Fade in the most-recently-inserted token.
-
-        A precise per-character animation would require custom
-        painting; instead we briefly lower the widget's overall
-        opacity and ease it back up. The user perceives a soft
-        "appearing" effect on each new chunk.
-        """
-        if self._last_token_anim is not None:
-            self._last_token_anim.stop()
-        effect = QGraphicsOpacityEffect(self)
-        effect.setOpacity(0.4)
-        # Don't stack opacity effects; clear any previous one.
-        self.setGraphicsEffect(effect)
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(_TOKEN_FADE_MS)
-        anim.setStartValue(0.4)
-        anim.setEndValue(1.0)
-        anim.finished.connect(effect.deleteLater)
-        anim.start()
-        self._last_token_effect = effect
-        self._last_token_anim = anim
 
     def _adjust_height(self) -> None:
         """Grow the widget vertically with content, up to _MAX_HEIGHT."""

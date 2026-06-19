@@ -53,11 +53,22 @@ class _Pulse(QObject):
 
     def stop(self) -> None:
         self._timer.stop()
-        # Reset to fully opaque so the widget is visible when not pulsing.
-        self._effect.setOpacity(self._hi)
+        # Reset to fully opaque so the widget is visible when not
+        # pulsing. The underlying C++ effect may already be gone
+        # if the parent widget was destroyed; guard accordingly.
+        try:
+            self._effect.setOpacity(self._hi)
+        except RuntimeError:
+            pass
 
     def _tick(self) -> None:
-        current = self._effect.opacity()
+        try:
+            current = self._effect.opacity()
+        except RuntimeError:
+            # Effect was deleted (e.g. parent widget destroyed);
+            # stop ticking.
+            self._timer.stop()
+            return
         if self._direction < 0:
             new = current - self._step
             if new <= self._lo:
@@ -68,7 +79,10 @@ class _Pulse(QObject):
             if new >= self._hi:
                 new = self._hi
                 self._direction = -1
-        self._effect.setOpacity(new)
+        try:
+            self._effect.setOpacity(new)
+        except RuntimeError:
+            self._timer.stop()
 
 
 class _Blink(QObject):
@@ -94,16 +108,26 @@ class _Blink(QObject):
     def start(self) -> None:
         if not self._timer.isActive():
             self._visible = True
-            self._effect.setOpacity(1.0)
+            try:
+                self._effect.setOpacity(1.0)
+            except RuntimeError:
+                return
             self._timer.start()
 
     def stop(self) -> None:
         self._timer.stop()
-        self._effect.setOpacity(1.0)
+        try:
+            self._effect.setOpacity(1.0)
+        except RuntimeError:
+            pass
 
     def _tick(self) -> None:
         self._visible = not self._visible
-        self._effect.setOpacity(1.0 if self._visible else 0.0)
+        try:
+            self._effect.setOpacity(1.0 if self._visible else 0.0)
+        except RuntimeError:
+            # Effect was deleted; stop ticking.
+            self._timer.stop()
 
 
 def pulse(widget: QWidget, **kwargs) -> _Pulse:

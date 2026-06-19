@@ -274,19 +274,51 @@ class AnswerPanel(QWidget):
             return
         if kind == "reasoning":
             return  # never rendered (but chars counted via footer if needed)
-        self._answer_view.append_token(token)
+        try:
+            self._answer_view.append_token(token)
+        except RuntimeError:
+            # Stale C++ object from a previous panel lifetime —
+            # skip this token rather than crash the whole engine.
+            return
         self._footer_bar.add_chars(len(token))
+        # Resize the panel to fit the growing answer view. Cheap
+        # (just a height comparison and a resize call) and keeps
+        # the answer fully visible without scrolling.
+        self._fit_height_to_content()
 
     def _on_clear(self) -> None:
-        self._answer_view.clear()
-        self._question_card.clear()
-        self._footer_bar.reset()
-        self._answer_view.set_streaming(False)
+        """Reset every sub-widget to its idle state.
+
+        Each step is wrapped in try/except so a failure in one
+        (e.g. a deleted C++ object from a previous run) does not
+        prevent the others from running. The question card in
+        particular must always hide, otherwise stale questions
+        bleed into the next stream.
+        """
+        for step in (
+            self._answer_view.clear,
+            self._question_card.clear,
+            self._footer_bar.reset,
+            lambda: self._answer_view.set_streaming(False),
+        ):
+            try:
+                step()
+            except RuntimeError:
+                # Stale C++ object from a previous panel lifetime.
+                # We've already moved past the failing step; the
+                # next step is independent.
+                pass
 
     def _on_phase(self, phase: str) -> None:
         self._status_bar.set_phase(phase)
         # The phase drives the streaming caret too.
         if phase == "streaming":
+            # The question card has served its purpose (the user
+            # already saw their question). Hide it now so the
+            # answer view gets the full panel height — without
+            # this the card stays visible and the answer is cut
+            # off by the fixed panel size.
+            self._question_card.clear()
             self._answer_view.set_streaming(True)
         elif phase in ("done", "error", "idle"):
             self._answer_view.set_streaming(False)
@@ -307,6 +339,9 @@ class AnswerPanel(QWidget):
 
     def _on_question(self, question: str) -> None:
         self._question_card.set_question(question)
+        # The question card may have changed the panel's ideal
+        # height (it's now visible). Resize to fit.
+        self._fit_height_to_content()
 
     def _on_stream_started(self) -> None:
         self._answer_view.set_streaming(True)
@@ -315,9 +350,68 @@ class AnswerPanel(QWidget):
     def _on_stream_finished(self) -> None:
         self._answer_view.set_streaming(False)
         self._footer_bar.stop_timer()
+        # One final resize in case the last batch of tokens pushed
+        # the answer view past the previous fit.
+        self._fit_height_to_content()
 
     def _on_model_known(self, model: str) -> None:
         self._footer_bar.set_model(model)
+
+    # ------------------------------------------------------------------
+    # Auto-grow
+    # ------------------------------------------------------------------
+
+    def _fit_height_to_content(self) -> None:
+        """Resize the panel vertically to fit the current content.
+
+        Sums the heights of the fixed chrome (status bar, footer,
+        container margins, border padding) plus the question card
+        (if visible) plus the answer view's current height, and
+        resizes the panel to that total — capped at the screen
+        height so a runaway answer can't push the panel off-screen.
+
+        Called after every token and after the question card is
+        shown / hidden. Cheap (one height comparison + one
+        resize) and keeps the answer fully visible without the
+        user having to scroll inside the answer view.
+        """
+        # Fixed chrome: status bar + footer + container margins
+        # (2px top + 2px bottom per the container_layout) +
+        # drop-shadow blur margin (~16px so the glow isn't clipped).
+        chrome_h = (
+            self._status_bar.height()
+            + self._footer_bar.height()
+            + 4  # container vertical margins
+            + 16  # shadow blur + offset margin
+        )
+        # Question card: include its current height only if it's
+        # actually visible. During streaming the card is hidden
+        # so the answer gets the full height. We read the opacity
+        # from the graphics effect because QWidget has no
+        # ``opacity()`` method of its own.
+        card_effect = self._question_card.graphicsEffect()
+        card_opacity = card_effect.opacity() if card_effect is not None else 1.0
+        if self._question_card.isVisible() and card_opacity > 0.5:
+            card_h = max(
+                self._question_card.height(), self._question_card.sizeHint().height()
+            )
+        else:
+            card_h = 0
+        # Answer view: whatever height it has auto-grown to.
+        answer_h = self._answer_view.height()
+        ideal = chrome_h + card_h + answer_h
+
+        # Cap at the screen height (minus a margin so the panel
+        # doesn't touch the taskbar / dock).
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            max_h = int(screen.availableGeometry().height()) - 80
+        else:
+            max_h = ideal
+        new_h = max(_DEFAULT_HEIGHT, min(ideal, max_h))
+
+        if abs(self.height() - new_h) > 2:
+            self.resize(self.width(), new_h)
 
     # ------------------------------------------------------------------
     # Glow / shadow
