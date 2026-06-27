@@ -37,6 +37,8 @@ assets/
 .DS_Store
 Thumbs.db
 
+.atl/
+
 # Secrets — never commit API keys
 .env
 .env.*
