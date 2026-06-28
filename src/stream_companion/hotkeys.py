@@ -96,8 +96,12 @@ class HotkeyManager:
                 f"Hotkey combination '{combination}' has no usable key segments"
             )
         # Require at least one non-modifier key to avoid registering
-        # something like "ctrl+alt" with no trigger.
-        if all(seg.startswith("<") and seg.endswith(">") for seg in out):
+        # something like "ctrl+alt" with no trigger. Note that bracketed
+        # special keys such as ``<esc>``, ``<space>`` or ``<f1>`` are
+        # NON-modifiers — only the actual modifier names count here, so a
+        # bare ``<esc>`` is a valid (modifier-less) hotkey.
+        modifier_tokens = {f"<{m}>" for m in modifiers}
+        if all(seg in modifier_tokens for seg in out):
             raise ValueError(
                 f"Hotkey combination '{combination}' has no non-modifier key"
             )
