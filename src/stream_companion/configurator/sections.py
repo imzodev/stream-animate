@@ -7,6 +7,7 @@ read/populate/validate API for the main window to drive.
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..models import STTConfig, Shortcut
+from ..models import OverlayConfig, STTConfig, Shortcut
 from .constants import (
     MAX_DURATION_MS,
     MAX_OVERLAY_SIZE,
@@ -368,10 +369,9 @@ class ShortcutSection(QWidget):
         ``populate(shortcut)`` — fill widgets from a :class:`Shortcut` (or
             clear them with ``clear()``).
         ``clear()`` — reset all fields to empty/defaults.
-        ``read()`` — return a tuple ``(hotkey, suffix, sound_path, overlay,
-            trigger_word, trigger_phrases)``. ``hotkey`` and ``suffix`` are
-            mutually exclusive based on the trigger radio. Returns ``None``
-            for the trigger values if not set.
+        ``read()`` — build a :class:`Shortcut` from the current fields.
+            ``hotkey`` and ``suffix`` are mutually exclusive based on the
+            trigger radio. Callers should run ``validate_trigger()`` first.
         ``validate_trigger()`` — return a list of user-facing validation
             errors (e.g. empty hotkey, empty suffix).
     """
@@ -442,11 +442,72 @@ class ShortcutSection(QWidget):
         self._width_input.setValue(100)
         self._height_input.setValue(100)
 
+    def read(self) -> Shortcut:
+        """Build a :class:`Shortcut` from the current editor fields.
+
+        Assumes the trigger field (hotkey or suffix) is non-empty;
+        callers should run :meth:`validate_trigger` first and show its
+        errors rather than relying on this method to reject bad input.
+        """
+        hotkey: Optional[str] = None
+        suffix: Optional[tuple] = None
+        if self._trigger_suffix.isChecked():
+            tokens = self._suffix_tokens()
+            suffix = tuple(tokens) if tokens else None
+        else:
+            hotkey = self._hotkey_capture.get_hotkey().strip() or None
+
+        overlay = None
+        overlay_path = self._overlay_input.text().strip()
+        if overlay_path:
+            width = height = None
+            if self._custom_size_checkbox.isChecked():
+                width = self._width_input.value()
+                height = self._height_input.value()
+            overlay = OverlayConfig(
+                file=overlay_path,
+                x=self._x_input.value(),
+                y=self._y_input.value(),
+                duration_ms=self._duration_input.value(),
+                width=width,
+                height=height,
+            )
+
+        trigger_word = self._trigger_word_input.text().strip().lower() or None
+        phrases = tuple(
+            line.strip()
+            for line in self._trigger_phrases_input.toPlainText().splitlines()
+            if line.strip()
+        )
+        return Shortcut(
+            hotkey=hotkey,
+            suffix=suffix,
+            sound_path=self._sound_input.text().strip() or None,
+            overlay=overlay,
+            trigger_word=trigger_word,
+            trigger_phrases=phrases or None,
+        )
+
+    def validate_trigger(self) -> List[str]:
+        """Return user-facing validation errors for the editor fields."""
+        errors: List[str] = []
+        if self._trigger_suffix.isChecked():
+            if not self._suffix_tokens():
+                errors.append("Suffix cannot be empty")
+        elif not self._hotkey_capture.get_hotkey().strip():
+            errors.append("Hotkey cannot be empty")
+        return errors
+
     def cleanup_preview(self) -> None:
         """Release preview-movie resources. Call from window closeEvent."""
         self._cleanup_preview_movie()
 
     # -- internals ----------------------------------------------------------
+
+    def _suffix_tokens(self) -> List[str]:
+        """Split the suffix capture into normalized key tokens."""
+        raw = self._suffix_capture.get_key().strip().lower()
+        return [token for token in re.split(r"[\s,]+", raw) if token]
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout()
@@ -663,17 +724,7 @@ class ShortcutSection(QWidget):
                     return
 
                 self._preview_movie = movie
-
-                scaled = pixmap.scaled(
-                    PREVIEW_WIDTH,
-                    PREVIEW_HEIGHT,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                self._overlay_preview.setPixmap(scaled)
-                if not self._custom_size_checkbox.isChecked():
-                    self._width_input.setValue(pixmap.width())
-                    self._height_input.setValue(pixmap.height())
+                self._show_scaled_preview(pixmap)
             elif suffix in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v"}:
                 self._overlay_preview.clear()
                 self._overlay_preview.setText("Video file selected (no preview)")
@@ -685,20 +736,29 @@ class ShortcutSection(QWidget):
                     _LOGGER.warning("Failed to load image preview: %s", path_obj)
                     return
 
-                scaled = pixmap.scaled(
-                    PREVIEW_WIDTH,
-                    PREVIEW_HEIGHT,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                self._overlay_preview.setPixmap(scaled)
-                if not self._custom_size_checkbox.isChecked():
-                    self._width_input.setValue(pixmap.width())
-                    self._height_input.setValue(pixmap.height())
+                self._show_scaled_preview(pixmap)
         except Exception as exc:
             self._overlay_preview.clear()
             self._overlay_preview.setText("Error loading preview")
             _LOGGER.error("Error loading overlay preview for %s: %s", path_obj, exc)
+
+    def _show_scaled_preview(self, pixmap: QPixmap) -> None:
+        """Scale ``pixmap`` into the preview label and seed the size inputs.
+
+        Shared by the GIF (first-frame) and static-image preview paths.
+        When custom size is off, the overlay defaults to the asset's
+        native dimensions.
+        """
+        scaled = pixmap.scaled(
+            PREVIEW_WIDTH,
+            PREVIEW_HEIGHT,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self._overlay_preview.setPixmap(scaled)
+        if not self._custom_size_checkbox.isChecked():
+            self._width_input.setValue(pixmap.width())
+            self._height_input.setValue(pixmap.height())
 
     def _on_custom_size_toggled(self, state: int) -> None:
         """Handle custom size checkbox toggle."""

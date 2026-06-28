@@ -9,7 +9,6 @@ section widget has a small read/populate/validate API and lives in
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -31,7 +30,7 @@ from PySide6.QtWidgets import (
 from .. import model_downloader
 from ..config_loader import ConfigError, load_full_config, save_config
 from ..llm.config import LLMConfig
-from ..models import ActivatorConfig, OverlayConfig, Shortcut
+from ..models import ActivatorConfig, Shortcut
 from ..overlay import OverlayWindow
 from ..sound import SoundPlayer
 from .llm_section import LLMSection
@@ -399,74 +398,12 @@ class ConfiguratorWindow(QMainWindow):
         if self._current_index is None:
             return True
 
-        suffix_mode = self._shortcut_section._trigger_suffix.isChecked()
-        hotkey = None
-        suffix = None
-        if suffix_mode:
-            raw = self._shortcut_section._suffix_capture.get_key().strip().lower()
-            if not raw:
-                QMessageBox.warning(self, "Validation Error", "Suffix cannot be empty")
-                return False
-            tokens = [t for t in re.split(r"[\s,]+", raw) if t]
-            if not tokens:
-                QMessageBox.warning(self, "Validation Error", "Suffix cannot be empty")
-                return False
-            suffix = tuple(tokens)
-        else:
-            hk = self._shortcut_section._hotkey_capture.get_hotkey().strip()
-            if not hk:
-                QMessageBox.warning(self, "Validation Error", "Hotkey cannot be empty")
-                return False
-            hotkey = hk
+        errors = self._shortcut_section.validate_trigger()
+        if errors:
+            QMessageBox.warning(self, "Validation Error", errors[0])
+            return False
 
-        sound_path = self._shortcut_section._sound_input.text().strip() or None
-        overlay_path = self._shortcut_section._overlay_input.text().strip()
-
-        overlay = None
-        if overlay_path:
-            width = None
-            height = None
-            if self._shortcut_section._custom_size_checkbox.isChecked():
-                width = self._shortcut_section._width_input.value()
-                height = self._shortcut_section._height_input.value()
-                if (width is not None and height is None) or (
-                    width is None and height is not None
-                ):
-                    QMessageBox.warning(
-                        self,
-                        "Validation Error",
-                        "Both width and height must be set together for custom size",
-                    )
-                    return False
-
-            overlay = OverlayConfig(
-                file=overlay_path,
-                x=self._shortcut_section._x_input.value(),
-                y=self._shortcut_section._y_input.value(),
-                duration_ms=self._shortcut_section._duration_input.value(),
-                width=width,
-                height=height,
-            )
-
-        trigger_word_raw = self._shortcut_section._trigger_word_input.text().strip()
-        trigger_word = trigger_word_raw.lower() or None
-
-        phrases_text = self._shortcut_section._trigger_phrases_input.toPlainText()
-        trigger_phrases_list: List[str] = []
-        for raw_line in phrases_text.splitlines():
-            cleaned = raw_line.strip()
-            if cleaned:
-                trigger_phrases_list.append(cleaned)
-        trigger_phrases = tuple(trigger_phrases_list) if trigger_phrases_list else None
-
-        self._shortcuts[self._current_index] = Shortcut(
-            hotkey=hotkey,
-            suffix=suffix,
-            sound_path=sound_path,
-            overlay=overlay,
-            trigger_word=trigger_word,
-            trigger_phrases=trigger_phrases,
-        )
+        self._shortcuts[self._current_index] = self._shortcut_section.read()
         self._refresh_list()
         return True
 
