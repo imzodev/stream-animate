@@ -2,6 +2,7 @@ PySide6==6.9.3
 pynput==1.8.1
 pygame==2.6.1
 jsonschema==4.23.0
+faster-whisper==1.1.1
 openai-whisper==20250625
 sounddevice==0.5.1
 numpy==2.1.3

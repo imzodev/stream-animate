@@ -125,10 +125,7 @@ def _format_cache_status(model_name: str) -> str:
         return f"unknown model: {model_name!r}"
     if model_downloader.is_model_cached(model_name):
         path = model_downloader.model_path(model_name)
-        try:
-            size = os.path.getsize(path)
-        except OSError:
-            size = 0
+        size = model_downloader.cache_size_bytes(path)
         return f"cached at {path} ({_human_bytes(size)})"
     return "not cached"
 

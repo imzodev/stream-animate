@@ -133,7 +133,7 @@ Hovering the icon shows a detailed tooltip ("STT: listening", "STT: listening + 
 The base icon is `assets/icon.png` (or a synthesized "SC" badge if no asset is present).
 
 ## Speech-to-Text Typing
-Stream Companion can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [OpenAI Whisper](https://github.com/openai/whisper), it runs entirely on your machine — no cloud calls, no API keys.
+Stream Companion can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (with an automatic fallback to [OpenAI Whisper](https://github.com/openai/whisper)), it runs entirely on your machine — no cloud calls, no API keys. See [GPU acceleration](#gpu-acceleration-nvidia-optional-but-recommended) to run it on an NVIDIA GPU.
 
 ### Quick Start
 1. Open the configurator (`python main.py --config`) and switch to the **Speech-to-Text** tab.
@@ -147,13 +147,12 @@ Stream Companion can transcribe your voice in real time and type the result into
 7. Pick an **Input device** (or leave it on *System default*).
 8. Click **Save STT Settings**. The save returns immediately, but if the model is not yet cached the tool will start downloading it in the background. **Watch the terminal for the progress log** — you'll see lines like:
    ```
-   [INFO] stream_companion.model_downloader: Whisper model 'large' not cached; downloading (~2.9 GiB) to /home/irving/.cache/whisper/large-v3.pt …
-   [INFO] stream_companion.model_downloader: Whisper model 'large' download: 500.0 MiB / 2.9 GiB (17%)
-   [INFO] stream_companion.model_downloader: Whisper model 'large' download: 1000.0 MiB / 2.9 GiB (34%)
-   …
-   [INFO] stream_companion.model_downloader: Whisper model 'large' download complete: /home/irving/.cache/whisper/large-v3.pt
+   [INFO] stream_companion.model_downloader: Whisper model 'large-v3' not cached; downloading from Hugging Face (watch this log for progress) …
+   [INFO] stream_companion.model_downloader: Whisper model 'large-v3' download complete: /home/irving/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
    ```
-   You can close the configurator during the download; it continues in the background.
+   The model is a CTranslate2 snapshot cached under your Hugging Face cache
+   (`~/.cache/huggingface/hub`, or `$HF_HOME`). You can close the configurator
+   during the download; it continues in the background.
 9. Re-launch the listener (`python main.py --log-level INFO`) and click into any text field. Start speaking — each phrase is typed into the focused window followed by a space.
 
 ### Voice Triggers
@@ -211,10 +210,20 @@ The download continues even if you close the configurator; you can check on it w
 - The list of supported languages is the union of Whisper's tokenizer + `auto`.
 
 ### Requirements
-The listener adds two new system dependencies:
-- `openai-whisper` (transcription model)
+The listener adds these dependencies (all in `requirements.txt`):
+- `faster-whisper` (transcription engine — CTranslate2, used by default)
+- `openai-whisper` (automatic fallback if faster-whisper can't load)
 - `sounddevice` (microphone capture via PortAudio)
 - `numpy` (audio buffer math)
+
+Install them with:
+```bash
+pip install -r requirements.txt
+```
+On Windows, if `pip` isn't on your PATH, call the venv interpreter directly:
+```bash
+.venv/Scripts/python.exe -m pip install -r requirements.txt
+```
 
 On Debian/Ubuntu you may also need:
 ```bash
@@ -222,6 +231,29 @@ sudo apt-get install ffmpeg libportaudio2
 ```
 
 `ffmpeg` is required by Whisper for first-use model downloads and any future audio-format conversions.
+
+#### GPU acceleration (NVIDIA, optional but recommended)
+faster-whisper runs on CPU (`int8`) out of the box. To use an NVIDIA GPU
+(`float16`, several times faster), install the CUDA 12 runtime libraries —
+they are **not** bundled with CTranslate2, so they're a separate install:
+```bash
+.venv/Scripts/python.exe -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+```
+The app automatically registers the pip-installed CUDA DLL directories
+(`site-packages/nvidia/*/bin`) on Windows at startup, so you don't need to
+edit `PATH` yourself — installing the two packages above is enough.
+
+The transcriber auto-detects the GPU at startup. Launch with
+`python main.py --log-level INFO` and check the model-load line:
+- `backend=faster ... device=cuda` — running on the GPU. 🎉
+- `device=cpu` — no usable GPU found; running on CPU (still fine, just slower).
+- A `faster-whisper unavailable …; falling back to openai-whisper` warning —
+  faster-whisper couldn't initialize at all; the older engine is used instead.
+
+> **Note:** Very new GPUs (e.g. Blackwell / RTX 50-series) may need a newer
+> `ctranslate2` build than the one pinned here for CUDA support. If you see
+> `device=cpu` despite a working GPU, upgrade `ctranslate2` or use the
+> openai-whisper path with a CUDA build of PyTorch instead.
 
 ### JSON Configuration
 STT settings can also be edited directly in `config/shortcuts.json`:

@@ -77,6 +77,33 @@ class FakeWhisperModel:
         return {"text": self.responses.pop(0) if self.responses else ""}
 
 
+class _FakeSegment:
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+class FakeFasterWhisperModel:
+    """Mimics faster-whisper: ``transcribe`` returns ``(segments, info)``.
+
+    The class module is spoofed to ``faster_whisper`` so the transcriber's
+    backend detection routes it through the segment-joining code path.
+    """
+
+    def __init__(self) -> None:
+        self.calls: List[dict] = []
+        # Each response is a list of segment texts joined by the transcriber.
+        self.responses: List[List[str]] = [[""]]
+
+    def transcribe(self, audio, **kwargs):
+        self.calls.append({"audio": audio, **kwargs})
+        texts = self.responses.pop(0) if self.responses else [""]
+        return (iter(_FakeSegment(t) for t in texts), object())
+
+
+# Spoof the module so WhisperTranscriber._detect_backend tags it "faster".
+FakeFasterWhisperModel.__module__ = "faster_whisper.fake"
+
+
 class FakeController:
     def __init__(self) -> None:
         self.typed: List[str] = []
@@ -168,6 +195,27 @@ def test_whisper_transcriber_skips_language_kwarg_for_auto():
     t = WhisperTranscriber(model_loader=lambda _n: model)
     t.transcribe(np.zeros(16000, dtype=np.float32), language="auto")
     assert model.calls[-1].get("language") is None
+
+
+def test_whisper_transcriber_faster_backend_joins_segments():
+    model = FakeFasterWhisperModel()
+    model.responses = [["hola ", "mundo"]]
+    t = WhisperTranscriber(model_name="turbo", model_loader=lambda _n: model)
+    text = t.transcribe(np.zeros(16000, dtype=np.float32), language="es")
+    assert text == "hola mundo"
+    assert t.backend == "faster"
+    # VAD is enabled by default and the language hint is forwarded.
+    assert model.calls[-1].get("vad_filter") is True
+    assert model.calls[-1].get("language") == "es"
+
+
+def test_whisper_transcriber_faster_backend_skips_language_for_auto():
+    model = FakeFasterWhisperModel()
+    model.responses = [["hi"]]
+    t = WhisperTranscriber(model_loader=lambda _n: model, vad_filter=False)
+    t.transcribe(np.zeros(16000, dtype=np.float32), language="auto")
+    assert model.calls[-1].get("language") is None
+    assert model.calls[-1].get("vad_filter") is False
 
 
 # ---------------------------------------------------------------------------

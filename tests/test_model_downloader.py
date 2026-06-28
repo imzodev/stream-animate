@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import hashlib
-import logging
 import os
 import threading
 
@@ -25,51 +23,44 @@ def _isolate_background_threads(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(model_downloader, "_BACKGROUND_THREADS", [])
 
 
-def _populate_cache(cache_dir: str, model_name: str) -> str:
-    """Write a placeholder file to the cache dir and return its path.
+class _FakeHub:
+    """In-memory stand-in for faster-whisper's HuggingFace download.
 
-    Note: real Whisper validates SHA256 on disk. For tests we patch
-    ``is_model_cached`` to return ``True`` instead of forging a SHA256
-    preimage, which is computationally infeasible.
+    Tracks which models are "cached" and records download calls so tests can
+    assert behavior without touching the network.
     """
 
-    os.makedirs(cache_dir, exist_ok=True)
-    target = os.path.join(cache_dir, model_downloader.model_filename(model_name))
-    with open(target, "wb") as f:
-        f.write(b"cached test fixture")
-    return target
+    def __init__(self, *, available=None, cached=None) -> None:
+        self.available = list(
+            available or ["tiny", "base", "small", "medium", "large-v3"]
+        )
+        self.cached = set(cached or [])
+        self.download_calls: list[str] = []
+        self._hook = None  # optional callable invoked at the start of a download
+
+    def available_models(self):
+        return list(self.available)
+
+    def download(self, model_name, *, cache_dir=None, local_files_only=False):
+        if local_files_only:
+            if model_name not in self.cached:
+                raise RuntimeError(f"{model_name} not found in local cache")
+            return f"/fake/hub/{model_name}"
+        if self._hook is not None:
+            self._hook(model_name)
+        self.download_calls.append(model_name)
+        self.cached.add(model_name)
+        return f"/fake/hub/{model_name}"
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> "_FakeHub":
+        monkeypatch.setattr(model_downloader, "_fw_available_models", self.available_models)
+        monkeypatch.setattr(model_downloader, "_fw_download_model", self.download)
+        return self
 
 
-def test_is_model_cached_true_when_checksum_matches(tmp_path, monkeypatch):
-    target = _populate_cache(str(tmp_path), "tiny")
-    # Patch the SHA256 check to always pass so the test doesn't need a
-    # real hash collision. We still verify the file exists.
-    monkeypatch.setattr(
-        model_downloader,
-        "_expected_sha256",
-        lambda name: hashlib.sha256(b"cached test fixture").hexdigest(),
-    )
-    with open(target, "rb") as f:
-        content = f.read()
-    # Confirm the file isn't empty and that the helper resolves it
-    assert content
-    assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is True
-
-
-def test_is_model_cached_false_when_checksum_wrong(tmp_path, monkeypatch):
-    target = model_downloader.model_path("tiny", cache_dir=str(tmp_path))
-    os.makedirs(os.path.dirname(target), exist_ok=True)
-    with open(target, "wb") as f:
-        f.write(b"definitely not the right hash")
-    # The real check sees the hash mismatch and returns False
-    assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is False
-
-
-def test_is_model_cached_false_for_unknown_model(tmp_path):
-    assert (
-        model_downloader.is_model_cached("not-a-real-model", cache_dir=str(tmp_path))
-        is False
-    )
+@pytest.fixture
+def hub(monkeypatch: pytest.MonkeyPatch) -> _FakeHub:
+    return _FakeHub().install(monkeypatch)
 
 
 # ---------------------------------------------------------------------------
@@ -77,30 +68,23 @@ def test_is_model_cached_false_for_unknown_model(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_available_models_lists_known_names():
+def test_available_models_lists_known_names(hub: _FakeHub):
     names = model_downloader.available_models()
-    assert "tiny" in names
-    assert "base" in names
-    assert "small" in names
-    assert "medium" in names
-    assert "large" in names
+    for expected in ("tiny", "base", "small", "medium"):
+        assert expected in names
+    # Friendly aliases are always advertised even if the backend omits them.
     assert "turbo" in names
+    assert "large" in names
 
 
-def test_model_filename_returns_basename():
-    assert model_downloader.model_filename("tiny") == "tiny.pt"
-    assert model_downloader.model_filename("large") == "large-v3.pt"
-    assert model_downloader.model_filename("turbo") == "large-v3-turbo.pt"
+def test_available_models_falls_back_when_backend_absent(monkeypatch: pytest.MonkeyPatch):
+    def boom():
+        raise ImportError("no faster_whisper")
 
-
-def test_unknown_model_raises():
-    with pytest.raises(ValueError):
-        model_downloader.model_filename("not-a-real-model")
-
-
-def test_default_cache_dir_uses_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path):
-    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
-    assert model_downloader.default_cache_dir() == str(tmp_path / "whisper")
+    monkeypatch.setattr(model_downloader, "_fw_available_models", boom)
+    names = model_downloader.available_models()
+    assert "turbo" in names
+    assert "small" in names
 
 
 # ---------------------------------------------------------------------------
@@ -108,109 +92,53 @@ def test_default_cache_dir_uses_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_is_model_cached_false_when_no_file(tmp_path):
-    assert model_downloader.is_model_cached("tiny", cache_dir=str(tmp_path)) is False
+def test_is_model_cached_true_when_present(monkeypatch: pytest.MonkeyPatch):
+    _FakeHub(cached=["small"]).install(monkeypatch)
+    assert model_downloader.is_model_cached("small") is True
+
+
+def test_is_model_cached_false_when_absent(hub: _FakeHub):
+    assert model_downloader.is_model_cached("small") is False
+
+
+def test_is_model_cached_false_for_unknown_model(hub: _FakeHub):
+    assert model_downloader.is_model_cached("not-a-real-model") is False
+
+
+def test_model_path_returns_snapshot_dir(monkeypatch: pytest.MonkeyPatch):
+    _FakeHub(cached=["medium"]).install(monkeypatch)
+    assert model_downloader.model_path("medium") == "/fake/hub/medium"
 
 
 # ---------------------------------------------------------------------------
-# download_model: mocked network
+# download_model
 # ---------------------------------------------------------------------------
 
 
-class _FakeResponse:
-    def __init__(self, payload: bytes, chunk_size: int = 8192) -> None:
-        self._payload = payload
-        self._chunk_size = chunk_size
-        self._offset = 0
-        self.info_calls = 0
-
-    def info(self) -> dict:
-        self.info_calls += 1
-        return {"Content-Length": str(len(self._payload))}
-
-    def read(self, n: int = -1) -> bytes:
-        if n < 0:
-            n = self._chunk_size
-        if self._offset >= len(self._payload):
-            return b""
-        chunk = self._payload[self._offset : self._offset + n]
-        self._offset += len(chunk)
-        return chunk
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args):
-        return False
-
-
-def test_download_model_writes_file_and_invokes_callback(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-):
-    target_dir = tmp_path / "cache"
-
-    # Use a payload whose SHA256 we know; then patch both SHA helpers so
-    # the post-write validation passes.
-    payload = b"x" * 16384
-    expected_sha = hashlib.sha256(payload).hexdigest()
-    monkeypatch.setattr(model_downloader, "_expected_sha256", lambda name: expected_sha)
-    monkeypatch.setattr(model_downloader, "_sha256_from_url", lambda url: expected_sha)
-    # Skip the pre-check so the download actually runs.
-    monkeypatch.setattr(
-        model_downloader,
-        "is_model_cached",
-        lambda name, cache_dir=None: False,
-    )
-
-    def fake_urlopen(url, *args, **kwargs):
-        return _FakeResponse(payload)
-
-    monkeypatch.setattr(model_downloader.urllib.request, "urlopen", fake_urlopen)
-
-    progress_calls: list = []
-    path = model_downloader.download_model(
-        "tiny",
-        cache_dir=str(target_dir),
-        on_progress=lambda done, total: progress_calls.append((done, total)),
-    )
-    assert os.path.isfile(path)
-    assert progress_calls, "progress callback was never called"
-    # The last call should report full progress
-    final_done, final_total = progress_calls[-1]
-    assert final_total == len(payload)
-    assert final_done == len(payload)
+def test_download_model_downloads_when_absent(hub: _FakeHub):
+    path = model_downloader.download_model("small")
+    assert path == "/fake/hub/small"
+    assert hub.download_calls == ["small"]
+    assert model_downloader.is_model_cached("small") is True
 
 
 def test_download_model_skips_when_cached(
-    tmp_path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ):
-    target_dir = tmp_path / "cache"
-    _populate_cache(str(target_dir), "tiny")
-    # Make the SHA256 check match the placeholder file
-    monkeypatch.setattr(
-        model_downloader,
-        "_expected_sha256",
-        lambda name: hashlib.sha256(b"cached test fixture").hexdigest(),
-    )
-
-    called = {"urlopen": 0}
-
-    def fake_urlopen(url, *args, **kwargs):
-        called["urlopen"] += 1
-        return _FakeResponse(b"never used")
-
-    monkeypatch.setattr(model_downloader.urllib.request, "urlopen", fake_urlopen)
+    hub = _FakeHub(cached=["tiny"]).install(monkeypatch)
+    import logging
 
     with caplog.at_level(logging.INFO, logger="stream_companion.model_downloader"):
-        path = model_downloader.download_model("tiny", cache_dir=str(target_dir))
-    assert path
-    assert called["urlopen"] == 0
+        path = model_downloader.download_model("tiny")
+    assert path == "/fake/hub/tiny"
+    # A cached model must not trigger a (non-local-only) download call.
+    assert hub.download_calls == []
     assert any("already cached" in m for m in caplog.messages)
 
 
-def test_download_model_unknown_model_raises(tmp_path):
+def test_download_model_unknown_model_raises(hub: _FakeHub):
     with pytest.raises(ValueError):
-        model_downloader.download_model("not-a-real-model", cache_dir=str(tmp_path))
+        model_downloader.download_model("not-a-real-model")
 
 
 # ---------------------------------------------------------------------------
@@ -218,46 +146,28 @@ def test_download_model_unknown_model_raises(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_start_background_download_runs_in_thread(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-):
-    target_dir = tmp_path / "cache"
-    payload = b"x" * 1024
-    expected_sha = hashlib.sha256(payload).hexdigest()
-    monkeypatch.setattr(model_downloader, "_expected_sha256", lambda name: expected_sha)
-    monkeypatch.setattr(model_downloader, "_sha256_from_url", lambda url: expected_sha)
-    monkeypatch.setattr(
-        model_downloader, "is_model_cached", lambda name, cache_dir=None: False
-    )
-
-    called = {"urlopen": 0, "complete": False}
-
-    def fake_urlopen(url, *args, **kwargs):
-        called["urlopen"] += 1
-        return _FakeResponse(payload)
-
-    monkeypatch.setattr(model_downloader.urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(model_downloader, "default_cache_dir", lambda: str(target_dir))
-
+def test_start_background_download_runs_in_thread(hub: _FakeHub):
+    called = {"complete": False, "path": None}
     thread = model_downloader.start_background_download(
-        "tiny", on_complete=lambda p: called.update({"complete": True, "path": p})
+        "tiny",
+        on_complete=lambda p: called.update(complete=True, path=p),
     )
     thread.join(timeout=5.0)
     assert not thread.is_alive()
-    assert called["urlopen"] == 1
     assert called["complete"] is True
+    assert called["path"] == "/fake/hub/tiny"
+    assert hub.download_calls == ["tiny"]
 
 
-def test_start_background_download_invokes_on_error(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-):
-    def fake_urlopen(url, *args, **kwargs):
+def test_start_background_download_invokes_on_error(monkeypatch: pytest.MonkeyPatch):
+    hub = _FakeHub().install(monkeypatch)
+
+    def boom(model_name):
         raise RuntimeError("network down")
 
-    monkeypatch.setattr(model_downloader.urllib.request, "urlopen", fake_urlopen)
-    monkeypatch.setattr(model_downloader, "default_cache_dir", lambda: str(tmp_path))
+    hub._hook = boom
 
-    errors = []
+    errors: list = []
     thread = model_downloader.start_background_download(
         "tiny", on_error=lambda exc: errors.append(exc)
     )
@@ -266,19 +176,16 @@ def test_start_background_download_invokes_on_error(
     assert "network down" in str(errors[0])
 
 
-def test_active_downloads_lists_running_threads(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-):
+def test_active_downloads_lists_running_threads(monkeypatch: pytest.MonkeyPatch):
+    hub = _FakeHub().install(monkeypatch)
     started = threading.Event()
     release = threading.Event()
 
-    def slow_urlopen(url, *args, **kwargs):
+    def slow(model_name):
         started.set()
         release.wait(timeout=5.0)
-        return _FakeResponse(b"x" * 16)
 
-    monkeypatch.setattr(model_downloader.urllib.request, "urlopen", slow_urlopen)
-    monkeypatch.setattr(model_downloader, "default_cache_dir", lambda: str(tmp_path))
+    hub._hook = slow
 
     model_downloader.start_background_download("tiny")
     started.wait(timeout=2.0)
@@ -289,8 +196,26 @@ def test_active_downloads_lists_running_threads(
 
 
 # ---------------------------------------------------------------------------
-# Human-readable byte formatting
+# Cache size + human-readable byte formatting
 # ---------------------------------------------------------------------------
+
+
+def test_cache_size_bytes_for_file(tmp_path):
+    f = tmp_path / "model.bin"
+    f.write_bytes(b"x" * 2048)
+    assert model_downloader.cache_size_bytes(str(f)) == 2048
+
+
+def test_cache_size_bytes_for_directory(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"x" * 1000)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "b.bin").write_bytes(b"y" * 500)
+    assert model_downloader.cache_size_bytes(str(tmp_path)) == 1500
+
+
+def test_cache_size_bytes_missing_path_is_zero(tmp_path):
+    assert model_downloader.cache_size_bytes(str(tmp_path / "nope")) == 0
 
 
 def test_human_bytes():
