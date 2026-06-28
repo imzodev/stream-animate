@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtWidgets import QApplication
@@ -18,6 +18,7 @@ from .stt import STTEngine
 from .tray_indicators import (
     TrayIndicatorState,
     compose_fact_check_state,
+    compose_state,
 )
 from .triggers import TriggerMatcher, build_matcher_from_shortcuts
 from . import registry
@@ -64,9 +65,7 @@ class Application:
         # STT (speech-to-text typing)
         self._stt_config = stt_config
         self._stt_engine: Optional[STTEngine] = stt_engine
-        if self._stt_engine is not None:
-            self._stt_engine = self._stt_engine
-        elif self._stt_config is not None:
+        if self._stt_engine is None and self._stt_config is not None:
             self._stt_engine = STTEngine(
                 self._stt_config,
                 hotkey=self._stt_config.hotkey,
@@ -368,12 +367,12 @@ class Application:
         # fire them. We deliberately re-resolve from the live shortcut
         # list (rather than caching on the matcher callback) so that
         # set_stt_config / configurator edits are reflected immediately.
-        for phrase in matched:
+        for matched_phrase in matched:
             for shortcut in self._shortcuts:
-                if phrase in shortcut.all_trigger_phrases():
+                if matched_phrase in shortcut.all_trigger_phrases():
                     self._logger.info(
                         "Voice trigger %r firing shortcut %s",
-                        phrase,
+                        matched_phrase,
                         shortcut.label(),
                     )
                     self._signals.triggered.emit(shortcut)
@@ -497,8 +496,6 @@ class Application:
 
     def _register_hotkeys(self) -> None:
         # Register direct hotkeys and collect chord suffix sequences
-        from typing import Tuple
-
         seq_map: Dict[Tuple[str, ...], callable] = {}
         for shortcut in self._shortcuts:
             callback = lambda sc=shortcut: self._signals.triggered.emit(sc)
@@ -648,6 +645,59 @@ class Application:
                 size_str,
             )
 
+    def build_tray_state(self) -> Optional[TrayIndicatorState]:
+        """Compose the full tray state (STT dots + fact-check dot).
+
+        Returns ``None`` when neither STT nor the fact-checker is
+        configured (the tray icon should not be shown at all).
+        """
+
+        # STT component
+        engine = self._stt_engine
+        stt_configured = bool(self._stt_config and self._stt_config.enabled)
+        if engine is None:
+            if not stt_configured:
+                stt_state = None
+            else:
+                stt_state = compose_state(
+                    stt_configured=True,
+                    engine_running=False,
+                    triggers_enabled=False,
+                    typing_active=False,
+                )
+        else:
+            stt_state = compose_state(
+                stt_configured=stt_configured,
+                engine_running=engine.is_running,
+                triggers_enabled=engine.triggers_enabled,
+                typing_active=engine.is_active,
+            )
+
+        # Fact-checker component
+        fc = self._fact_checker
+        if self._llm_config is not None and fc is not None:
+            fact_state = compose_fact_check_state(configured=True, phase=fc.phase)
+        elif self._llm_config is not None:
+            # Configured but engine not built (no API key) — show the
+            # dot in the "idle" color so the user knows the feature
+            # is wired but disabled.
+            fact_state = compose_fact_check_state(configured=True, phase="idle")
+        else:
+            fact_state = compose_fact_check_state(configured=False, phase="idle")
+
+        if stt_state is None:
+            # No STT at all, but a configured fact-checker still
+            # warrants an icon (just with the fact-check dot).
+            if fact_state.configured:
+                return TrayIndicatorState(enabled=False, fact_check=fact_state)
+            return None
+        return TrayIndicatorState(
+            stt_active=stt_state.stt_active,
+            typing_active=stt_state.typing_active,
+            enabled=stt_state.enabled,
+            fact_check=fact_state,
+        )
+
 
 def run_application(
     shortcuts: Iterable[Shortcut],
@@ -699,89 +749,24 @@ def run_application(
         llm_config.persona if llm_config is not None else "n/a",
     )
 
-    def _build_tray_state() -> Optional[TrayIndicatorState]:
-        """Compose the full tray state (STT dots + fact-check dot)."""
-
-        from .tray_indicators import compose_state
-
-        # STT component
-        engine = application.stt_engine()
-        stt_cfg = application._stt_config  # noqa: SLF001
-        stt_configured = bool(stt_cfg and stt_cfg.enabled)
-        if engine is None:
-            if not stt_configured:
-                stt_state = None
-            else:
-                stt_state = compose_state(
-                    stt_configured=True,
-                    engine_running=False,
-                    triggers_enabled=False,
-                    typing_active=False,
-                )
-        else:
-            stt_state = compose_state(
-                stt_configured=stt_configured,
-                engine_running=engine.is_running,
-                triggers_enabled=engine.triggers_enabled,
-                typing_active=engine.is_active,
-            )
-
-        # Fact-checker component
-        fc = application.fact_checker()
-        llm_cfg = application.llm_config()
-        if llm_cfg is not None and fc is not None:
-            fact_state = compose_fact_check_state(configured=True, phase=fc.phase)
-        elif llm_cfg is not None:
-            # Configured but engine not built (no API key) — show the
-            # dot in the "idle" color so the user knows the feature
-            # is wired but disabled.
-            fact_state = compose_fact_check_state(configured=True, phase="idle")
-        else:
-            fact_state = compose_fact_check_state(configured=False, phase="idle")
-
-        if stt_state is None:
-            # No STT at all, but a configured fact-checker still
-            # warrants an icon (just with the fact-check dot).
-            if fact_state.configured:
-                return TrayIndicatorState(enabled=False, fact_check=fact_state)
-            return None
-        return TrayIndicatorState(
-            stt_active=stt_state.stt_active,
-            typing_active=stt_state.typing_active,
-            enabled=stt_state.enabled,
-            fact_check=fact_state,
-        )
-
-    def _toggle_stt() -> None:
-        engine = application.stt_engine()
-        if engine is None:
-            _LOGGER.info("Tray STT toggle ignored: no engine configured")
-            return
-        if not engine.is_running:
-            _LOGGER.info("Tray STT toggle ignored: engine not running")
-            return
-        engine.trigger()
-        # tray.refresh_stt_label() is also called via the engine observer.
-
-    def _toggle_fact_check() -> None:
-        fc = application.fact_checker()
-        if fc is None:
-            _LOGGER.info("Tray fact-checker toggle ignored: no engine configured")
-            return
-        fc.toggle()
-
-    tray_holder: Dict[str, Optional[TrayIcon]] = {"tray": None}
+    # Create system tray icon with quit callback. The toggle handlers and
+    # state provider are bound methods on ``Application`` so the same logic
+    # backs both the tray menu and the global hotkeys.
+    tray = TrayIcon(
+        on_quit=lambda: (application.stop(), app.quit()),
+        on_open_configurator=_open_configurator,
+        on_toggle_stt=application._on_stt_toggle,
+        on_toggle_fact_check=application._on_fact_check_toggle,
+        stt_state_provider=application.build_tray_state,
+    )
 
     def _refresh_tray_label(event=None) -> None:
-        # The signature accepts the optional event argument so the same
-        # function can be wired to both engines: ``STTEngine.add_observer``
-        # fires observers with no arguments, while
-        # ``FactCheckerEngine.add_observer`` fires them with a
-        # ``FactCheckerEvent`` instance. We don't need the event here
-        # — we just want the tray icon to repaint.
-        tray = tray_holder.get("tray")
-        if tray is not None:
-            tray.refresh_stt_label()
+        # The optional ``event`` argument lets the same function back both
+        # engines: ``STTEngine.add_observer`` fires observers with no
+        # arguments, while ``FactCheckerEngine.add_observer`` fires them
+        # with a ``FactCheckerEvent``. We ignore the payload and just
+        # repaint the tray icon.
+        tray.refresh_stt_label()
 
     # Wire observers so the tray updates on every state change.
     engine = application.stt_engine()
@@ -791,15 +776,6 @@ def run_application(
     if fc_engine is not None:
         fc_engine.add_observer(_refresh_tray_label)
 
-    # Create system tray icon with quit callback
-    tray = TrayIcon(
-        on_quit=lambda: (application.stop(), app.quit()),
-        on_open_configurator=_open_configurator,
-        on_toggle_stt=_toggle_stt,
-        on_toggle_fact_check=_toggle_fact_check,
-        stt_state_provider=_build_tray_state,
-    )
-    tray_holder["tray"] = tray
     tray.show()
     tray.refresh_stt_label()
 
