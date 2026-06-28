@@ -179,21 +179,6 @@ class _QuestionCard(QWidget):
         self._opacity_anim.setEndValue(1.0)
         self._opacity_anim.start()
 
-    def _run_disappear_animation(self) -> None:
-        # Stop any in-flight appear animation; the new fade-out
-        # will take over.
-        if self._opacity_anim is not None:
-            self._opacity_anim.stop()
-            self._opacity_anim = None
-        anim = QPropertyAnimation(self._opacity_effect, b"opacity")
-        anim.setDuration(_ANIM_MS // 2)
-        anim.setStartValue(self._opacity_effect.opacity())
-        anim.setEndValue(0.0)
-        anim.finished.connect(self.hide)
-        anim.start()
-        # Keep a reference so the animation isn't GC'd.
-        self._opacity_anim = anim
-
     @staticmethod
     def _stripe_stylesheet(accent: PersonaAccent) -> str:
         c = QColor(accent.accent)

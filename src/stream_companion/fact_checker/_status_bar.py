@@ -179,6 +179,17 @@ class _StatusBar(QWidget):
                 self._state_dot, lo=0.35, hi=1.0, interval_ms=60
             )
 
+    def stop_animations(self) -> None:
+        """Stop the pulsing dot animation.
+
+        Called when the panel is hidden so the timer-driven animator
+        does not keep ticking (and touching its graphics effect) while
+        the panel is off-screen or being torn down.
+        """
+        if self._pulse_animator is not None:
+            self._pulse_animator.stop()
+            self._pulse_animator = None
+
     def is_locked(self) -> bool:
         return self._locked
 

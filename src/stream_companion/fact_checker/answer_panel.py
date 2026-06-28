@@ -510,6 +510,11 @@ class AnswerPanel(QWidget):
         super().hideEvent(event)
         if self._border is not None:
             self._border.stop()
+        # Stop the timer-driven animators (caret blink, status pulse)
+        # so they don't keep ticking against their graphics effects
+        # while the panel is hidden or being torn down.
+        self._answer_view.set_streaming(False)
+        self._status_bar.stop_animations()
 
 
 __all__ = ["AnswerPanel"]

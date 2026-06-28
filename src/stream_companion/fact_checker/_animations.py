@@ -47,6 +47,14 @@ class _Pulse(QObject):
         self._timer.setInterval(interval_ms)
         self._timer.timeout.connect(self._tick)
 
+        # If Qt deletes the effect out from under us — the parent
+        # widget was destroyed, or a newer effect replaced this one
+        # via ``setGraphicsEffect`` — halt the timer immediately so
+        # ``_tick`` can never run against a dangling C++ object. The
+        # ``try/except RuntimeError`` guards below remain as backstops
+        # for interpreter shutdown, where signal delivery is unreliable.
+        self._effect.destroyed.connect(self._timer.stop)
+
     def start(self) -> None:
         if not self._timer.isActive():
             self._timer.start()
@@ -104,6 +112,11 @@ class _Blink(QObject):
         self._timer = QTimer(self)
         self._timer.setInterval(interval_ms)
         self._timer.timeout.connect(self._tick)
+
+        # Halt the timer the instant Qt deletes the effect (parent
+        # destroyed or effect replaced), so ``_tick`` never touches a
+        # dangling C++ object. See the note in ``_Pulse.__init__``.
+        self._effect.destroyed.connect(self._timer.stop)
 
     def start(self) -> None:
         if not self._timer.isActive():
