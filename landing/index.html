@@ -371,6 +371,14 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
             <option>Tabletop games</option>
             <option>Something else</option>
           </select>
+          <select id="price" name="price" aria-label="What would Pro be worth to you per month?">
+            <option value="">What would Pro be worth to you per month?</option>
+            <option>Nothing, I'd stay on Free</option>
+            <option>$5</option>
+            <option>$9</option>
+            <option>$15</option>
+            <option>$20 or more</option>
+          </select>
           <p id="form-msg" role="status"></p>
           <p class="fine">One email when it opens, no spam. Windows 10 and 11 first.</p>
         </form>
@@ -607,8 +615,8 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
           <tbody>
             <tr><td>Types what you say</td><td class="yes">Yes</td><td>No</td><td class="us yes">Yes</td></tr>
             <tr><td>Fires sounds and overlays by voice</td><td>No</td><td>Usually needs setup or a plugin</td><td class="us yes">Yes, built in</td></tr>
-            <tr><td>AI answers on your screen</td><td>Rarely</td><td>Bots answer chat, not you</td><td class="us yes">Yes</td></tr>
-            <tr><td>Speech stays on your PC</td><td>Often sent to the cloud</td><td>Varies</td><td class="us yes">Yes</td></tr>
+            <tr><td>AI answers on your screen</td><td>Uncommon</td><td>Bots answer chat, not you</td><td class="us yes">Yes</td></tr>
+            <tr><td>Speech stays on your PC</td><td>Varies by app</td><td>Varies</td><td class="us yes">Yes</td></tr>
             <tr><td>Setup</td><td>Install and go</td><td>Scripts and actions to build</td><td class="us yes">Visual editor</td></tr>
           </tbody>
         </table>
@@ -619,19 +627,19 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
     <section>
       <div class="sec-head">
         <span class="label">Planned pricing</span>
-        <h2>Free to start, Pro when you want the AI</h2>
+        <h2>Free to start, Pro when you want it hosted and synced</h2>
         <p>Prices are targets and may change before launch. Waitlist members hear first.</p>
       </div>
       <div class="tiers">
         <div class="tier">
           <h3>Free</h3>
           <div class="price">$0</div>
-          <ul><li>Local dictation</li><li>A few voice triggers</li><li>Visual editor</li></ul>
+          <ul><li>Local dictation, on your PC</li><li>A few voice triggers</li><li>Visual editor</li><li>AI co-pilot with your own provider key</li></ul>
         </div>
         <div class="tier pro">
           <h3>Pro</h3>
           <div class="price">$9 <small>/ month</small></div>
-          <ul><li>Everything in Free</li><li>Unlimited voice triggers</li><li>AI co-pilot with personas, hosted for you</li><li>Updates and new personas</li></ul>
+          <ul><li>Everything in Free</li><li>Unlimited voice triggers</li><li>AI co-pilot hosted for you, no key needed</li><li>Cloud library of trigger packs, sounds and overlays</li><li>Settings sync across your PCs</li></ul>
         </div>
       </div>
     </section>
@@ -640,9 +648,10 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
       <div class="sec-head"><span class="label">Questions</span><h2>Before you join</h2></div>
       <details><summary>What do I need to run it?</summary><p>A Windows 10 or 11 PC and a microphone. An NVIDIA GPU makes dictation faster, and it runs on the CPU if you don't have one.</p></details>
       <details><summary>Do I have to press hotkeys?</summary><p>Voice triggers and dictation can run hands-free. The AI co-pilot uses one hotkey so it only listens for a question when you mean to ask one.</p></details>
-      <details><summary>What leaves my computer?</summary><p>Your voice is transcribed on your PC. When you ask the AI co-pilot something, only the text of that question is sent to our servers to get an answer. Dictation and voice triggers send nothing.</p></details>
+      <details><summary>What leaves my computer?</summary><p>Your voice is transcribed on your PC. When you ask the AI co-pilot something, only the text of that question is sent to get an answer: to our servers on Pro, or to the provider you chose on Free. Dictation and voice triggers send nothing.</p></details>
       <details><summary>Will my viewers or audience see the AI panel?</summary><p>The panel is a normal window on your screen. If you capture your whole display or share your screen, people will see it. If you capture a single game or window, they won't.</p></details>
-      <details><summary>Do I need my own AI account?</summary><p>No. The AI co-pilot is included in Pro and hosted for you.</p></details>
+      <details><summary>Do I need my own AI account?</summary><p>Not on Pro, where the AI co-pilot is hosted for you. On Free you can connect your own provider key.</p></details>
+      <details><summary>What is the cloud library?</summary><p>Ready-made packs of trigger phrases, sounds and overlays you can add in one click, plus your own settings synced between PCs. It is planned for Pro and not built yet.</p></details>
       <details><summary>Does it work with OBS and Streamlabs?</summary><p>Overlays are drawn on top of your screen, so any capture setup that sees your display or game sees them. Direct scene control for OBS is planned, not available yet.</p></details>
       <details><summary>What about Mac?</summary><p>Windows comes first. Mac is on the list after launch.</p></details>
     </section>
@@ -665,14 +674,14 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
   var form = $("#join"), msg = $("#form-msg");
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var email = $("#email").value.trim(), role = $("#role").value;
+    var email = $("#email").value.trim(), role = $("#role").value, price = $("#price").value;
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = "Enter a valid email address."; return; }
     if (!WAITLIST_ENDPOINT) { msg.textContent = "Preview only: signups aren't connected to a list yet."; return; }
     msg.textContent = "Sending...";
     fetch(WAITLIST_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ email: email, role: role })
+      body: JSON.stringify({ email: email, role: role, price: price, source: new URLSearchParams(location.search).get("src") || "direct" })
     }).then(function (r) {
       if (!r.ok) throw new Error("bad status");
       msg.textContent = "You're on the list. Watch your inbox.";
