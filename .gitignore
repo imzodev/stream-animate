@@ -43,3 +43,6 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+
+# Playwright MCP artifacts
+.playwright-mcp/
