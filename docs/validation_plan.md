@@ -3,7 +3,7 @@
 Goal: decide whether to build billing, hosted AI, the cloud library and sync, based on evidence rather than guesses.
 
 ## Offer being tested
-Free: local dictation, a few voice triggers, visual editor, bring-your-own AI key.
+Free: local dictation, a few voice triggers, visual editor. No AI on Free (BYOK is being removed).
 Pro (target $9/mo): hosted AI co-pilot, unlimited triggers, cloud library of packs/sounds/overlays, settings sync.
 
 ## Success bar (decide after 4 weeks of traffic)
@@ -11,14 +11,14 @@ Pro (target $9/mo): hosted AI co-pilot, unlimited triggers, cloud library of pac
 |---|---|---|---|
 | Waitlist emails from targeted channels | 200+ | 80-199 | <80 |
 | Visitor-to-signup conversion | >=8% | 3-8% | <3% |
-| Signups choosing $9 or more | >=30% | 15-30% | <15% |
-| Signups choosing "Nothing" | <40% | 40-60% | >60% |
+| Signups naming a Pro feature they would pay $9 for | >=60% | 35-60% | <35% |
+| Signups answering "None, stay on Free" | <30% | 30-50% | >50% |
 | Replies to a follow-up survey email | >=15% | 8-15% | <8% |
 
 Notes:
 - Traffic must be targeted (streamer/teacher/GM communities), not friends and family.
-- Tag each channel with `?src=` (e.g. `?src=reddit-obs`) so conversion per channel is visible. The form sends `src`, `role` and `price`.
-- Segment results by `role`. Pick the one segment with the best price signal as the launch audience.
+- Tag each channel with `?src=` (e.g. `?src=reddit-obs`) so conversion per channel is visible. The form sends `src`, `role` and `pro_feature`. Price is fixed at $9 on the page (users do not pick it), so the signal is which feature justifies paying.
+- Segment results by `role` and `pro_feature`. Pick the segment with the strongest paid-feature signal as the launch audience.
 
 ## Willingness-to-pay beyond the form
 1. Email each signup after signup asking: "What would make you pay for this? What do you use today?"
