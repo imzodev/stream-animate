@@ -11,7 +11,7 @@
     {
       "binding": "DB",
       "database_name": "saidcue-waitlist",
-      "database_id": "PASTE_YOUR_D1_DATABASE_ID_HERE"
+      "database_id": "6a02d524-2721-4cae-a381-fb0dc6cb25e8"
     }
   ],
   "routes": [
