@@ -1,0 +1,21 @@
+{
+  "name": "saidcue",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-01-01",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "saidcue-waitlist",
+      "database_id": "PASTE_YOUR_D1_DATABASE_ID_HERE"
+    }
+  ],
+  "routes": [
+    { "pattern": "saidcue.com", "custom_domain": true },
+    { "pattern": "www.saidcue.com", "custom_domain": true }
+  ]
+}

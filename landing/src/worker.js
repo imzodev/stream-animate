@@ -1,12 +1,13 @@
-// Cloudflare Pages Function: POST /api/waitlist
-// Needs a D1 binding named DB (see landing/README.md).
+// Cloudflare Worker: serves the static site (public/) and handles POST /api/waitlist.
+// Needs a D1 binding named DB (see wrangler.jsonc).
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const clip = (v, n) => (typeof v === "string" ? v.trim().slice(0, n) : "");
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-export async function onRequestPost({ request, env }) {
+async function waitlist(request, env) {
+  if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
   let data;
   try { data = await request.json(); } catch { return json({ error: "bad request" }, 400); }
 
@@ -37,4 +38,10 @@ export async function onRequestPost({ request, env }) {
   return json({ ok: true });
 }
 
-export const onRequest = () => json({ error: "method not allowed" }, 405);
+export default {
+  async fetch(request, env) {
+    const { pathname } = new URL(request.url);
+    if (pathname === "/api/waitlist") return waitlist(request, env);
+    return env.ASSETS.fetch(request);
+  },
+};

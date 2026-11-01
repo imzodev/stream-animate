@@ -1,29 +1,26 @@
 # Saidcue landing page
 
-Static page (`index.html`) plus a Cloudflare Pages Function (`functions/api/waitlist.js`) that stores waitlist signups in a D1 database.
+Static page (`public/index.html`) plus a Cloudflare Worker (`src/worker.js`) that stores waitlist signups in a D1 database. Config is in `wrangler.jsonc`.
 
 ## Deploy on Cloudflare (free)
 
-1. **Domain**: buy saidcue.com at Cloudflare Registrar (Domain Registration), or add an existing domain (Websites > Add a domain, Free plan) and change its nameservers to the two Cloudflare gives you.
-2. **Database**: Storage & Databases > D1 > Create database, name it `saidcue-waitlist`. Open it > Console, paste the contents of `schema.sql`, run it.
-3. **Pages project**: Workers & Pages > Create > Pages > Connect to Git, pick this repo. Settings:
-   - Production branch: `main`
-   - Framework preset: None
+1. **Domain**: saidcue.com bought at Cloudflare Registrar (DNS zone is created automatically).
+2. **Database**: Storage & Databases > D1 > Create database, name it `saidcue-waitlist`. Open it > Console, paste `schema.sql`, run it. Copy the **Database ID** from the database's page.
+3. **Config**: in `wrangler.jsonc`, replace `PASTE_YOUR_D1_DATABASE_ID_HERE` with that ID, commit and push.
+4. **Worker project**: Workers & Pages > Create > Import a repository > pick this repo. Settings:
+   - Root directory: `landing`
    - Build command: leave empty
-   - Root directory (under Advanced): `landing`
-   - Build output directory: `/`
-
-   Pages looks for the `functions/` folder in the root directory, so the root must be `landing`.
-4. **Bind the database**: Pages project > Settings > Bindings > Add > D1 database. Variable name `DB`, pick `saidcue-waitlist`. Add it for Production (and Preview if you want). Redeploy.
-5. **Custom domain**: Pages project > Custom domains > Set up a domain > `saidcue.com`, then add `www.saidcue.com`. Cloudflare creates the DNS records and the HTTPS certificate.
+   - Deploy command: `npx wrangler deploy` (default)
+   - Non-production branch deploy command: `npx wrangler versions upload` (default)
+5. **Domain**: `wrangler.jsonc` lists `saidcue.com` and `www.saidcue.com` as custom domains, so the first deploy attaches them and creates the DNS records and certificate. If a domain already has a DNS record, delete that record first.
 6. **Test**: open https://saidcue.com, submit a signup, then in D1 > Console run `SELECT * FROM waitlist;`.
 
 ## Environment variables
 
-None are required. The form posts to `/api/waitlist` on the same domain.
+None required. The form posts to `/api/waitlist` on the same domain, and the database arrives through the `DB` binding in `wrangler.jsonc`.
 
-Optional, to block bots: create a Turnstile widget (Turnstile > Add site), then add the secret key under Pages > Settings > Variables and Secrets as `TURNSTILE_SECRET` (type: Secret). The function enforces it when set. You also need to add the Turnstile widget and send its token as `turnstile` from the page.
+Optional, to block bots: create a Turnstile widget (Turnstile > Add site), then add `TURNSTILE_SECRET` under the Worker > Settings > Variables and Secrets (type: Secret). The Worker enforces it when set. You also need to add the widget to the page and send its token as `turnstile`.
 
 ## Reading signups
 
-D1 > saidcue-waitlist > Console: `SELECT * FROM waitlist ORDER BY created_at DESC;` or export from the dashboard.
+D1 > saidcue-waitlist > Console: `SELECT * FROM waitlist ORDER BY created_at DESC;`
