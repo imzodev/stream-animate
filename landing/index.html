@@ -362,6 +362,7 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
             <input type="email" id="email" name="email" placeholder="you@example.com" autocomplete="email" required aria-label="Email address">
             <button class="btn" type="submit">Get early access</button>
           </div>
+          <input type="text" id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0">
           <select id="role" name="role" aria-label="What do you do?">
             <option value="">I mostly use it for...</option>
             <option>Live streaming</option>
@@ -669,8 +670,8 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
   function $(s) { return document.querySelector(s); }
 
   /* ---------- waitlist form ---------- */
-  // Set this to a form-handler URL (for example a Formspree or Basin endpoint) when the page is hosted publicly.
-  var WAITLIST_ENDPOINT = "";
+  // Handled by the Cloudflare Pages Function in functions/api/waitlist.js. It only works once deployed on your domain.
+  var WAITLIST_ENDPOINT = "/api/waitlist";
   var form = $("#join"), msg = $("#form-msg");
   form.addEventListener("submit", function (e) {
     e.preventDefault();
@@ -681,10 +682,10 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
     fetch(WAITLIST_ENDPOINT, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ email: email, role: role, pro_feature: proFeature, source: new URLSearchParams(location.search).get("src") || "direct" })
+      body: JSON.stringify({ email: email, role: role, pro_feature: proFeature, website: $("#website").value, source: new URLSearchParams(location.search).get("src") || "direct" })
     }).then(function (r) {
       if (!r.ok) throw new Error("bad status");
-      msg.textContent = "You're on the list. Watch your inbox.";
+      msg.textContent = "You're on the list. We'll email you when it opens.";
       form.reset();
     }).catch(function () { msg.textContent = "That didn't go through. Try again in a moment."; });
   });
