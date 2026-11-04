@@ -17,10 +17,15 @@ import numpy as np
 
 from ..models import STTConfig
 from .audio import AudioCapture, AudioCaptureError
+from .segmenter import UtteranceSegmenter
 from .transcriber import WhisperTranscriber
 from .typer import TextTyper
 
 _LOGGER = logging.getLogger(__name__)
+
+# Mic blocks are small so a pause is noticed quickly; the segmenter groups
+# them into whole utterances before anything reaches Whisper.
+_CAPTURE_BLOCK_SECONDS = 0.1
 
 
 @dataclass
@@ -51,11 +56,25 @@ class STTEngine:
         self._stt_hotkey = hotkey
         self._audio = audio_capture or AudioCapture(
             sample_rate=config.sample_rate,
-            chunk_seconds=config.chunk_seconds,
+            chunk_seconds=_CAPTURE_BLOCK_SECONDS,
             device=config.device,
         )
+        self._segmenter = UtteranceSegmenter(
+            self._audio.sample_rate,
+            silence_threshold=config.silence_rms_threshold,
+            end_silence_ms=config.end_silence_ms,
+            max_utterance_seconds=config.max_utterance_seconds,
+        )
         self._transcriber = transcriber or WhisperTranscriber(model_name=config.model)
-        self._typer = typer or TextTyper(window=config.dedup_window)
+        self._typer = typer or TextTyper(
+            window=config.dedup_window,
+            method=(
+                config.typing_method
+                if config.typing_method in ("paste", "keys")
+                else "paste"
+            ),
+            key_delay=config.key_delay_ms / 1000.0,
+        )
         self._on_phrase = on_phrase
         self._on_status = on_status
 
@@ -268,7 +287,7 @@ class STTEngine:
         with self._lock:
             self._mic_open = True
         _LOGGER.info(
-            "STT engine loop running (mic=%s, sample_rate=%d, chunk=%.2fs, silence_threshold=%.4f)",
+            "STT engine loop running (mic=%s, sample_rate=%d, block=%.2fs, silence_threshold=%.4f, end_silence=%dms, max_utterance=%.1fs)",
             (
                 self._audio.device
                 if hasattr(self._audio, "device")
@@ -277,50 +296,64 @@ class STTEngine:
             self._audio.sample_rate,
             self._audio.chunk_seconds,
             self._config.silence_rms_threshold,
+            self._config.end_silence_ms,
+            self._config.max_utterance_seconds,
         )
-        chunks_received = 0
-        chunks_above_silence = 0
-        chunks_transcribed = 0
-        chunks_triggered = 0
+        blocks_received = 0
+        utterances = 0
+        utterances_transcribed = 0
+        utterances_triggered = 0
         last_log = time.time()
+        was_active = False
         try:
             while not self._stop_event.is_set():
                 with self._lock:
                     active = self._active
                     triggers_enabled = self._triggers_enabled
+                if was_active and not active:
+                    # Typing was just toggled off mid-phrase: finish and
+                    # type what was said while it was on, rather than
+                    # losing the tail of the sentence. Audio still queued
+                    # was captured while typing was on, so include it.
+                    pending = []
+                    while (block := self._audio.get_chunk(timeout=0)) is not None:
+                        pending.extend(self._segmenter.feed(block))
+                    for utterance in pending + self._segmenter.flush():
+                        utterances += 1
+                        if self._process_chunk(utterance) == "transcribed":
+                            utterances_transcribed += 1
+                was_active = active
                 if not active and not triggers_enabled:
-                    # Nothing to do: drop audio so we don't build up a
-                    # backlog while paused.
-                    chunk = self._audio.get_chunk(timeout=0.25)
-                    if chunk is not None:
-                        pass
+                    # Nothing to do: drop audio (and any half-heard
+                    # utterance) so we don't build up a backlog while paused.
+                    self._audio.get_chunk(timeout=0.25)
+                    self._segmenter.reset()
                     continue
-                chunk = self._audio.get_chunk(timeout=0.5)
-                if chunk is None:
+                block = self._audio.get_chunk(timeout=0.5)
+                if block is None:
                     continue
-                chunks_received += 1
-                # When typing is paused, still transcribe (cheap-ish; the
-                # model is already loaded) so that voice triggers can fire
-                # independently. Pass `type_into_window=False` to skip
-                # the typing step.
-                result = self._process_chunk(chunk, type_into_window=active)
-                if result == "above_silence":
-                    chunks_above_silence += 1
-                elif result == "transcribed":
-                    chunks_above_silence += 1
-                    chunks_transcribed += 1
-                elif result == "trigger_only":
-                    chunks_above_silence += 1
-                    chunks_triggered += 1
+                blocks_received += 1
+                # Whisper only ever sees whole utterances (speech up to a
+                # pause), never arbitrary slices that split words.
+                for utterance in self._segmenter.feed(block):
+                    utterances += 1
+                    # When typing is paused, still transcribe so voice
+                    # triggers can fire; `type_into_window=False` skips typing.
+                    result = self._process_chunk(utterance, type_into_window=active)
+                    if result == "transcribed":
+                        utterances_transcribed += 1
+                    elif result == "trigger_only":
+                        utterances_triggered += 1
                 # Periodically log activity even if nothing was transcribed,
                 # so users can see that the loop is alive and receiving audio.
                 if time.time() - last_log > 5.0:
                     _LOGGER.info(
-                        "STT heartbeat: %d chunks received, %d above silence, %d transcribed, %d trigger-only (active=%s, triggers_enabled=%s, model_loaded=%s)",
-                        chunks_received,
-                        chunks_above_silence,
-                        chunks_transcribed,
-                        chunks_triggered,
+                        "STT heartbeat: %d audio blocks, %d utterances, %d transcribed, %d trigger-only (in_speech=%s, active=%s, triggers_enabled=%s, model_loaded=%s)",
+                        blocks_received,
+                        utterances,
+                        utterances_transcribed,
+                        utterances_triggered,
+                        self._segmenter.in_speech,
                         active,
                         triggers_enabled,
                         self._transcriber.is_loaded(),
@@ -330,21 +363,23 @@ class STTEngine:
             with self._lock:
                 self._mic_open = False
             self._audio.stop()
+            self._segmenter.reset()
             _LOGGER.info(
-                "STT engine loop stopped (chunks_received=%d, above_silence=%d, transcribed=%d, trigger_only=%d)",
-                chunks_received,
-                chunks_above_silence,
-                chunks_transcribed,
-                chunks_triggered,
+                "STT engine loop stopped (audio_blocks=%d, utterances=%d, transcribed=%d, trigger_only=%d)",
+                blocks_received,
+                utterances,
+                utterances_transcribed,
+                utterances_triggered,
             )
 
     def _process_chunk(
         self, chunk: np.ndarray, *, type_into_window: bool = True
     ) -> str:
-        """Transcribe a single chunk. Returns a status tag for the loop counters.
+        """Transcribe one utterance. Returns a status tag for the loop counters.
 
         Args:
-            chunk: The audio buffer to transcribe.
+            chunk: The audio buffer to transcribe — a whole utterance from
+                :class:`UtteranceSegmenter` in the engine loop.
             type_into_window: When True (the default), the typed text is
                 also injected into the focused window. When False, the
                 transcription still happens (so voice triggers can be

@@ -149,10 +149,25 @@ class STTConfig:
     device: Optional[int] = (
         None  # sounddevice input device index, None = system default
     )
+    # Legacy: audio used to be transcribed in fixed slices of this length,
+    # which cut words in half. The engine now groups audio by utterance
+    # (see ``end_silence_ms`` / ``max_utterance_seconds``) and ignores this.
     chunk_seconds: float = 4.0
     sample_rate: int = 16000
     append_space: bool = True
-    silence_rms_threshold: float = 0.005  # skip typing when below this RMS
+    # Audio below this RMS counts as silence (ends an utterance).
+    silence_rms_threshold: float = 0.005
+    # A pause this long ends an utterance and sends it to Whisper.
+    end_silence_ms: int = 500
+    # Force-split continuous speech after this many seconds.
+    max_utterance_seconds: float = 12.0
+    # How dictated text reaches the focused window: "paste" (clipboard +
+    # Ctrl+V, previous clipboard text restored) or "keys" (one synthetic
+    # keystroke per character). Fast keystrokes get dropped by some apps
+    # (e.g. Windows 11 Notepad), so paste is the default.
+    typing_method: str = "paste"
+    # Delay between keystrokes when typing_method="keys".
+    key_delay_ms: int = 15
     # Maximum number of characters of recently-typed text kept for dedup tailing.
     dedup_window: int = 64
     # Per-shortcut cooldown for voice-triggered shortcuts (milliseconds).

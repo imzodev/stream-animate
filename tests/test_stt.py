@@ -377,6 +377,12 @@ def _make_engine(
     return engine, sd, model, controller, events
 
 
+def _push_pause(stream, seconds: float = 0.75) -> None:
+    """Push silence long enough to end the current utterance."""
+
+    stream.push(np.zeros(int(seconds * 16000), dtype=np.float32))
+
+
 def _wait_until(predicate, timeout: float = 4.0) -> None:
     import time
 
@@ -389,7 +395,7 @@ def _wait_until(predicate, timeout: float = 4.0) -> None:
 
 def test_engine_active_transcribes_and_types():
     engine, sd, model, controller, events = _make_engine(
-        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.0}
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
     )
     model.responses = ["hello there"]
     engine.set_active(True)
@@ -398,6 +404,7 @@ def test_engine_active_transcribes_and_types():
     _wait_until(lambda: sd._active and sd._active[0].started)
     stream = sd._active[0]
     stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+    _push_pause(stream)
     _wait_until(lambda: bool(controller.typed))
     assert controller.typed and controller.typed[0].strip() == "hello there"
     assert events and events[0].raw_text == "hello there"
@@ -410,7 +417,7 @@ def test_engine_idle_does_not_transcribe_in_hotkey_mode():
             "always_on": False,
             "hotkey": "<ctrl>+<alt>+space",
             "chunk_seconds": 0.25,
-            "silence_rms_threshold": 0.0,
+            "silence_rms_threshold": 0.1,
         }
     )
     # The engine may discard the first chunk if it arrives while the loop
@@ -426,6 +433,7 @@ def test_engine_idle_does_not_transcribe_in_hotkey_mode():
     # least one after observing the active flag.
     for _ in range(3):
         stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+        _push_pause(stream)
     _wait_until(lambda: any(t.strip() == "activated" for t in controller.typed))
     engine.stop()
 
@@ -438,7 +446,7 @@ def test_engine_transcribes_for_triggers_while_typing_paused():
             "always_on": False,
             "hotkey": "<ctrl>+<alt>+space",
             "chunk_seconds": 0.25,
-            "silence_rms_threshold": 0.0,
+            "silence_rms_threshold": 0.1,
         }
     )
     # _active stays False; the loop is in "trigger-only" mode.
@@ -468,6 +476,7 @@ def test_engine_transcribes_for_triggers_while_typing_paused():
     # is paused, the typer must NOT be called.
     for _ in range(3):
         stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+        _push_pause(stream)
     # Give the engine time to process
     import time as _t
 
@@ -487,7 +496,7 @@ def test_engine_disabled_triggers_skips_transcription_when_typing_paused():
             "always_on": False,
             "hotkey": "<ctrl>+<alt>+space",
             "chunk_seconds": 0.25,
-            "silence_rms_threshold": 0.0,
+            "silence_rms_threshold": 0.1,
         }
     )
     engine.set_triggers_enabled(False)
@@ -500,6 +509,7 @@ def test_engine_disabled_triggers_skips_transcription_when_typing_paused():
     # triggers_enabled: continue" branch).
     for _ in range(3):
         stream.push(np.ones(int(0.25 * 16000), dtype=np.float32) * 0.5)
+        _push_pause(stream)
     import time as _t
 
     _t.sleep(0.5)
@@ -607,3 +617,118 @@ def test_engine_observers_fire_on_state_change():
     engine.stop()
     # remove_observer should be a no-op on a missing callback
     engine.remove_observer(lambda: None)
+
+
+def test_audio_queue_holds_a_minute_regardless_of_chunk_size():
+    # Small chunks used to mean a tiny backlog (64 x 0.1 s = 6.4 s), so audio
+    # was dropped mid-word whenever transcription/typing briefly lagged.
+    for chunk in (0.1, 0.25, 1.0):
+        cap = AudioCapture(sounddevice_module=FakeSoundDevice(), chunk_seconds=chunk)
+        assert cap._chunks.maxsize * chunk >= 60.0
+
+
+def test_engine_types_unfinished_phrase_when_typing_toggled_off():
+    engine, sd, model, controller, _ = _make_engine(
+        {"always_on": True, "chunk_seconds": 0.25, "silence_rms_threshold": 0.1}
+    )
+    model.responses = ["está abierto"]
+    engine.set_active(True)
+    engine.start()
+    _wait_until(lambda: sd._active and sd._active[0].started)
+    stream = sd._active[0]
+    # Speech with no pause yet, then typing is switched off mid-phrase.
+    stream.push(np.ones(int(0.5 * 16000), dtype=np.float32) * 0.5)
+    _wait_until(lambda: engine._segmenter.in_speech)
+    engine.set_active(False)
+    _wait_until(lambda: bool(controller.typed))
+    assert controller.typed and controller.typed[0].strip() == "está abierto"
+    engine.stop()
+
+
+class _FakeClipboard:
+    def __init__(self, text=None, fail_set=False):
+        self.text = text
+        self.history: List[str] = []
+        self.fail_set = fail_set
+
+    def get_text(self):
+        return self.text
+
+    def set_text(self, text):
+        if self.fail_set:
+            raise RuntimeError("clipboard locked")
+        self.text = text
+        self.history.append(text)
+
+
+class _FakeKeyController(FakeController):
+    def __init__(self):
+        super().__init__()
+        self.events: List[tuple] = []
+
+    def press(self, key):
+        self.events.append(("press", key))
+
+    def release(self, key):
+        self.events.append(("release", key))
+
+
+def test_text_typer_paste_uses_clipboard_and_restores_it():
+    from pynput.keyboard import Key
+
+    controller = _FakeKeyController()
+    clip = _FakeClipboard(text="user's clipboard")
+    typer = TextTyper(
+        controller_factory=lambda: controller,
+        method="paste",
+        clipboard=clip,
+        paste_restore_delay=0,
+    )
+    typed = typer.type_text("Una cocina pequeña", append_space=True)
+    assert typed == "Una cocina pequeña "
+    # Pasted in one Ctrl+V, no per-character keystrokes.
+    assert controller.typed == []
+    assert controller.events == [
+        ("press", Key.ctrl),
+        ("press", "v"),
+        ("release", "v"),
+        ("release", Key.ctrl),
+    ]
+    assert clip.history == ["Una cocina pequeña ", "user's clipboard"]
+    assert clip.text == "user's clipboard"
+
+
+def test_text_typer_paste_falls_back_to_keys_when_clipboard_fails():
+    controller = _FakeKeyController()
+    typer = TextTyper(
+        controller_factory=lambda: controller,
+        method="paste",
+        clipboard=_FakeClipboard(fail_set=True),
+    )
+    typer.type_text("hola", append_space=False)
+    assert controller.typed == ["hola"]
+
+
+def test_text_typer_paste_without_clipboard_types_keys():
+    controller = _FakeKeyController()
+    typer = TextTyper(
+        controller_factory=lambda: controller,
+        method="paste",
+        clipboard_factory=lambda: None,
+    )
+    typer.type_text("hola", append_space=False)
+    assert controller.typed == ["hola"]
+
+
+def test_text_typer_keys_with_delay_types_per_character():
+    controller = FakeController()
+    typer = TextTyper(
+        controller_factory=lambda: controller, method="keys", key_delay=0.001
+    )
+    typer.type_text("ñá", append_space=False)
+    assert controller.typed == ["ñ", "á"]
+
+
+def test_text_typer_rejects_unknown_method():
+    with pytest.raises(ValueError):
+        TextTyper(method="telepathy")

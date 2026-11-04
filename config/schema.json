@@ -79,6 +79,33 @@
                     "default": 0.005,
                     "minimum": 0.0
                 },
+                "end_silence_ms": {
+                    "type": "integer",
+                    "default": 500,
+                    "minimum": 100,
+                    "maximum": 3000,
+                    "description": "Pause length that ends an utterance and sends it to Whisper"
+                },
+                "max_utterance_seconds": {
+                    "type": "number",
+                    "default": 12.0,
+                    "minimum": 2.0,
+                    "maximum": 30.0,
+                    "description": "Force-split continuous speech after this many seconds"
+                },
+                "typing_method": {
+                    "type": "string",
+                    "enum": ["paste", "keys"],
+                    "default": "paste",
+                    "description": "paste = clipboard + Ctrl+V (reliable); keys = one keystroke per character"
+                },
+                "key_delay_ms": {
+                    "type": "integer",
+                    "default": 15,
+                    "minimum": 0,
+                    "maximum": 200,
+                    "description": "Delay between keystrokes when typing_method is 'keys'"
+                },
                 "dedup_window": {
                     "type": "integer",
                     "default": 64,

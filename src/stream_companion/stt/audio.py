@@ -8,6 +8,7 @@ pass a fake ``sounddevice`` module via ``AudioCapture(sounddevice_module=...)``.
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import threading
 from typing import List, Optional
@@ -15,6 +16,9 @@ from typing import List, Optional
 import numpy as np
 
 _LOGGER = logging.getLogger(__name__)
+
+# How much unconsumed audio may queue up before chunks are dropped.
+_MAX_BACKLOG_SECONDS = 60.0
 
 
 class AudioCaptureError(RuntimeError):
@@ -57,8 +61,13 @@ class AudioCapture:
         self._stream = None
         self._buffer: List[np.ndarray] = []
         self._lock = threading.Lock()
-        self._chunks: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=64)
-        self._overflow_warned = False
+        # Size the backlog by *time*, not chunk count: with small chunks a
+        # fixed count is only a few seconds, and while the consumer is busy
+        # transcribing/typing the mic overflows and audio is silently lost
+        # mid-word (Whisper then hears "co[gap]ina" and garbles it).
+        maxsize = max(64, int(math.ceil(_MAX_BACKLOG_SECONDS / self._chunk_seconds)))
+        self._chunks: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=maxsize)
+        self._dropped_chunks = 0
         self._running = False
         self._error: Optional[Exception] = None
 
@@ -166,6 +175,13 @@ class AudioCapture:
         try:
             self._chunks.put_nowait(chunk)
         except queue.Full:
-            if not self._overflow_warned:
-                _LOGGER.warning("Audio chunk queue is full; dropping chunks")
-                self._overflow_warned = True
+            self._dropped_chunks += 1
+            # Log the first drop and then every ~second of lost audio, so a
+            # persistent backlog is visible instead of a single early warning.
+            every = max(1, int(round(1.0 / self._chunk_seconds)))
+            if self._dropped_chunks == 1 or self._dropped_chunks % every == 0:
+                _LOGGER.warning(
+                    "Audio queue full; dropped %.1fs of audio so far "
+                    "(transcription is not keeping up)",
+                    self._dropped_chunks * self._chunk_seconds,
+                )

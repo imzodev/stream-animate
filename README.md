@@ -268,10 +268,13 @@ STT settings can also be edited directly in `config/shortcuts.json`:
     "language": "auto",
     "model": "turbo",
     "device": null,
-    "chunk_seconds": 4.0,
     "sample_rate": 16000,
     "append_space": true,
     "silence_rms_threshold": 0.005,
+    "end_silence_ms": 500,
+    "max_utterance_seconds": 12.0,
+    "typing_method": "paste",
+    "key_delay_ms": 15,
     "dedup_window": 64
   }
 }
@@ -282,9 +285,13 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - `language` — a Whisper language code, or `auto`.
 - `model` — `tiny`, `base`, `small`, `medium`, `large`, or `turbo` (recommended).
 - `device` — `null` for the system default, or the `sounddevice` input device index.
-- `chunk_seconds` — how many seconds of audio to transcribe at a time (0.5–30).
-- `append_space` — append a space after each phrase so concatenated chunks don't run together.
-- `silence_rms_threshold` — skip chunks whose RMS volume is below this value.
+- `append_space` — append a space after each phrase so concatenated phrases don't run together.
+- `silence_rms_threshold` — audio quieter than this RMS volume counts as silence.
+- `end_silence_ms` — audio is sent to Whisper one whole utterance at a time: it is collected while you talk and transcribed once you pause this long (default 500 ms). Lower = faster triggers, higher = fewer mid-sentence splits.
+- `max_utterance_seconds` — continuous speech without a pause is split after this many seconds, at the quietest moment (default 12).
+- `typing_method` — how text reaches the focused window. `paste` (default) puts each phrase on the clipboard, presses Ctrl+V once and restores your previous clipboard text. `keys` sends one synthetic keystroke per character; use it only for apps that block paste. Fast keystrokes get dropped by some apps — Windows 11 Notepad turned "Una cocina pequeña" into "Una ina pequeéa".
+- `key_delay_ms` — pause between keystrokes when `typing_method` is `keys` (default 15).
+- `chunk_seconds` — legacy, ignored. Fixed-length slicing cut words in half and made Whisper invent text (e.g. "¡Gracias!") on the fragments.
 - `dedup_window` — number of recent characters used for tail-based dedup.
 
 ## AI Assistant (Fact-Checker)
