@@ -275,6 +275,8 @@ STT settings can also be edited directly in `config/shortcuts.json`:
     "max_utterance_seconds": 12.0,
     "typing_method": "paste",
     "key_delay_ms": 15,
+    "show_indicator": true,
+    "indicator_position": "top-center",
     "dedup_window": 64
   }
 }
@@ -291,6 +293,8 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - `max_utterance_seconds` — continuous speech without a pause is split after this many seconds, at the quietest moment (default 12).
 - `typing_method` — how text reaches the focused window. `paste` (default) puts each phrase on the clipboard, presses Ctrl+V once and restores your previous clipboard text. `keys` sends one synthetic keystroke per character; use it only for apps that block paste. Fast keystrokes get dropped by some apps — Windows 11 Notepad turned "Una cocina pequeña" into "Una ina pequeéa".
 - `key_delay_ms` — pause between keystrokes when `typing_method` is `keys` (default 15).
+- `show_indicator` — show a floating "Listening" pill (live waveform; "Transcribing" while Whisper works) whenever dictation typing is on. It never takes focus or blocks clicks. Default `true`.
+- `indicator_position` — `top-center` (default), `top-left`, `top-right`, `bottom-center`, `bottom-left` or `bottom-right` on the primary screen.
 - `chunk_seconds` — legacy, ignored. Fixed-length slicing cut words in half and made Whisper invent text (e.g. "¡Gracias!") on the fragments.
 - `dedup_window` — number of recent characters used for tail-based dedup.
 

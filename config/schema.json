@@ -106,6 +106,16 @@
                     "maximum": 200,
                     "description": "Delay between keystrokes when typing_method is 'keys'"
                 },
+                "show_indicator": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the on-screen 'Listening' pill while dictation typing is on"
+                },
+                "indicator_position": {
+                    "type": "string",
+                    "enum": ["top-center", "top-left", "top-right", "bottom-center", "bottom-left", "bottom-right"],
+                    "default": "top-center"
+                },
                 "dedup_window": {
                     "type": "integer",
                     "default": 64,

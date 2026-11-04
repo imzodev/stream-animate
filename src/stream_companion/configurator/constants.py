@@ -9,6 +9,17 @@ MAX_OVERLAY_SIZE = 9999
 MIN_OVERLAY_SIZE = 1
 MAX_DURATION_MS = 60000
 
+# On-screen "Listening" indicator positions (code, label). Codes match
+# stream_companion.listening_indicator.POSITIONS.
+INDICATOR_POSITIONS = [
+    ("top-center", "Top center"),
+    ("top-left", "Top left"),
+    ("top-right", "Top right"),
+    ("bottom-center", "Bottom center"),
+    ("bottom-left", "Bottom left"),
+    ("bottom-right", "Bottom right"),
+]
+
 # Whisper supported languages (subset shown in the configurator; "auto" delegates
 # to Whisper's own language detection). Full list lives in whisper.tokenizer.
 WHISPER_LANGUAGES = [

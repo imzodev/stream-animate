@@ -493,3 +493,61 @@ def test_application_fact_checker_falls_back_to_auto_language(
     fc = app.fact_checker()
     assert fc is not None
     assert fc._language == "auto"  # noqa: SLF001
+
+
+class _FakeSTTEngine:
+    def __init__(self) -> None:
+        self.started = False
+        self.stopped = False
+        self.active = None
+
+    def set_triggers_enabled(self, enabled: bool) -> None:
+        pass
+
+    def set_active(self, active: bool) -> None:
+        self.active = active
+
+    def start(self) -> None:
+        self.started = True
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
+class _FakeIndicator:
+    def __init__(self) -> None:
+        self.attached = None
+        self.detached = 0
+
+    def attach(self, engine, *, enabled=True, position=None) -> None:
+        self.attached = (engine, enabled, position)
+
+    def detach(self) -> None:
+        self.detached += 1
+
+
+def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
+    from stream_companion.models import STTConfig
+
+    engine = _FakeSTTEngine()
+    indicator = _FakeIndicator()
+    cfg = STTConfig(
+        enabled=True,
+        hotkey="<ctrl>+<alt>+t",
+        show_indicator=False,
+        indicator_position="bottom-right",
+    )
+    app = Application(
+        [],
+        sound_player=FakeSoundPlayer(),
+        overlay_window=FakeOverlayWindow(),
+        hotkey_manager=FakeHotkeyManager(),
+        stt_config=cfg,
+        stt_engine=engine,
+        listening_indicator=indicator,
+    )
+    app.start()
+    assert engine.started
+    assert indicator.attached == (engine, False, "bottom-right")
+    app.stop()
+    assert indicator.detached >= 1

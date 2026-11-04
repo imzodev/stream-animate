@@ -77,3 +77,16 @@ def test_validate_rejects_out_of_range_phrase_settings(qapp):
     assert any("pause" in e for e in errors)
     assert any("phrase length" in e for e in errors)
     assert section.validate(_cfg()) == []
+
+
+def test_indicator_settings_round_trip(qapp):
+    section = STTSection()
+    section.populate(_cfg(show_indicator=False, indicator_position="bottom-left"))
+    assert not section._indicator_position_combo.isEnabled()
+    out = section.read()
+    assert out.show_indicator is False
+    assert out.indicator_position == "bottom-left"
+
+    section._show_indicator.setChecked(True)
+    assert section._indicator_position_combo.isEnabled()
+    assert section.read().show_indicator is True

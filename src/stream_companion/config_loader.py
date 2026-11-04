@@ -288,6 +288,8 @@ def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
             max_utterance_seconds=float(raw.get("max_utterance_seconds", 12.0)),
             typing_method=str(raw.get("typing_method", "paste")),
             key_delay_ms=int(raw.get("key_delay_ms", 15)),
+            show_indicator=bool(raw.get("show_indicator", True)),
+            indicator_position=str(raw.get("indicator_position", "top-center")),
             dedup_window=int(raw.get("dedup_window", 64)),
             trigger_cooldown_ms=int(raw.get("trigger_cooldown_ms", 1500)),
             # Both new flags default to True; legacy config files that
@@ -425,6 +427,8 @@ def _serialize(
             "max_utterance_seconds": stt.max_utterance_seconds,
             "typing_method": stt.typing_method,
             "key_delay_ms": stt.key_delay_ms,
+            "show_indicator": stt.show_indicator,
+            "indicator_position": stt.indicator_position,
             "dedup_window": stt.dedup_window,
             "trigger_cooldown_ms": stt.trigger_cooldown_ms,
             "type_into_focused_window": stt.type_into_focused_window,

@@ -101,10 +101,26 @@ class STTEngine:
         # like the fact-checker can subscribe and unsubscribe at
         # runtime without losing the original wired callback.
         self._phrase_observers: List[Callable[["STTEvent"], None]] = []
+        # Live UI hints (read from the GUI thread; plain float/bool
+        # assignments are atomic in CPython, so no lock is needed).
+        self._input_level = 0.0
+        self._transcribing = False
 
     @property
     def config(self) -> STTConfig:
         return self._config
+
+    @property
+    def input_level(self) -> float:
+        """RMS of the most recent mic block (0 when not listening)."""
+
+        return self._input_level
+
+    @property
+    def is_transcribing(self) -> bool:
+        """``True`` while Whisper is processing an utterance."""
+
+        return self._transcribing
 
     @property
     def transcriber(self) -> WhisperTranscriber:
@@ -333,6 +349,9 @@ class STTEngine:
                 if block is None:
                     continue
                 blocks_received += 1
+                self._input_level = (
+                    float(np.sqrt(np.mean(np.square(block)))) if block.size else 0.0
+                )
                 # Whisper only ever sees whole utterances (speech up to a
                 # pause), never arbitrary slices that split words.
                 for utterance in self._segmenter.feed(block):
@@ -413,6 +432,7 @@ class STTEngine:
                 self._config.model,
             )
         t0 = time.time()
+        self._transcribing = True
         try:
             text = self._transcriber.transcribe(chunk, language=self._config.language)
         except Exception as exc:  # pragma: no cover - model path
@@ -420,6 +440,8 @@ class STTEngine:
             _LOGGER.exception("Whisper transcription failed: %s", exc)
             self._emit_status(f"error:transcribe:{exc}")
             return "error"
+        finally:
+            self._transcribing = False
         dt = time.time() - t0
         if not text:
             _LOGGER.info(

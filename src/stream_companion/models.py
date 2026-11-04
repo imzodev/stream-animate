@@ -168,6 +168,10 @@ class STTConfig:
     typing_method: str = "paste"
     # Delay between keystrokes when typing_method="keys".
     key_delay_ms: int = 15
+    # Show the on-screen "Listening" pill while dictation typing is on.
+    show_indicator: bool = True
+    # Where the pill sits: top-/bottom- + left/center/right.
+    indicator_position: str = "top-center"
     # Maximum number of characters of recently-typed text kept for dedup tailing.
     dedup_window: int = 64
     # Per-shortcut cooldown for voice-triggered shortcuts (milliseconds).

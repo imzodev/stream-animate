@@ -186,6 +186,8 @@ def _write_full_schema(path: Path) -> None:
                     "max_utterance_seconds": {"type": "number"},
                     "typing_method": {"type": "string"},
                     "key_delay_ms": {"type": "integer"},
+                    "show_indicator": {"type": "boolean"},
+                    "indicator_position": {"type": "string"},
                     "dedup_window": {"type": "integer"},
                     "trigger_cooldown_ms": {"type": "integer"},
                     "type_into_focused_window": {"type": "boolean"},

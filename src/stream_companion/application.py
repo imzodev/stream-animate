@@ -51,9 +51,13 @@ class Application:
         llm_config: Optional[LLMConfig] = None,
         fact_checker: Optional[FactCheckerEngine] = None,
         answer_panel: Optional[AnswerPanel] = None,
+        listening_indicator=None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._shortcuts: List[Shortcut] = list(shortcuts)
+        # On-screen "Listening" pill (a ListeningIndicator). Optional and
+        # injected so the Application stays constructible without a GUI.
+        self._listening_indicator = listening_indicator
         self._sound_player = sound_player or SoundPlayer()
         self._overlay_window = overlay_window or OverlayWindow()
         self._hotkey_manager = hotkey_manager or HotkeyManager()
@@ -306,6 +310,12 @@ class Application:
             # are still on if the sub-checkbox is enabled.
             self._stt_engine.set_active(False)
         self._stt_engine.start()
+        if self._listening_indicator is not None:
+            self._listening_indicator.attach(
+                self._stt_engine,
+                enabled=self._stt_config.show_indicator,
+                position=self._stt_config.indicator_position,
+            )
         if mode == "always":
             self._logger.info(
                 "STT always-on (model=%s, language=%s, type_into_window=%s, voice_triggers=%s)",
@@ -324,6 +334,8 @@ class Application:
             )
 
     def _stop_stt(self) -> None:
+        if self._listening_indicator is not None:
+            self._listening_indicator.detach()
         if self._stt_engine is not None:
             self._logger.info("STT stopping")
             try:
@@ -723,11 +735,18 @@ def run_application(
     if llm_config is not None:
         answer_panel = AnswerPanel()
 
+    # Always create it when STT is configured: its visibility follows the
+    # show_indicator setting, which can change at runtime.
+    from .listening_indicator import ListeningIndicator
+
+    listening_indicator = ListeningIndicator() if stt_config is not None else None
+
     application = Application(
         shortcuts,
         stt_config=stt_config,
         llm_config=llm_config,
         answer_panel=answer_panel,
+        listening_indicator=listening_indicator,
     )
     application.start()
 
@@ -789,6 +808,8 @@ def run_application(
         application.stop()
         if answer_panel is not None:
             answer_panel.close()
+        if listening_indicator is not None:
+            listening_indicator.close()
         tray.hide()
 
 
