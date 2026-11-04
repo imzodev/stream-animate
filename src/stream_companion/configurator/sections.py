@@ -6,6 +6,7 @@ read/populate/validate API for the main window to drive.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 from pathlib import Path
@@ -105,13 +106,20 @@ class STTSection(QWidget):
         else:
             self._device_combo.setCurrentIndex(0)
 
-        self._chunk_input.setValue(float(cfg.chunk_seconds))
         sr_idx = self._sample_rate_combo.findData(cfg.sample_rate)
         if sr_idx >= 0:
             self._sample_rate_combo.setCurrentIndex(sr_idx)
+        self._end_silence_input.setValue(int(cfg.end_silence_ms))
+        self._max_utterance_input.setValue(float(cfg.max_utterance_seconds))
         self._silence_input.setValue(float(cfg.silence_rms_threshold))
         self._append_space.setChecked(bool(cfg.append_space))
+        method_idx = self._typing_method_combo.findData(cfg.typing_method)
+        self._typing_method_combo.setCurrentIndex(max(0, method_idx))
+        self._key_delay_input.setValue(int(cfg.key_delay_ms))
         self._dedup_input.setValue(int(cfg.dedup_window))
+        # Keep the loaded config so fields without a widget (e.g.
+        # trigger_cooldown_ms) survive a save instead of resetting.
+        self._loaded = cfg
 
         self._on_enabled_toggled(cfg.enabled)
 
@@ -130,17 +138,23 @@ class STTSection(QWidget):
         model = self._model_combo.currentData() or "turbo"
         language = self._language_combo.currentData() or "auto"
         device = self._device_combo.currentData()  # may be None
-        return STTConfig(
+        # Start from the loaded config so settings with no widget here are
+        # preserved, then overwrite everything the panel edits.
+        return dataclasses.replace(
+            getattr(self, "_loaded", None) or STTConfig(),
             enabled=True,
             always_on=always_on,
             hotkey=hotkey,
             language=str(language),
             model=str(model),
             device=device,
-            chunk_seconds=float(self._chunk_input.value()),
             sample_rate=int(self._sample_rate_combo.currentData() or 16000),
             append_space=self._append_space.isChecked(),
             silence_rms_threshold=float(self._silence_input.value()),
+            end_silence_ms=int(self._end_silence_input.value()),
+            max_utterance_seconds=float(self._max_utterance_input.value()),
+            typing_method=str(self._typing_method_combo.currentData() or "paste"),
+            key_delay_ms=int(self._key_delay_input.value()),
             dedup_window=int(self._dedup_input.value()),
             type_into_focused_window=self._type_into_window_checkbox.isChecked(),
             voice_triggers_enabled=self._voice_triggers_checkbox.isChecked(),
@@ -153,8 +167,12 @@ class STTSection(QWidget):
             return errors
         if not stt.always_on and not stt.hotkey:
             errors.append("STT: enable 'Always on' or set a toggle hotkey.")
-        if stt.chunk_seconds < 0.5 or stt.chunk_seconds > 30.0:
-            errors.append("STT: chunk size must be between 0.5 and 30 seconds.")
+        if not 100 <= stt.end_silence_ms <= 3000:
+            errors.append("STT: phrase-ending pause must be 100–3000 ms.")
+        if not 2.0 <= stt.max_utterance_seconds <= 30.0:
+            errors.append("STT: max phrase length must be 2–30 seconds.")
+        if stt.typing_method not in ("paste", "keys"):
+            errors.append("STT: send-text method must be 'paste' or 'keys'.")
         if stt.sample_rate < 8000 or stt.sample_rate > 48000:
             errors.append("STT: sample rate must be between 8000 and 48000 Hz.")
         if stt.silence_rms_threshold < 0:
@@ -261,23 +279,44 @@ class STTSection(QWidget):
         device_row.addWidget(self._refresh_btn)
         audio_layout.addLayout(device_row)
 
-        chunk_row = QHBoxLayout()
-        chunk_row.addWidget(QLabel("Chunk size (seconds):"))
-        self._chunk_input = QDoubleSpinBox()
-        self._chunk_input.setRange(0.5, 30.0)
-        self._chunk_input.setSingleStep(0.5)
-        self._chunk_input.setValue(4.0)
-        chunk_row.addWidget(self._chunk_input)
-        chunk_row.addSpacing(20)
-        chunk_row.addWidget(QLabel("Sample rate (Hz):"))
+        rate_row = QHBoxLayout()
+        rate_row.addWidget(QLabel("Sample rate (Hz):"))
         self._sample_rate_combo = QComboBox()
         for rate in (8000, 16000, 22050, 32000, 44100, 48000):
             self._sample_rate_combo.addItem(str(rate), userData=rate)
         idx = self._sample_rate_combo.findData(16000)
         if idx >= 0:
             self._sample_rate_combo.setCurrentIndex(idx)
-        chunk_row.addWidget(self._sample_rate_combo)
-        audio_layout.addLayout(chunk_row)
+        rate_row.addWidget(self._sample_rate_combo)
+        rate_row.addStretch(1)
+        audio_layout.addLayout(rate_row)
+
+        phrase_row = QHBoxLayout()
+        phrase_row.addWidget(QLabel("Pause that ends a phrase (ms):"))
+        self._end_silence_input = QSpinBox()
+        self._end_silence_input.setRange(100, 3000)
+        self._end_silence_input.setSingleStep(50)
+        self._end_silence_input.setValue(500)
+        self._end_silence_input.setToolTip(
+            "Speech is sent to Whisper one whole phrase at a time, once you "
+            "pause this long. Lower = faster voice triggers; higher = fewer "
+            "sentences split mid-way."
+        )
+        phrase_row.addWidget(self._end_silence_input)
+        phrase_row.addSpacing(20)
+        phrase_row.addWidget(QLabel("Max phrase length (s):"))
+        self._max_utterance_input = QDoubleSpinBox()
+        self._max_utterance_input.setRange(2.0, 30.0)
+        self._max_utterance_input.setSingleStep(1.0)
+        self._max_utterance_input.setDecimals(1)
+        self._max_utterance_input.setValue(12.0)
+        self._max_utterance_input.setToolTip(
+            "Continuous speech with no pause is split after this many "
+            "seconds, at the quietest moment."
+        )
+        phrase_row.addWidget(self._max_utterance_input)
+        phrase_row.addStretch(1)
+        audio_layout.addLayout(phrase_row)
 
         silence_row = QHBoxLayout()
         silence_row.addWidget(QLabel("Silence threshold (RMS):"))
@@ -297,6 +336,37 @@ class STTSection(QWidget):
         self._append_space = QCheckBox("Append a space after each transcribed phrase")
         self._append_space.setChecked(True)
         typing_layout.addWidget(self._append_space)
+
+        method_row = QHBoxLayout()
+        method_row.addWidget(QLabel("Send text by:"))
+        self._typing_method_combo = QComboBox()
+        self._typing_method_combo.addItem(
+            "Pasting (clipboard + Ctrl+V) — recommended", userData="paste"
+        )
+        self._typing_method_combo.addItem(
+            "Typing keystrokes one by one", userData="keys"
+        )
+        self._typing_method_combo.setToolTip(
+            "Pasting is instant and reliable; your previous clipboard text is "
+            "restored afterwards. Use keystrokes only for apps that block "
+            "paste — some apps (e.g. Windows 11 Notepad) drop fast keystrokes."
+        )
+        self._typing_method_combo.currentIndexChanged.connect(
+            self._on_typing_method_changed
+        )
+        method_row.addWidget(self._typing_method_combo, 1)
+        typing_layout.addLayout(method_row)
+
+        delay_row = QHBoxLayout()
+        delay_row.addWidget(QLabel("Delay between keystrokes (ms):"))
+        self._key_delay_input = QSpinBox()
+        self._key_delay_input.setRange(0, 200)
+        self._key_delay_input.setValue(15)
+        delay_row.addWidget(self._key_delay_input)
+        delay_row.addStretch(1)
+        typing_layout.addLayout(delay_row)
+        self._on_typing_method_changed()
+
         dedup_row = QHBoxLayout()
         dedup_row.addWidget(QLabel("Dedup window (chars):"))
         self._dedup_input = QSpinBox()
@@ -307,6 +377,13 @@ class STTSection(QWidget):
         typing_layout.addLayout(dedup_row)
         layout.addWidget(typing_group)
         layout.addStretch(1)
+
+    def _on_typing_method_changed(self, *_args) -> None:
+        """The keystroke delay only applies to the 'keys' method."""
+        self._key_delay_input.setEnabled(
+            self._enabled_checkbox.isChecked()
+            and self._typing_method_combo.currentData() == "keys"
+        )
 
     def _populate_audio_devices(self) -> None:
         """Enumerate input devices via sounddevice and fill the combo box."""
@@ -338,13 +415,18 @@ class STTSection(QWidget):
             self._language_combo,
             self._device_combo,
             self._refresh_btn,
-            self._chunk_input,
             self._sample_rate_combo,
+            self._end_silence_input,
+            self._max_utterance_input,
             self._silence_input,
             self._append_space,
+            self._typing_method_combo,
             self._dedup_input,
         ):
             w.setEnabled(enabled)
+        self._key_delay_input.setEnabled(
+            enabled and self._typing_method_combo.currentData() == "keys"
+        )
         self._on_activation_toggled()
 
     def _on_activation_toggled(self) -> None:
