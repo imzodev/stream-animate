@@ -33,6 +33,7 @@ class ShortcutSignals(QObject):
     stt_status = Signal(str)
     stt_phrase = Signal(str)  # emitted whenever a phrase is finalized
     fact_check_event = Signal(object)  # FactCheckerEvent for GUI-thread observers
+    voice_feedback = Signal(str, str)  # (text, kind) from voice commands
 
 
 class Application:
@@ -52,6 +53,8 @@ class Application:
         fact_checker: Optional[FactCheckerEngine] = None,
         answer_panel: Optional[AnswerPanel] = None,
         listening_indicator=None,
+        voice_commands_config=None,
+        voice_command_service=None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self._shortcuts: List[Shortcut] = list(shortcuts)
@@ -137,6 +140,36 @@ class Application:
             self._handle_fact_check_event_in_main_thread,
             Qt.ConnectionType.QueuedConnection,
         )
+        self._signals.voice_feedback.connect(
+            self._handle_voice_feedback_in_main_thread,
+            Qt.ConnectionType.QueuedConnection,
+        )
+
+        # Voice commands (wake word → actions). Built after the signals so
+        # feedback can be routed to the on-screen indicator.
+        self._voice_service = voice_command_service
+        if (
+            self._voice_service is None
+            and voice_commands_config is not None
+            and voice_commands_config.enabled
+        ):
+            from .voice_commands import build_service
+
+            self._voice_service = build_service(
+                voice_commands_config,
+                engine_getter=lambda: self._stt_engine,
+                llm_config=llm_config,
+            )
+        if self._voice_service is not None:
+            self._voice_service.set_feedback(self._signals.voice_feedback.emit)
+            if self._stt_engine is not None:
+                self._stt_engine.set_command_handler(self._voice_service.handle)
+            self._logger.info(
+                "Voice commands on: wake_words=%s commands=%d ai_fallback=%s",
+                list(self._voice_service.config.wake_words),
+                len(self._voice_service.config.commands),
+                self._voice_service.config.ai_fallback,
+            )
 
     def start(self) -> None:
         """Preload assets, register shortcuts, and start the listener."""
@@ -238,6 +271,9 @@ class Application:
                 config,
                 hotkey=config.hotkey,
                 on_phrase=self._on_stt_phrase,
+                command_handler=(
+                    self._voice_service.handle if self._voice_service else None
+                ),
             )
         else:
             self._stt_engine = None
@@ -347,6 +383,11 @@ class Application:
 
     def _handle_stt_status_in_main_thread(self, status: str) -> None:
         self._logger.info("STT status: %s", status)
+
+    def _handle_voice_feedback_in_main_thread(self, text: str, kind: str) -> None:
+        self._logger.info("Voice command feedback [%s]: %s", kind, text)
+        if self._listening_indicator is not None:
+            self._listening_indicator.flash(text, kind)
 
     def _on_stt_phrase(self, event) -> None:
         """Engine callback fired on the capture thread for each phrase.
@@ -715,6 +756,7 @@ def run_application(
     shortcuts: Iterable[Shortcut],
     stt_config: Optional[STTConfig] = None,
     llm_config: Optional[LLMConfig] = None,
+    voice_commands_config=None,
 ) -> None:
     """Bootstrap the Qt application loop and start the MVP workflow."""
     from .tray_icon import TrayIcon
@@ -747,6 +789,7 @@ def run_application(
         llm_config=llm_config,
         answer_panel=answer_panel,
         listening_indicator=listening_indicator,
+        voice_commands_config=voice_commands_config,
     )
     application.start()
 

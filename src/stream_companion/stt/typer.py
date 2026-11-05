@@ -66,6 +66,7 @@ class TextTyper:
         self._paste_restore_delay = max(0.0, float(paste_restore_delay))
         self._lock = threading.Lock()
         self._typed_tail = ""
+        self._last_typed = ""
         self._controller: Optional[object] = None
 
     @property
@@ -111,8 +112,23 @@ class TextTyper:
             self._typed_tail = (
                 (self._typed_tail + to_type)[-self._window :] if self._window else ""
             )
+            self._last_typed = to_type
         _LOGGER.info("STT typer %s %d chars: %r", used, len(to_type), to_type)
         return to_type
+
+    def forget_last(self) -> str:
+        """Return the last delivered text and drop it from the dedup tail.
+
+        Used by the "borra eso" (erase that) dictation edit, which then
+        backspaces exactly that many characters. Only one level deep.
+        """
+
+        with self._lock:
+            last = self._last_typed
+            self._last_typed = ""
+            if last and self._typed_tail.endswith(last):
+                self._typed_tail = self._typed_tail[: -len(last)]
+        return last
 
     def _deliver(self, text: str) -> str:
         """Send ``text`` to the focused window. Returns the method used."""
@@ -175,6 +191,7 @@ class TextTyper:
     def reset(self) -> None:
         with self._lock:
             self._typed_tail = ""
+            self._last_typed = ""
 
     def tail(self) -> str:
         with self._lock:

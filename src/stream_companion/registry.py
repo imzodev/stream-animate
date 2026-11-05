@@ -6,7 +6,12 @@ import logging
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-from .config_loader import ConfigError, load_config, load_full_config
+from .config_loader import (
+    ConfigError,
+    load_config,
+    load_full_config,
+    load_voice_commands_config,
+)
 from .llm.config import LLMConfig
 from .models import ActivatorConfig, Shortcut, STTConfig
 
@@ -106,9 +111,34 @@ def get_llm_config() -> Optional[LLMConfig]:
     return llm
 
 
+_CACHED_VOICE = None
+_VOICE_LOADED = False
+
+
+def get_voice_commands_config():
+    """Return the ``VoiceCommandsConfig``, or ``None`` if not configured.
+
+    An invalid block is logged and treated as absent so a typo in a command
+    never stops the rest of the app from starting.
+    """
+
+    global _CACHED_VOICE, _VOICE_LOADED
+    if not _VOICE_LOADED:
+        try:
+            _CACHED_VOICE = load_voice_commands_config()
+        except ConfigError as exc:
+            _LOGGER.error("Voice commands disabled: %s", exc)
+            _CACHED_VOICE = None
+        _VOICE_LOADED = True
+    return _CACHED_VOICE
+
+
 def reload_config() -> None:
     """Clear the config cache so the next call reloads from disk."""
 
+    global _CACHED_VOICE, _VOICE_LOADED
+    _CACHED_VOICE = None
+    _VOICE_LOADED = False
     global _CACHED_ACTIVATOR
     global _CACHED_SHORTCUTS
     global _CACHED_STT

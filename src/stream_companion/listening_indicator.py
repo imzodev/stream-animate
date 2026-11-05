@@ -30,6 +30,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetrics,
     QGuiApplication,
     QLinearGradient,
     QPainter,
@@ -50,7 +51,10 @@ POSITIONS = (
 DEFAULT_POSITION = "top-center"
 
 _PILL_W, _PILL_H = 172, 44
+_MAX_PILL_W = 380  # pill grows up to this to fit command feedback text
 _SHADOW = 22  # transparent margin around the pill for the soft shadow
+_FLASH_SECONDS = 2.4
+_BUSY_MAX_SECONDS = 30.0
 _SCREEN_MARGIN = 18
 _N_BARS = 5
 _ACTIVE_FPS_MS = 16
@@ -59,6 +63,8 @@ _IDLE_POLL_MS = 120
 _LEVEL_FULL_SCALE = 0.06
 
 _ORANGE = QColor(255, 159, 10)
+_GREEN = QColor(48, 209, 88)
+_RED = QColor(255, 69, 58)
 _SIRI = (QColor(100, 210, 255), QColor(94, 92, 230), QColor(191, 90, 242))
 
 
@@ -107,7 +113,13 @@ class ListeningIndicator(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.setFixedSize(_PILL_W + 2 * _SHADOW, _PILL_H + 2 * _SHADOW)
+        self.setFixedSize(_MAX_PILL_W + 2 * _SHADOW, _PILL_H + 2 * _SHADOW)
+
+        self._pill_w = float(_PILL_W)  # animated toward the content width
+        # Command feedback ("✓ Tab: servidor", "Thinking…").
+        self._flash_text = ""
+        self._flash_kind = ""
+        self._flash_until = 0.0
 
         self._engine = None
         self._enabled = True
@@ -169,19 +181,40 @@ class ListeningIndicator(QWidget):
         self._position = position if position in POSITIONS else DEFAULT_POSITION
         self._reposition()
 
+    def flash(self, text: str, kind: str = "ok") -> None:
+        """Briefly show command feedback. ``kind``: ok / error / busy / info.
+
+        ``busy`` stays up until the next flash (e.g. "Thinking…" while the AI
+        works). Respects the show/hide setting, so a hidden indicator stays
+        hidden on stream.
+        """
+
+        self._flash_text = text
+        self._flash_kind = kind
+        duration = _BUSY_MAX_SECONDS if kind == "busy" else _FLASH_SECONDS
+        self._flash_until = time.monotonic() + duration
+        self._tick()
+
+    @property
+    def flash_text(self) -> str:
+        return self._flash_text if self._flashing() else ""
+
+    def _flashing(self) -> bool:
+        return bool(self._flash_text) and time.monotonic() < self._flash_until
+
     # -- state --------------------------------------------------------------
 
     def _tick(self) -> None:
         engine = self._engine
-        active = bool(
-            self._enabled
-            and engine is not None
-            and engine.is_running
-            and engine.is_active
-        )
-        self._set_visible(active)
+        typing = bool(engine is not None and engine.is_running and engine.is_active)
+        flashing = self._flashing()
+        self._set_visible(self._enabled and (typing or flashing))
         if not self.isVisible():
             return
+        active = typing
+
+        goal_w = self._content_width() if flashing else _PILL_W
+        self._pill_w += (goal_w - self._pill_w) * 0.25
 
         raw = engine.input_level if (engine is not None and active) else 0.0
         target = min(1.0, math.sqrt(max(0.0, raw) / _LEVEL_FULL_SCALE))
@@ -229,6 +262,25 @@ class ListeningIndicator(QWidget):
             self._timer.setInterval(_IDLE_POLL_MS)
             self._level = 0.0
             self._bars = [0.0] * _N_BARS
+            self._pill_w = float(_PILL_W)
+
+    def _content_width(self) -> float:
+        text_w = QFontMetrics(self._label_font).horizontalAdvance(self._flash_text)
+        extra = 46 + 22 + (34 if self._flash_kind == "busy" else 0)
+        return float(min(_MAX_PILL_W, max(_PILL_W, text_w + extra)))
+
+    def _pill_rect(self) -> QRectF:
+        """The pill, anchored to the configured side so it grows inward."""
+
+        w = self._pill_w
+        horizontal = self._position.split("-")[1]
+        if horizontal == "left":
+            x = _SHADOW
+        elif horizontal == "right":
+            x = self.width() - _SHADOW - w
+        else:
+            x = (self.width() - w) / 2
+        return QRectF(x, _SHADOW, w, _PILL_H)
 
     def _reposition(self) -> None:
         screen = QGuiApplication.primaryScreen()
@@ -249,24 +301,80 @@ class ListeningIndicator(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         p.setOpacity(min(1.0, a))
 
+        pill = self._pill_rect()
         # Spring scale from the pill's centre (OutBack overshoots past 1).
         scale = 0.82 + 0.18 * a
-        cx, cy = self.width() / 2, self.height() / 2
+        cx, cy = pill.center().x(), pill.center().y()
         p.translate(cx, cy)
         p.scale(scale, scale)
         p.translate(-cx, -cy)
 
-        pill = QRectF(_SHADOW, _SHADOW, _PILL_W, _PILL_H)
         radius = _PILL_H / 2
         self._paint_shadow(p, pill, radius)
         self._paint_body(p, pill, radius)
-        self._paint_mic(p, pill)
-        self._paint_label(p, pill)
-        if self._transcribing:
-            self._paint_dots(p, pill)
+        if self._flashing():
+            kind = self._flash_kind
+            if kind == "ok":
+                self._paint_badge(p, pill, _GREEN, check=True)
+            elif kind == "error":
+                self._paint_badge(p, pill, _RED, check=False)
+            else:
+                self._paint_mic(p, pill)
+            right = 22 + (34 if kind == "busy" else 0)
+            self._paint_text(p, pill, self._flash_text, right)
+            if kind == "busy":
+                self._paint_dots(p, pill)
         else:
-            self._paint_wave(p, pill)
+            self._paint_mic(p, pill)
+            self._paint_label(p, pill)
+            if self._transcribing:
+                self._paint_dots(p, pill)
+            else:
+                self._paint_wave(p, pill)
         p.end()
+
+    def _paint_badge(self, p: QPainter, pill: QRectF, color: QColor, check: bool):
+        c = QPointF(pill.left() + 24, pill.center().y())
+        glow = QRadialGradient(c, 20)
+        g = QColor(color)
+        g.setAlpha(90)
+        glow.setColorAt(0.0, g)
+        g0 = QColor(color)
+        g0.setAlpha(0)
+        glow.setColorAt(1.0, g0)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(glow)
+        p.drawEllipse(c, 20, 20)
+        p.setBrush(color)
+        p.drawEllipse(c, 12, 12)
+        pen = QPen(QColor(255, 255, 255), 2.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        p.setPen(pen)
+        if check:
+            path = QPainterPath(QPointF(c.x() - 5, c.y() + 0.5))
+            path.lineTo(c.x() - 1.5, c.y() + 4)
+            path.lineTo(c.x() + 5.5, c.y() - 4)
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawPath(path)
+        else:
+            p.drawLine(QPointF(c.x() - 4, c.y() - 4), QPointF(c.x() + 4, c.y() + 4))
+            p.drawLine(QPointF(c.x() + 4, c.y() - 4), QPointF(c.x() - 4, c.y() + 4))
+
+    def _paint_text(self, p: QPainter, pill: QRectF, text: str, right: float):
+        p.setFont(self._label_font)
+        p.setPen(QColor(255, 255, 255, 235))
+        rect = QRectF(
+            pill.left() + 46, pill.top(), pill.width() - 46 - right, pill.height()
+        )
+        elided = QFontMetrics(self._label_font).elidedText(
+            text, Qt.TextElideMode.ElideRight, int(rect.width())
+        )
+        p.drawText(
+            rect,
+            int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft),
+            elided,
+        )
 
     def _paint_shadow(self, p: QPainter, pill: QRectF, radius: float) -> None:
         p.setPen(Qt.PenStyle.NoPen)

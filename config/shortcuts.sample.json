@@ -38,6 +38,31 @@
     "timeout_seconds": 30,
     "silence_timeout": 5.0,
     "esc_hotkey": "<esc>"
+  },
+  "voice_commands": {
+    "enabled": true,
+    "wake_words": ["computadora", "compu"],
+    "dictation_editing": true,
+    "ai_fallback": false,
+    "commands": [
+      {"phrases": ["guarda", "guardar"], "actions": [{"type": "keys", "keys": "<ctrl>+s"}]},
+      {"phrases": ["copia", "copiar"], "actions": [{"type": "keys", "keys": "<ctrl>+c"}]},
+      {"phrases": ["pega", "pegar"], "actions": [{"type": "keys", "keys": "<ctrl>+v"}]},
+      {"phrases": ["deshaz", "deshacer"], "actions": [{"type": "keys", "keys": "<ctrl>+z"}]},
+      {"phrases": ["nueva pestana"], "actions": [{"type": "keys", "keys": "<ctrl>+t"}]},
+      {"phrases": ["cierra la pestana", "cerrar pestana"], "actions": [{"type": "keys", "keys": "<ctrl>+w"}]},
+      {"phrases": ["siguiente cancion"], "actions": [{"type": "media", "key": "next"}]},
+      {"phrases": ["cancion anterior"], "actions": [{"type": "media", "key": "previous"}]},
+      {"phrases": ["pausa", "reproduce", "play"], "actions": [{"type": "media", "key": "play_pause"}]},
+      {"phrases": ["sube el volumen", "sube volumen"], "actions": [{"type": "media", "key": "volume_up"}]},
+      {"phrases": ["baja el volumen", "baja volumen"], "actions": [{"type": "media", "key": "volume_down"}]},
+      {"phrases": ["silencio", "mute"], "actions": [{"type": "media", "key": "mute"}]},
+      {"phrases": ["abre youtube"], "actions": [{"type": "open", "target": "https://www.youtube.com"}]},
+      {"phrases": ["terminal {name}", "ve a la terminal {name}"], "actions": [{"type": "switch_tab", "app": "terminal", "tab": "{name}"}]},
+      {"phrases": ["pestana {name}", "ve a la pestana {name}"], "actions": [{"type": "switch_tab", "app": "browser", "tab": "{name}"}]},
+      {"phrases": ["ve a {name}", "cambia a {name}"], "actions": [{"type": "focus_window", "title": "{name}"}]},
+      {"phrases": ["dicta en {name}", "escribe en {name}"], "actions": [{"type": "focus_window", "title": "{name}"}, {"type": "wait", "ms": 150}, {"type": "dictation", "state": "on"}]},
+      {"phrases": ["empieza a dictar", "dicta aqui"], "actions": [{"type": "dictation", "state": "on"}]}
+    ]
   }
 }
-

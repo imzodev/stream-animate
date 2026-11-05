@@ -248,10 +248,14 @@ def main() -> None:
                 )
         else:
             _LOGGER.info("No LLM config in shortcuts.json (fact-checker disabled)")
+        voice_config = registry.get_voice_commands_config()
+        if voice_config is None or not voice_config.enabled:
+            _LOGGER.info("Voice commands disabled (no enabled 'voice_commands' block)")
         application.run_application(
             registry.iter_shortcuts(),
             stt_config=stt_config,
             llm_config=llm_config,
+            voice_commands_config=voice_config,
         )
 
 

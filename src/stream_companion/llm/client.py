@@ -26,7 +26,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import uuid
 from dataclasses import dataclass
+from urllib.parse import urlparse
 from typing import Iterator, Optional
 
 import httpx
@@ -41,6 +44,8 @@ _LOGGER = logging.getLogger(__name__)
 # Maximum bytes of an HTTP response body we'll log on error. Anything
 # larger is truncated to keep logs readable.
 _MAX_ERROR_BODY = 512
+
+_APP_VERSION = "1.0"
 
 
 @dataclass
@@ -214,6 +219,7 @@ class FactCheckerClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
+            **self._provider_headers(),
         }
 
         try:
@@ -297,6 +303,75 @@ class FactCheckerClient:
                 yield StreamChunk(content=tail.answer, reasoning=tail.reasoning)
         finally:
             response.close()
+
+    def complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> str:
+        """One non-streaming chat completion; returns the answer text.
+
+        Used by the voice-command AI agent, which needs a whole JSON plan
+        rather than a token stream. Inline ``<thinking>`` blocks are removed.
+        """
+
+        api_key = self._config.api_key()
+        if not api_key:
+            raise LLMError(
+                "auth",
+                body=f"Environment variable {self._config.api_key_env!r} is not set.",
+            )
+        payload = {
+            "model": self._config.model,
+            "stream": False,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            **self._provider_headers(),
+        }
+        try:
+            response = self._client.post(
+                self._chat_completions_url(), json=payload, headers=headers
+            )
+        except httpx.HTTPError as exc:
+            raise LLMError("network", body=str(exc)) from exc
+        if response.status_code >= 400:
+            raise LLMError(
+                f"http {response.status_code}",
+                status=response.status_code,
+                body=_redact_body(response.text),
+            )
+        try:
+            content = response.json()["choices"][0]["message"]["content"] or ""
+        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            raise LLMError("bad response", body=_redact_body(response.text)) from exc
+        return re.sub(r"<thinking>.*?</thinking>", "", content, flags=re.S).strip()
+
+    def _provider_headers(self) -> dict:
+        """Extra headers some providers require.
+
+        Every request this app sends is a single question with no
+        follow-up, so each one is its own conversation. OpenCode Go
+        rejects requests without a per-conversation ``x-opencode-session``
+        ID ("MissingSessionID") and asks clients to identify themselves
+        with their own user agent.
+        """
+
+        headers = {"User-Agent": f"stream-companion/{_APP_VERSION}"}
+        host = urlparse(self._config.base_url).hostname or ""
+        if host == "opencode.ai" or host.endswith(".opencode.ai"):
+            headers["x-opencode-session"] = uuid.uuid4().hex
+        return headers
 
     def _chat_completions_url(self) -> str:
         """Return the full chat-completions URL.

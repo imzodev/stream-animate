@@ -51,8 +51,12 @@ class STTEngine:
         on_phrase: Optional[Callable[[STTEvent], None]] = None,
         on_status: Optional[Callable[[str], None]] = None,
         hotkey: Optional[str] = None,
+        command_handler: Optional[Callable[[str, bool], bool]] = None,
     ) -> None:
         self._config = config
+        # Voice commands: called with (text, typing_active) before a phrase
+        # is typed; returning True means "this was a command, don't type it".
+        self._command_handler = command_handler
         self._stt_hotkey = hotkey
         self._audio = audio_capture or AudioCapture(
             sample_rate=config.sample_rate,
@@ -109,6 +113,17 @@ class STTEngine:
     @property
     def config(self) -> STTConfig:
         return self._config
+
+    @property
+    def typer(self) -> TextTyper:
+        """The typer used for dictation (voice commands reuse it)."""
+
+        return self._typer
+
+    def set_command_handler(
+        self, handler: Optional[Callable[[str, bool], bool]]
+    ) -> None:
+        self._command_handler = handler
 
     @property
     def input_level(self) -> float:
@@ -339,7 +354,8 @@ class STTEngine:
                         if self._process_chunk(utterance) == "transcribed":
                             utterances_transcribed += 1
                 was_active = active
-                if not active and not triggers_enabled:
+                listening_for_commands = self._command_handler is not None
+                if not active and not triggers_enabled and not listening_for_commands:
                     # Nothing to do: drop audio (and any half-heard
                     # utterance) so we don't build up a backlog while paused.
                     self._audio.get_chunk(timeout=0.25)
@@ -407,7 +423,7 @@ class STTEngine:
                 typing is paused.
 
         Returns one of: ``"silent"``, ``"above_silence"``, ``"transcribed"``,
-        ``"trigger_only"``, ``"error"``. The first two are tracked by the
+        ``"trigger_only"``, ``"command"``, ``"error"``. The first two are tracked by the
         engine loop; the last three are surfaced to the user via the
         typed log message.
         """
@@ -459,6 +475,15 @@ class STTEngine:
             rms,
             self._config.model,
         )
+        if self._command_handler is not None:
+            try:
+                consumed = self._command_handler(text, type_into_window)
+            except Exception:  # noqa: BLE001 - a command bug must not stop STT
+                _LOGGER.exception("Voice command handler raised for %r", text)
+                consumed = False
+            if consumed:
+                # A command: neither typed nor scanned for voice triggers.
+                return "command"
         typed = ""
         if type_into_window:
             try:

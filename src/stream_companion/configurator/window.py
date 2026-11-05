@@ -28,7 +28,14 @@ from PySide6.QtWidgets import (
 )
 
 from .. import model_downloader
-from ..config_loader import ConfigError, load_full_config, save_config
+from ..config_loader import (
+    ConfigError,
+    default_config_path,
+    load_full_config,
+    load_voice_commands_config,
+    save_config,
+)
+from .voice_section import VoiceCommandsSection
 from ..llm.config import LLMConfig
 from ..models import ActivatorConfig, Shortcut
 from ..overlay import OverlayWindow
@@ -92,6 +99,7 @@ class ConfiguratorWindow(QMainWindow):
         self._stt_section = STTSection()
         # Tab 3: AI Assistant (LLM)
         self._llm_section = LLMSection()
+        self._voice_section = VoiceCommandsSection()
         # Tab 4: Shortcut Details
         shortcut_panel = QWidget()
         shortcut_layout = QVBoxLayout()
@@ -111,6 +119,7 @@ class ConfiguratorWindow(QMainWindow):
         tabs.addTab(global_panel, "Global Settings")
         tabs.addTab(self._stt_section, "Speech-to-Text")
         tabs.addTab(self._llm_section, "AI Assistant")
+        tabs.addTab(self._voice_section, "Voice Commands")
         tabs.addTab(shortcut_panel, "Shortcuts")
 
         # Footer with a single "Save All Settings" button. Visible from
@@ -189,9 +198,24 @@ class ConfiguratorWindow(QMainWindow):
                 self._mode_press.setChecked(True)
             self._stt_section.populate(self._stt_config)
             self._llm_section.populate(self._llm_config)
+            self._load_voice_commands()
         except ConfigError as exc:
             QMessageBox.critical(self, "Configuration Error", str(exc))
             _LOGGER.error("Failed to load shortcuts: %s", exc)
+
+    def _load_voice_commands(self) -> None:
+        """Load the voice-commands block; a bad block disables saving it."""
+
+        self._voice_load_error: Optional[str] = None
+        try:
+            voice = load_voice_commands_config()
+        except ConfigError as exc:
+            # Don't overwrite a block we couldn't parse (the user may be
+            # mid-edit in the JSON file); show why instead.
+            self._voice_load_error = str(exc)
+            voice = None
+            QMessageBox.warning(self, "Voice Commands", str(exc))
+        self._voice_section.populate(voice, default_config_path())
 
     def _refresh_list(self) -> None:
         """Refresh the shortcut list widget."""
@@ -326,6 +350,7 @@ class ConfiguratorWindow(QMainWindow):
         validation_errors.extend(self._stt_section.validate(stt_config))
         llm_config = self._llm_section.read()
         validation_errors.extend(self._llm_section.validate(llm_config))
+        validation_errors.extend(self._voice_section.validate())
         if validation_errors:
             QMessageBox.warning(
                 self,
@@ -346,7 +371,19 @@ class ConfiguratorWindow(QMainWindow):
                 )
             self._stt_config = stt_config
             self._llm_config = llm_config
-            save_config(activator, self._shortcuts, stt=stt_config, llm=llm_config)
+            # None keeps the block on disk untouched (e.g. it failed to load).
+            voice = (
+                None
+                if getattr(self, "_voice_load_error", None)
+                else self._voice_section.read()
+            )
+            save_config(
+                activator,
+                self._shortcuts,
+                stt=stt_config,
+                llm=llm_config,
+                voice_commands=voice,
+            )
             _LOGGER.info(
                 "Saved %d shortcuts (stt=%s, llm=%s)",
                 len(self._shortcuts),

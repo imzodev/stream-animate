@@ -11,6 +11,7 @@ from stream_companion.config_loader import (
     load_shortcuts,
     save_config,
 )
+from stream_companion.models import Shortcut
 
 
 def _write_schema(path: Path) -> None:
@@ -686,3 +687,32 @@ def test_save_config_writes_version_1_5_0(tmp_path: Path) -> None:
     save_config(None, [], config_path=config_path, schema_path=schema_path)
     data = json.loads(config_path.read_text(encoding="utf-8"))
     assert data["version"] == "1.5.0"
+
+
+def test_save_config_preserves_voice_commands_block(tmp_path: Path) -> None:
+    from stream_companion.config_loader import load_voice_commands_config
+
+    repo_schema = Path(__file__).resolve().parents[1] / "config" / "schema.json"
+    config_path = tmp_path / "shortcuts.json"
+    voice = {
+        "enabled": True,
+        "wake_words": ["computadora"],
+        "commands": [
+            {"phrases": ["guarda"], "actions": [{"type": "keys", "keys": "<ctrl>+s"}]}
+        ],
+    }
+    config_path.write_text(
+        json.dumps({"shortcuts": [{"hotkey": "a"}], "voice_commands": voice}),
+        encoding="utf-8",
+    )
+    # A save from the settings window that doesn't pass voice_commands...
+    save_config(
+        None, [Shortcut(hotkey="b")], config_path=config_path, schema_path=repo_schema
+    )
+    saved = json.loads(config_path.read_text(encoding="utf-8"))
+    # ...must keep the user's command list.
+    assert saved["voice_commands"] == voice
+    loaded = load_voice_commands_config(
+        config_path, schema_path=repo_schema, sample_path=config_path
+    )
+    assert loaded.commands[0].phrases == ("guarda",)

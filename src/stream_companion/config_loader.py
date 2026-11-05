@@ -36,6 +36,12 @@ def _default_paths() -> tuple[Path, Path, Path]:
     return config_path, schema_path, sample_path
 
 
+def default_config_path() -> Path:
+    """Path of the user's ``shortcuts.json``."""
+
+    return _default_paths()[0]
+
+
 def load_shortcuts(
     config_path: Optional[Path] = None,
     *,
@@ -267,6 +273,38 @@ def load_full_config(
     return activator, shortcuts, stt, llm
 
 
+def load_voice_commands_config(
+    config_path: Optional[Path] = None,
+    *,
+    schema_path: Optional[Path] = None,
+    sample_path: Optional[Path] = None,
+):
+    """Load the optional ``voice_commands`` block (``None`` when absent).
+
+    Kept separate from :func:`load_full_config` so its 4-tuple return
+    shape (used across the app and tests) stays unchanged.
+    """
+
+    from .voice_commands import ActionError, VoiceCommandsConfig
+
+    cfg_path, sch_path, samp_path = _resolve_paths(
+        config_path, schema_path, sample_path
+    )
+    _ensure_config_exists(cfg_path, samp_path)
+    try:
+        data = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ConfigError(f"Config file {cfg_path} is not valid JSON: {exc}") from exc
+    _validate_config(data, sch_path)
+    raw = data.get("voice_commands")
+    if raw is None:
+        return None
+    try:
+        return VoiceCommandsConfig.from_dict(raw)
+    except ActionError as exc:
+        raise ConfigError(f"Invalid voice_commands configuration: {exc}") from exc
+
+
 def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
     """Build an STTConfig from the raw 'stt' section, or None if missing."""
 
@@ -460,6 +498,7 @@ def save_config(
     schema_path: Optional[Path] = None,
     stt: Optional[STTConfig] = None,
     llm: Optional[LLMConfig] = None,
+    voice_commands: Optional[dict] = None,
 ) -> None:
     """Save full configuration including optional activator and shortcuts.
 
@@ -475,6 +514,7 @@ def save_config(
 
     existing_stt: Optional[STTConfig] = None
     existing_llm: Optional[LLMConfig] = None
+    existing_voice: Optional[dict] = None
     if cfg_path.exists():
         try:
             raw = json.loads(cfg_path.read_text(encoding="utf-8"))
@@ -483,6 +523,7 @@ def save_config(
         if isinstance(raw, dict):
             existing_stt = _hydrate_stt_config(raw.get("stt"))
             existing_llm = _hydrate_llm_config(raw.get("llm"))
+            existing_voice = raw.get("voice_commands")
 
     data = _serialize(
         activator,
@@ -490,6 +531,11 @@ def save_config(
         stt if stt is not None else existing_stt,
         llm if llm is not None else existing_llm,
     )
+    # Voice commands are edited in the JSON file (and partly in the
+    # settings window); a save must never drop the user's command list.
+    voice = voice_commands if voice_commands is not None else existing_voice
+    if voice is not None:
+        data["voice_commands"] = voice
     _validate_config(data, sch_path)
 
     cfg_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

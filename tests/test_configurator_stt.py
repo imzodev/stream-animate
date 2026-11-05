@@ -90,3 +90,32 @@ def test_indicator_settings_round_trip(qapp):
     section._show_indicator.setChecked(True)
     assert section._indicator_position_combo.isEnabled()
     assert section.read().show_indicator is True
+
+
+def test_voice_section_edits_switches_and_keeps_commands(qapp):
+    from stream_companion.configurator.voice_section import VoiceCommandsSection
+    from stream_companion.voice_commands import VoiceCommandsConfig
+
+    cfg = VoiceCommandsConfig.from_dict(
+        {
+            "enabled": True,
+            "wake_words": ["computadora"],
+            "commands": [
+                {
+                    "phrases": ["guarda"],
+                    "actions": [{"type": "keys", "keys": "<ctrl>+s"}],
+                }
+            ],
+        }
+    )
+    section = VoiceCommandsSection()
+    section.populate(cfg)
+    assert "press <ctrl>+s" in section._commands_view.toPlainText()
+    section._wake_words.setText("compu, oye pc")
+    section._ai_fallback.setChecked(True)
+    out = section.read()
+    assert out["wake_words"] == ["compu", "oye pc"]
+    assert out["ai_fallback"] is True
+    assert out["commands"][0]["phrases"] == ["guarda"]  # untouched
+    section._wake_words.setText("  ")
+    assert section.validate()  # enabled with no wake word is an error
