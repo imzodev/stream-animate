@@ -1,8 +1,8 @@
-"""Voice-trigger matching for the Streaming Companion Tool.
+"""Voice-trigger matching for Saidcue.
 
 The STT engine transcribes short audio chunks and emits the resulting
 text. The application can attach one or more trigger words or
-phrases to a :class:`~stream_companion.models.Shortcut`; when the
+phrases to a :class:`~saidcue.models.Shortcut`; when the
 transcribed phrase contains the trigger (case-insensitive,
 word-boundary match), the shortcut fires.
 
@@ -386,7 +386,7 @@ def _fire_shortcut(shortcut, word: str) -> None:
     """Default callback used by :func:`build_matcher_from_shortcuts`.
 
     The actual application wiring (sound + overlay) is performed by
-    the existing :class:`stream_companion.application.Application`
+    the existing :class:`saidcue.application.Application`
     pipeline. This module just emits a structured log message so
     external observers (e.g. tests, the tray) can correlate triggers
     with their effects.

@@ -7,8 +7,8 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.application import Application
-from stream_companion.models import OverlayConfig, Shortcut
+from saidcue.application import Application
+from saidcue.models import OverlayConfig, Shortcut
 
 
 @pytest.fixture(scope="module")
@@ -240,7 +240,7 @@ def test_application_fact_checker_toggle_is_noop_without_engine(
 
 def test_application_fact_check_event_drives_panel(shortcut: Shortcut, qt_app) -> None:
     """A streaming event appends its delta to the answer panel."""
-    from stream_companion.fact_checker import FactCheckerEvent
+    from saidcue.fact_checker import FactCheckerEvent
 
     class FakePanel:
         def __init__(self) -> None:
@@ -316,7 +316,7 @@ def test_application_fact_check_event_reasoning_kind(
 ) -> None:
     """Reasoning tokens are appended with kind='reasoning' so the
     panel can render them differently from the final answer."""
-    from stream_companion.fact_checker import FactCheckerEvent
+    from saidcue.fact_checker import FactCheckerEvent
 
     class FakePanel:
         def __init__(self) -> None:
@@ -363,7 +363,7 @@ def test_application_fact_check_event_reasoning_kind(
 def test_application_registers_fact_checker_toggle_hotkey(
     shortcut: Shortcut, qt_app
 ) -> None:
-    from stream_companion.llm.config import LLMConfig
+    from saidcue.llm.config import LLMConfig
 
     fake = FakeFactCheckerEngine()
     hotkeys = FakeHotkeyManager()
@@ -383,7 +383,7 @@ def test_application_registers_fact_checker_toggle_hotkey(
 def test_application_set_llm_config_rebuilds_engine(
     shortcut: Shortcut, qt_app, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from stream_companion.llm.config import LLMConfig
+    from saidcue.llm.config import LLMConfig
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     app = Application(
@@ -425,8 +425,8 @@ def test_application_wires_stt_engine_into_fact_checker(
     must be True when both engines are configured, and the STT
     engine instance passed to the fact-checker must be the same
     one Application is running."""
-    from stream_companion.models import STTConfig
-    from stream_companion.llm.config import LLMConfig
+    from saidcue.models import STTConfig
+    from saidcue.llm.config import LLMConfig
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     stt_config = STTConfig(enabled=True, model="turbo")
@@ -454,9 +454,9 @@ def test_application_propagates_stt_language_to_fact_checker(
     fact-checker must use the same hint — so the question is
     transcribed in the user's language without Whisper having to
     re-detect it on every chunk."""
-    from stream_companion.models import STTConfig
-    from stream_companion.llm.config import LLMConfig
-    from stream_companion.stt.transcriber import WhisperTranscriber
+    from saidcue.models import STTConfig
+    from saidcue.llm.config import LLMConfig
+    from saidcue.stt.transcriber import WhisperTranscriber
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
@@ -478,8 +478,8 @@ def test_application_fact_checker_falls_back_to_auto_language(
 ) -> None:
     """When no STT config is present, the fact-checker defaults to
     Whisper 'auto' language detection."""
-    from stream_companion.llm.config import LLMConfig
-    from stream_companion.stt.transcriber import WhisperTranscriber
+    from saidcue.llm.config import LLMConfig
+    from saidcue.stt.transcriber import WhisperTranscriber
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     monkeypatch.setattr(WhisperTranscriber, "load", lambda self: None)
@@ -527,7 +527,7 @@ class _FakeIndicator:
 
 
 def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
-    from stream_companion.models import STTConfig
+    from saidcue.models import STTConfig
 
     engine = _FakeSTTEngine()
     indicator = _FakeIndicator()
@@ -565,8 +565,8 @@ def test_open_configurator_survives_garbage_collection(qt_app, monkeypatch) -> N
 
     from PySide6.QtWidgets import QWidget
 
-    import stream_companion.application as application_module
-    import stream_companion.configurator as configurator_module
+    import saidcue.application as application_module
+    import saidcue.configurator as configurator_module
 
     class FakeConfiguratorWindow(QWidget):
         pass

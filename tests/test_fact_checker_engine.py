@@ -13,13 +13,13 @@ from typing import Callable, List
 
 import pytest
 
-from stream_companion.fact_checker.engine import (
+from saidcue.fact_checker.engine import (
     FactCheckerEngine,
     FactCheckerEvent,
 )
-from stream_companion.llm.client import LLMError
-from stream_companion.llm.config import LLMConfig
-from stream_companion.stt.engine import STTEvent
+from saidcue.llm.client import LLMError
+from saidcue.llm.config import LLMConfig
+from saidcue.stt.engine import STTEvent
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -27,7 +27,7 @@ from stream_companion.stt.engine import STTEvent
 
 
 class FakeSTTEngine:
-    """Stand-in for :class:`stream_companion.stt.STTEngine`.
+    """Stand-in for :class:`saidcue.stt.STTEngine`.
 
     Exposes the phrase-observer API the fact-checker uses, and lets
     the test push phrases synchronously via ``emit_phrase``.
@@ -109,7 +109,7 @@ def _short_silence(monkeypatch) -> None:
     that hit the module-level default path.
     """
     monkeypatch.setattr(
-        "stream_companion.fact_checker.engine._SILENT_PHRASE_TIMEOUT", 0.05
+        "saidcue.fact_checker.engine._SILENT_PHRASE_TIMEOUT", 0.05
     )
 
 
@@ -139,7 +139,7 @@ class FakeClient:
         self._token_delay = token_delay
 
     def stream(self, user_text: str):  # noqa: ARG002
-        from stream_companion.llm.providers import StreamChunk
+        from saidcue.llm.providers import StreamChunk
 
         self.streamed.append(user_text)
         if self.raise_after is not None:

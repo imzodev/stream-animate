@@ -1,4 +1,4 @@
-"""Overlay window utilities for the Streaming Companion Tool.
+"""Overlay window utilities for Saidcue.
 
 This module provides the `OverlayWindow` class for displaying PNG and GIF
 assets on-screen using PySide6. The window is borderless, transparent, and

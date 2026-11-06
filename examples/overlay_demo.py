@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.overlay import OverlayWindow
+from saidcue.overlay import OverlayWindow
 
 
 def parse_args() -> argparse.Namespace:

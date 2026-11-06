@@ -10,7 +10,7 @@ MIN_OVERLAY_SIZE = 1
 MAX_DURATION_MS = 60000
 
 # On-screen "Listening" indicator positions (code, label). Codes match
-# stream_companion.listening_indicator.POSITIONS.
+# saidcue.listening_indicator.POSITIONS.
 INDICATOR_POSITIONS = [
     ("top-center", "Top center"),
     ("top-left", "Top left"),

@@ -1,4 +1,4 @@
-"""Command-line entry point for the Streaming Companion Tool MVP."""
+"""Command-line entry point for Saidcue."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def _load_dotenv(path: Path) -> None:
 # .env.example file in the repo shows the format.
 _load_dotenv(ROOT_DIR / ".env")
 
-from stream_companion import application, model_downloader, registry  # noqa: E402
+from saidcue import application, model_downloader, registry  # noqa: E402
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -211,7 +211,7 @@ def main() -> None:
         sys.exit(preload_stt_model(model_name))
 
     if args.config:
-        from stream_companion import configurator
+        from saidcue import configurator
 
         configurator.run_configurator()
     else:

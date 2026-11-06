@@ -41,7 +41,7 @@ class ProviderAdapter:
 
     Subclasses define :meth:`matches` (cheap predicate) and
     :meth:`parse_chunk` (raw JSON -> :class:`StreamChunk`). The
-    factory tries adapters in :data:`stream_companion.llm.providers.factory.ADAPTERS`
+    factory tries adapters in :data:`saidcue.llm.providers.factory.ADAPTERS`
     order; the first whose ``matches`` returns True wins.
     """
 

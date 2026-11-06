@@ -9,7 +9,7 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.overlay import OverlayWindow
+from saidcue.overlay import OverlayWindow
 
 
 @pytest.fixture(scope="session", autouse=True)

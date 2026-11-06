@@ -1,4 +1,4 @@
-"""Application wiring for the Streaming Companion Tool MVP."""
+"""Application wiring for Saidcue."""
 
 from __future__ import annotations
 

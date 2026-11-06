@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from stream_companion.llm.personas import (
+from saidcue.llm.personas import (
     PERSONA_PRESETS,
     resolve_system_prompt,
 )
-from stream_companion.models import LLMConfig, Shortcut
+from saidcue.models import LLMConfig, Shortcut
 
 
 def test_persona_presets_has_expected_keys() -> None:

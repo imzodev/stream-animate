@@ -8,8 +8,8 @@ from typing import Callable, List
 import httpx
 import pytest
 
-from stream_companion.llm import FactCheckerClient, LLMError
-from stream_companion.models import LLMConfig
+from saidcue.llm import FactCheckerClient, LLMError
+from saidcue.models import LLMConfig
 
 # ---------------------------------------------------------------------------
 # Test helpers
@@ -320,8 +320,8 @@ def test_stream_fact_checker_uses_correct_adapter(
     """Selecting a model name from a registered provider picks the
     matching adapter. We can detect which adapter was used by
     observing the chunk shape it accepts."""
-    from stream_companion.llm.providers import AdapterFactory
-    from stream_companion.llm.providers.adapters.deepseek import DeepSeekAdapter
+    from saidcue.llm.providers import AdapterFactory
+    from saidcue.llm.providers.adapters.deepseek import DeepSeekAdapter
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     adapter = AdapterFactory.create(LLMConfig(model="deepseek-v4-flash"))
@@ -329,7 +329,7 @@ def test_stream_fact_checker_uses_correct_adapter(
 
     adapter = AdapterFactory.create(LLMConfig(model="gpt-4o"))
     # OpenAI generic matches anything that isn't Anthropic.
-    from stream_companion.llm.providers.adapters.openai_generic import (
+    from saidcue.llm.providers.adapters.openai_generic import (
         OpenAIGenericAdapter,
     )
 
@@ -341,7 +341,7 @@ def test_stream_fact_checker_uses_correct_adapter(
             model="claude-3-5-sonnet",
         )
     )
-    from stream_companion.llm.providers.adapters.anthropic import AnthropicAdapter
+    from saidcue.llm.providers.adapters.anthropic import AnthropicAdapter
 
     assert isinstance(adapter, AnthropicAdapter)
 
@@ -492,7 +492,7 @@ def test_stream_early_break_closes_response(
 
 def test_redact_body_strips_api_keys() -> None:
     # This indirectly exercises _redact_body through the HTTP error path.
-    from stream_companion.llm.client import _redact_body
+    from saidcue.llm.client import _redact_body
 
     redacted = _redact_body("Authorization: Bearer sk-1234567890abcdef more text")
     assert "sk-1234567890abcdef" not in redacted
@@ -500,7 +500,7 @@ def test_redact_body_strips_api_keys() -> None:
 
 
 def test_error_body_truncated() -> None:
-    from stream_companion.llm.client import _MAX_ERROR_BODY, _redact_body
+    from saidcue.llm.client import _MAX_ERROR_BODY, _redact_body
 
     huge = "x" * (_MAX_ERROR_BODY * 4)
     redacted = _redact_body(huge)

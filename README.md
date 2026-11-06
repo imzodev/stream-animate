@@ -1,6 +1,6 @@
-# Streaming Companion Tool
+# Saidcue
 
-Turn your keyboard into a live-production command center. The Streaming Companion Tool listens for your custom hotkeys, unleashing audio stingers and on-screen overlays that delight your audience without breaking your flow.
+Turn your keyboard into a live-production command center. Saidcue listens for your custom hotkeys, unleashing audio stingers and on-screen overlays that delight your audience without breaking your flow.
 
 ## Highlights
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
@@ -133,7 +133,7 @@ Hovering the icon shows a detailed tooltip ("STT: listening", "STT: listening + 
 The base icon is `assets/icon.png` (or a synthesized "SC" badge if no asset is present).
 
 ## Speech-to-Text Typing
-Stream Companion can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (with an automatic fallback to [OpenAI Whisper](https://github.com/openai/whisper)), it runs entirely on your machine — no cloud calls, no API keys. See [GPU acceleration](#gpu-acceleration-nvidia-optional-but-recommended) to run it on an NVIDIA GPU.
+Saidcue can transcribe your voice in real time and type the result into whichever text field currently has focus. Powered by [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (with an automatic fallback to [OpenAI Whisper](https://github.com/openai/whisper)), it runs entirely on your machine — no cloud calls, no API keys. See [GPU acceleration](#gpu-acceleration-nvidia-optional-but-recommended) to run it on an NVIDIA GPU.
 
 ### Quick Start
 1. Open the configurator (`python main.py --config`) and switch to the **Speech-to-Text** tab.
@@ -147,8 +147,8 @@ Stream Companion can transcribe your voice in real time and type the result into
 7. Pick an **Input device** (or leave it on *System default*).
 8. Click **Save STT Settings**. The save returns immediately, but if the model is not yet cached the tool will start downloading it in the background. **Watch the terminal for the progress log** — you'll see lines like:
    ```
-   [INFO] stream_companion.model_downloader: Whisper model 'large-v3' not cached; downloading from Hugging Face (watch this log for progress) …
-   [INFO] stream_companion.model_downloader: Whisper model 'large-v3' download complete: /home/irving/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
+   [INFO] saidcue.model_downloader: Whisper model 'large-v3' not cached; downloading from Hugging Face (watch this log for progress) …
+   [INFO] saidcue.model_downloader: Whisper model 'large-v3' download complete: /home/irving/.cache/huggingface/hub/models--Systran--faster-whisper-large-v3
    ```
    The model is a CTranslate2 snapshot cached under your Hugging Face cache
    (`~/.cache/huggingface/hub`, or `$HF_HOME`). You can close the configurator
@@ -199,7 +199,7 @@ So with `always_on: false` + a hotkey + `voice_triggers_enabled: true` + `type_i
 The first time Whisper transcribes audio for a given model, it has to download a multi-gigabyte checkpoint. To avoid that surprise mid-stream, the configurator checks the cache when you click **Save STT Settings**:
 
 - If the model is already cached, nothing happens — the save just persists.
-- If the model is not cached, a background thread starts the download and logs live progress to the terminal at roughly every 10% (`stream_companion.model_downloader: Whisper model 'X' download: …%`).
+- If the model is not cached, a background thread starts the download and logs live progress to the terminal at roughly every 10% (`saidcue.model_downloader: Whisper model 'X' download: …%`).
 
 The download continues even if you close the configurator; you can check on it with `python main.py --stt-status` (which now also reports cache state) or trigger it explicitly with `python main.py --preload-stt [--model NAME]`.
 
@@ -410,7 +410,7 @@ The "Toggle Fact-Checker" entry in the right-click tray menu has the same effect
 - **Qt platform plugin:** If you see `Could not load the Qt platform plugin "xcb"`, install the missing dependencies (Ubuntu: `sudo apt-get install libxcb-cursor0`).
 - **Global hotkeys on macOS:** Approve the accessibility prompt so the listener can capture shortcuts while other apps are focused.
 - **Activator disarms immediately**: Ensure you’re on the latest code (we ignore the activator’s last press as a suffix), your suffix is defined (string or array), and there’s no direct hotkey equal to the activator.
-- **STT shows as disabled in tray:** The tray menu reflects the engine state in real time. If the **Start/Stop STT** entry is greyed out, run with `--log-level INFO` and look for messages from `stream_companion.stt` and `stream_companion.application`. Common causes:
+- **STT shows as disabled in tray:** The tray menu reflects the engine state in real time. If the **Start/Stop STT** entry is greyed out, run with `--log-level INFO` and look for messages from `saidcue.stt` and `saidcue.application`. Common causes:
   - The hotkey couldn't be registered (bad format). The engine accepts both `<ctrl>+<alt>+9` and bare `ctrl+alt+9` and is logged as the canonical form.
   - The microphone device couldn't be opened (e.g. wrong device index, missing PortAudio, permission denied). Look for `Cannot start STT microphone:` in the log.
   - The Whisper model failed to load (network blocked on first use, or insufficient disk/memory).

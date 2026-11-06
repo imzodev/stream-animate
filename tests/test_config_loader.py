@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from stream_companion.config_loader import (
+from saidcue.config_loader import (
     ConfigError,
     load_full_config,
     load_shortcuts,
     save_config,
 )
-from stream_companion.models import Shortcut
+from saidcue.models import Shortcut
 
 
 def _write_schema(path: Path) -> None:
@@ -328,7 +328,7 @@ def test_trigger_word_round_trip(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -365,7 +365,7 @@ def test_trigger_word_omitted_is_none(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -406,7 +406,7 @@ def test_trigger_phrases_round_trip(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -444,7 +444,7 @@ def test_trigger_phrases_omitted_is_none(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -480,7 +480,7 @@ def test_trigger_phrases_accepts_single_string(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -572,7 +572,7 @@ def test_llm_config_round_trip(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    from stream_companion.llm.config import LLMConfig
+    from saidcue.llm.config import LLMConfig
 
     _, _, _, llm = load_full_config(
         config_path, schema_path=schema_path, sample_path=sample_path
@@ -690,7 +690,7 @@ def test_save_config_writes_version_1_5_0(tmp_path: Path) -> None:
 
 
 def test_save_config_preserves_voice_commands_block(tmp_path: Path) -> None:
-    from stream_companion.config_loader import load_voice_commands_config
+    from saidcue.config_loader import load_voice_commands_config
 
     repo_schema = Path(__file__).resolve().parents[1] / "config" / "schema.json"
     config_path = tmp_path / "shortcuts.json"

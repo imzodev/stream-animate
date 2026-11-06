@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from stream_companion.models import Shortcut
-from stream_companion.triggers import (
+from saidcue.models import Shortcut
+from saidcue.triggers import (
     TriggerMatcher,
     build_matcher_from_shortcuts,
     find_trigger_phrases,

@@ -6,7 +6,7 @@ from typing import Dict
 
 import pytest
 
-from stream_companion.sound import SoundPlayer
+from saidcue.sound import SoundPlayer
 
 
 class DummySound:

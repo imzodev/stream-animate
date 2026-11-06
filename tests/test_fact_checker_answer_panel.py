@@ -28,8 +28,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.fact_checker import _persona_accent as accent_mod
-from stream_companion.fact_checker.answer_panel import AnswerPanel
+from saidcue.fact_checker import _persona_accent as accent_mod
+from saidcue.fact_checker.answer_panel import AnswerPanel
 
 
 # ---------------------------------------------------------------------------

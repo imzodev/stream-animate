@@ -9,8 +9,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.configurator.llm_section import LLMSection
-from stream_companion.llm.config import LLMConfig
+from saidcue.configurator.llm_section import LLMSection
+from saidcue.llm.config import LLMConfig
 
 
 @pytest.fixture(scope="module")
@@ -216,7 +216,7 @@ def test_test_connection_success(qapp, section, monkeypatch):
     section.populate(LLMConfig(model="kimi-k2.7-code"))
 
     fake = _FakeStreamingClient(tokens=("hello",))
-    import stream_companion.configurator.llm_section as ls
+    import saidcue.configurator.llm_section as ls
 
     monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
     section._on_test_clicked()
@@ -227,7 +227,7 @@ def test_test_connection_success(qapp, section, monkeypatch):
 
 def test_test_connection_opencode_model_not_supported(qapp, section, monkeypatch):
     """A 401 with ``ModelError`` body must show the model-specific hint."""
-    from stream_companion.llm.client import LLMError
+    from saidcue.llm.client import LLMError
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     section.populate(LLMConfig(model="deepseek-v4-flash"))
@@ -238,7 +238,7 @@ def test_test_connection_opencode_model_not_supported(qapp, section, monkeypatch
             body='{"type":"error","error":{"type":"ModelError","message":"Model X is not supported"}}',
         )
     )
-    import stream_companion.configurator.llm_section as ls
+    import saidcue.configurator.llm_section as ls
 
     monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
     section._on_test_clicked()
@@ -249,14 +249,14 @@ def test_test_connection_opencode_model_not_supported(qapp, section, monkeypatch
 
 
 def test_test_connection_404(qapp, section, monkeypatch):
-    from stream_companion.llm.client import LLMError
+    from saidcue.llm.client import LLMError
 
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     section.populate(LLMConfig())
     fake = _FakeStreamingClient(
         raise_after=LLMError("http 404", status=404, body="<html>nope</html>")
     )
-    import stream_companion.configurator.llm_section as ls
+    import saidcue.configurator.llm_section as ls
 
     monkeypatch.setattr(ls, "FactCheckerClient", lambda cfg: fake)
     section._on_test_clicked()

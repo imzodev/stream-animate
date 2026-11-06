@@ -1,4 +1,4 @@
-"""Tray-icon state and painting for the Streaming Companion Tool.
+"""Tray-icon state and painting for Saidcue.
 
 The tray icon has three independent status indicators:
 
@@ -118,8 +118,8 @@ class TrayIndicatorState:
     @property
     def tooltip(self) -> str:
         if not self.enabled:
-            return "Streaming Companion Tool (STT disabled)"
-        parts = ["Streaming Companion Tool"]
+            return "Saidcue (STT disabled)"
+        parts = ["Saidcue"]
         flags = []
         if self.stt_active:
             flags.append("listening")

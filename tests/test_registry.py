@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from stream_companion import registry
+from saidcue import registry
 
 
 def _write_schema(path: Path) -> None:
@@ -83,7 +83,7 @@ def test_get_stt_config_works_when_iter_shortcuts_called_first(
     )
 
     # Force the loader to read from our tmp config by stubbing the defaults
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -110,7 +110,7 @@ def test_get_stt_config_returns_none_when_absent(
         json.dumps({"shortcuts": [{"hotkey": "a"}]}), encoding="utf-8"
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,
@@ -140,7 +140,7 @@ def test_reload_config_clears_all_caches(
         encoding="utf-8",
     )
 
-    from stream_companion import config_loader
+    from saidcue import config_loader
 
     monkeypatch.setattr(
         config_loader,

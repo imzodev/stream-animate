@@ -1,6 +1,6 @@
 """Minimal Windows clipboard access (Unicode text) via ctypes.
 
-Used by :class:`~stream_companion.stt.typer.TextTyper` to paste dictated
+Used by :class:`~saidcue.stt.typer.TextTyper` to paste dictated
 text in one Ctrl+V instead of synthesizing one keystroke per character —
 apps like the Windows 11 Notepad drop fast synthetic keystrokes, which
 garbled dictation ("Una cocina" -> "Una ina").

@@ -1,4 +1,4 @@
-"""Unit tests for the :mod:`stream_companion.llm.thinking` module.
+"""Unit tests for the :mod:`saidcue.llm.thinking` module.
 
 The extractor is stateful and must handle the awkward cases that
 come up in real streaming:
@@ -17,7 +17,7 @@ come up in real streaming:
 from __future__ import annotations
 
 
-from stream_companion.llm.thinking import (
+from saidcue.llm.thinking import (
     DEFAULT_TAG_PATTERNS,
     ThinkingExtractor,
     ThinkingSplit,

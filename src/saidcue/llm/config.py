@@ -1,7 +1,7 @@
 """Configuration for the LLM fact-checker / concept explainer.
 
 The :class:`LLMConfig` dataclass is kept in its own module so the model
-layer (``stream_companion.models``) does not need to know about the
+layer (``saidcue.models``) does not need to know about the
 LLM client, and the LLM client does not need to know about the model
 layer — both depend on this module.
 

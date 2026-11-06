@@ -8,8 +8,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from stream_companion.configurator.sections import STTSection  # noqa: E402
-from stream_companion.models import STTConfig  # noqa: E402
+from saidcue.configurator.sections import STTSection  # noqa: E402
+from saidcue.models import STTConfig  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -95,8 +95,8 @@ def test_indicator_settings_round_trip(qapp):
 def test_voice_section_wake_word_and_command_toggles(qapp):
     from PySide6.QtCore import Qt
 
-    from stream_companion.configurator.voice_section import VoiceCommandsSection
-    from stream_companion.voice_commands import (
+    from saidcue.configurator.voice_section import VoiceCommandsSection
+    from saidcue.voice_commands import (
         COMMANDS,
         WAKE_WORD_PRESETS,
         VoiceCommandsConfig,
@@ -135,8 +135,8 @@ def test_voice_section_wake_word_and_command_toggles(qapp):
 
 
 def test_voice_section_guide_button_opens_dialog(qapp, monkeypatch):
-    from stream_companion.configurator.voice_guide import VoiceGuideDialog
-    from stream_companion.configurator.voice_section import VoiceCommandsSection
+    from saidcue.configurator.voice_guide import VoiceGuideDialog
+    from saidcue.configurator.voice_section import VoiceCommandsSection
 
     opened = []
     monkeypatch.setattr(VoiceGuideDialog, "exec", lambda self: opened.append(self) or 0)
@@ -146,7 +146,7 @@ def test_voice_section_guide_button_opens_dialog(qapp, monkeypatch):
 
 
 def test_voice_guide_dialog_search_updates_browser(qapp):
-    from stream_companion.configurator.voice_guide import VoiceGuideDialog
+    from saidcue.configurator.voice_guide import VoiceGuideDialog
 
     dialog = VoiceGuideDialog()
     full_text = dialog._browser.toPlainText()

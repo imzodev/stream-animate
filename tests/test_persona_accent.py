@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from stream_companion.fact_checker._persona_accent import (
+from saidcue.fact_checker._persona_accent import (
     ACCENTS,
     CUSTOM,
     PersonaAccent,

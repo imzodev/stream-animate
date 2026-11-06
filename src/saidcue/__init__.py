@@ -1,4 +1,4 @@
-"""Streaming Companion Tool core package."""
+"""Saidcue core package."""
 
 __all__ = [
     "application",

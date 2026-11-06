@@ -65,7 +65,7 @@ class ConfiguratorWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Stream Companion - Settings")
+        self.setWindowTitle("Saidcue - Settings")
         self.setWindowIcon(window_icon())
         self.resize(1040, 680)
         self.setStyleSheet(STYLESHEET)
@@ -139,7 +139,7 @@ class ConfiguratorWindow(QMainWindow):
 
         titles = QVBoxLayout()
         titles.setSpacing(0)
-        title = QLabel("Stream Companion")
+        title = QLabel("Saidcue")
         title.setObjectName("headerTitle")
         subtitle = QLabel("Settings")
         subtitle.setObjectName("headerSubtitle")

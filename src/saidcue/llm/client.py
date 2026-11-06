@@ -6,7 +6,7 @@ DeepSeek, MiniMax, Anthropic, Together, Groq, Ollama, LM Studio, and
 vLLM (which all expose one of the supported shapes).
 
 Provider-specific chunk shapes are handled by the adapter pattern in
-:mod:`stream_companion.llm.providers` — this module is just transport
+:mod:`saidcue.llm.providers` — this module is just transport
 (SSE, auth, retries, error redaction) plus the public streaming API.
 
 The client is intentionally minimal:
@@ -367,7 +367,7 @@ class FactCheckerClient:
         with their own user agent.
         """
 
-        headers = {"User-Agent": f"stream-companion/{_APP_VERSION}"}
+        headers = {"User-Agent": f"saidcue/{_APP_VERSION}"}
         host = urlparse(self._config.base_url).hostname or ""
         if host == "opencode.ai" or host.endswith(".opencode.ai"):
             headers["x-opencode-session"] = uuid.uuid4().hex

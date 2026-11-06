@@ -7,43 +7,43 @@ from typing import List
 import numpy as np
 import pytest
 
-from stream_companion.voice_commands.actions import ActionRunner, tab_number
-from stream_companion.voice_commands.ai_agent import (
+from saidcue.voice_commands.actions import ActionRunner, tab_number
+from saidcue.voice_commands.ai_agent import (
     AIAgent,
     PlanRejected,
     check_plan,
     extract_json,
 )
-from stream_companion.voice_commands.audio import parse_percent
-from stream_companion.voice_commands.catalog import (
+from saidcue.voice_commands.audio import parse_percent
+from saidcue.voice_commands.catalog import (
     COMMANDS,
     DEFAULT_WAKE_WORD,
     WAKE_WORD_PRESETS,
     CatalogCommand,
 )
-from stream_companion.voice_commands.config import (
+from saidcue.voice_commands.config import (
     ActionError,
     VoiceCommandsConfig,
     validate_action,
 )
-from stream_companion.voice_commands.elements import (
+from saidcue.voice_commands.elements import (
     Candidate,
     ElementHit,
     best_element,
 )
-from stream_companion.voice_commands.dictation_edits import (
+from saidcue.voice_commands.dictation_edits import (
     build_lookup,
     match_edit,
 )
-from stream_companion.voice_commands.parser import (
+from saidcue.voice_commands.parser import (
     CommandMatcher,
     fill_slots,
     normalize,
     split_wake_word,
 )
-from stream_companion.voice_commands.service import VoiceCommandService
-from stream_companion.voice_commands.tabs import TabMatch, best_tab
-from stream_companion.voice_commands.windows import WindowInfo, find_window
+from saidcue.voice_commands.service import VoiceCommandService
+from saidcue.voice_commands.tabs import TabMatch, best_tab
+from saidcue.voice_commands.windows import WindowInfo, find_window
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -608,7 +608,7 @@ def _strip_tags(html: str) -> str:
 
 
 def test_guide_html_covers_every_command_and_filters():
-    from stream_companion.configurator.voice_guide import build_guide_html
+    from saidcue.configurator.voice_guide import build_guide_html
 
     full = _strip_tags(build_guide_html())
     for command in COMMANDS:
@@ -839,8 +839,8 @@ def test_service_ai_blocked_plan_runs_nothing():
 
 
 def test_engine_does_not_type_consumed_commands():
-    from stream_companion.models import STTConfig
-    from stream_companion.stt import STTEngine, TextTyper, WhisperTranscriber
+    from saidcue.models import STTConfig
+    from saidcue.stt import STTEngine, TextTyper, WhisperTranscriber
 
     class Model:
         def __init__(self):

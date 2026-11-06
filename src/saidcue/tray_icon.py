@@ -1,4 +1,4 @@
-"""System tray icon for the Streaming Companion Tool."""
+"""System tray icon for Saidcue."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class TrayIcon:
     """System tray icon with context menu for application control.
 
     The icon itself reflects two independent indicators (see
-    :class:`stream_companion.tray_indicators.TrayIndicatorState`):
+    :class:`saidcue.tray_indicators.TrayIndicatorState`):
 
     * a red dot in the top-right when STT is active (the engine is
       listening);
@@ -88,7 +88,7 @@ class TrayIcon:
 
         self._tray_icon = QSystemTrayIcon(app)
         self._install_initial_icon()
-        self._tray_icon.setToolTip("Streaming Companion Tool")
+        self._tray_icon.setToolTip("Saidcue")
 
         # Left-click on the icon = toggle STT (standard media-app behavior)
         if self._on_toggle_stt is not None:
@@ -194,7 +194,7 @@ class TrayIcon:
             # No STT configured at all — revert to the base icon and
             # hide the STT menu item.
             self._tray_icon.setIcon(self._base_icon or QIcon())
-            self._tray_icon.setToolTip("Streaming Companion Tool")
+            self._tray_icon.setToolTip("Saidcue")
 
         # Update the menu
         if self._stt_toggle_action is not None:

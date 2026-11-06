@@ -1,4 +1,4 @@
-"""Whisper model downloader for the Streaming Companion Tool.
+"""Whisper model downloader for Saidcue.
 
 Pre-downloads the configured Whisper model to the user's local cache so
 that the first dictation does not block on a multi-gigabyte download.

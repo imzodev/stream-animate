@@ -4,7 +4,7 @@ import pytest
 from PySide6.QtGui import QColor, QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.tray_indicators import (
+from saidcue.tray_indicators import (
     COLOR_FACT_LISTENING,
     COLOR_FACT_STREAMING,
     COLOR_FACT_THINKING,
@@ -232,7 +232,7 @@ def test_compose_tray_icon_uses_fallback_when_no_base(qt_app, monkeypatch):
     still produce a valid icon (synthesized from the SC fallback)."""
 
     # Make find_base_icon_pixmap return None
-    from stream_companion import tray_indicators
+    from saidcue import tray_indicators
 
     monkeypatch.setattr(tray_indicators, "find_base_icon_pixmap", lambda size=64: None)
     icon = compose_tray_icon(

@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QRect, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
-from stream_companion.listening_indicator import (  # noqa: E402
+from saidcue.listening_indicator import (  # noqa: E402
     POSITIONS,
     ListeningIndicator,
     compute_position,

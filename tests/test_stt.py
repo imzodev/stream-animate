@@ -5,8 +5,8 @@ from typing import List
 import numpy as np
 import pytest
 
-from stream_companion.models import STTConfig
-from stream_companion.stt import (
+from saidcue.models import STTConfig
+from saidcue.stt import (
     AudioCapture,
     AudioCaptureError,
     STTEngine,

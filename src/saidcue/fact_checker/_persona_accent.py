@@ -61,7 +61,7 @@ CUSTOM = PersonaAccent(
 
 
 # Ordered by the LLMConfig.persona enum. Keep the keys in sync with
-# ``stream_companion/llm/personas.py``.
+# ``saidcue/llm/personas.py``.
 ACCENTS: dict[str, PersonaAccent] = {
     "fact_checker": PersonaAccent(
         persona="fact_checker",

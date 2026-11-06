@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from stream_companion import model_downloader
+from saidcue import model_downloader
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ def test_download_model_skips_when_cached(
     hub = _FakeHub(cached=["tiny"]).install(monkeypatch)
     import logging
 
-    with caplog.at_level(logging.INFO, logger="stream_companion.model_downloader"):
+    with caplog.at_level(logging.INFO, logger="saidcue.model_downloader"):
         path = model_downloader.download_model("tiny")
     assert path == "/fake/hub/tiny"
     # A cached model must not trigger a (non-local-only) download call.

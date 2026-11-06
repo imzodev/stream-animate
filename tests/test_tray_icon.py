@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PySide6.QtWidgets import QApplication
 
-from stream_companion.tray_icon import TrayIcon
-from stream_companion.tray_indicators import TrayIndicatorState
+from saidcue.tray_icon import TrayIcon
+from saidcue.tray_indicators import TrayIndicatorState
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def test_tray_icon_initialization(qt_app):
     assert tray._on_open_configurator == on_config_mock
 
 
-@patch("stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable")
+@patch("saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable")
 def test_tray_icon_show_when_available(mock_available, qt_app):
     """Test showing tray icon when system tray is available."""
     mock_available.return_value = True
@@ -42,7 +42,7 @@ def test_tray_icon_show_when_available(mock_available, qt_app):
     assert tray._menu is not None
 
 
-@patch("stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable")
+@patch("saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable")
 def test_tray_icon_show_when_unavailable(mock_available, qt_app):
     """Test showing tray icon when system tray is not available."""
     mock_available.return_value = False
@@ -56,7 +56,7 @@ def test_tray_icon_show_when_unavailable(mock_available, qt_app):
 def test_tray_icon_hide(qt_app):
     """Test hiding the tray icon."""
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon()
@@ -72,7 +72,7 @@ def test_tray_icon_quit_callback(qt_app):
     on_quit_mock = MagicMock()
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_quit=on_quit_mock)
@@ -87,7 +87,7 @@ def test_tray_icon_configurator_callback(qt_app):
     on_config_mock = MagicMock()
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_open_configurator=on_config_mock)
@@ -121,7 +121,7 @@ def test_state_key_handles_none_and_state():
 def test_state_key_distinguishes_fact_check_phase():
     """The state key changes when the fact-checker phase changes."""
 
-    from stream_companion.tray_indicators import FactCheckerIndicatorState
+    from saidcue.tray_indicators import FactCheckerIndicatorState
 
     tray = TrayIcon()
     s_idle = TrayIndicatorState(
@@ -150,7 +150,7 @@ def test_refresh_skips_when_state_unchanged(qt_app):
         return QIcon(QPixmap(size, size))
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(stt_state_provider=state_provider)
@@ -175,7 +175,7 @@ def test_refresh_updates_icon_on_state_change(qt_app):
         return QIcon(QPixmap(size, size))
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(stt_state_provider=lambda: state_holder["state"])
@@ -202,7 +202,7 @@ def test_menu_hidden_when_state_is_none(qt_app):
     """When STT is not configured, the toggle item is hidden."""
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_toggle_stt=MagicMock(), stt_state_provider=lambda: None)
@@ -214,7 +214,7 @@ def test_menu_hidden_when_state_is_none(qt_app):
 
 def test_menu_label_reflects_typing_state(qt_app):
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_toggle_stt=MagicMock())
@@ -238,7 +238,7 @@ def test_menu_label_reflects_typing_state(qt_app):
 
 def test_menu_disabled_when_stt_disabled_in_config(qt_app):
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_toggle_stt=MagicMock())
@@ -255,7 +255,7 @@ def test_left_click_toggles_stt(qt_app):
 
     on_toggle = MagicMock()
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon(on_toggle_stt=on_toggle)
@@ -272,7 +272,7 @@ def test_left_click_ignored_when_no_toggle_callback(qt_app):
     """When no on_toggle_stt is provided, the click is a no-op."""
 
     with patch(
-        "stream_companion.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
+        "saidcue.tray_icon.QSystemTrayIcon.isSystemTrayAvailable",
         return_value=True,
     ):
         tray = TrayIcon()  # no on_toggle_stt

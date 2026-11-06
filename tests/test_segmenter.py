@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from stream_companion.stt.segmenter import UtteranceSegmenter
+from saidcue.stt.segmenter import UtteranceSegmenter
 
 SR = 16000
 

@@ -8,8 +8,8 @@ from typing import List
 
 import pytest
 
-from stream_companion.config_loader import save_shortcuts
-from stream_companion.models import OverlayConfig, Shortcut
+from saidcue.config_loader import save_shortcuts
+from saidcue.models import OverlayConfig, Shortcut
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def temp_schema(temp_config_dir: Path) -> Path:
     schema_path = temp_config_dir / "schema.json"
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "Streaming Companion Shortcuts",
+        "title": "Saidcue Shortcuts",
         "type": "object",
         "required": ["shortcuts"],
         "properties": {
@@ -211,7 +211,7 @@ def test_save_shortcuts_validates_against_schema(
     temp_config_dir: Path, temp_schema: Path
 ) -> None:
     """Test that save_shortcuts validates against schema."""
-    from stream_companion.config_loader import ConfigError
+    from saidcue.config_loader import ConfigError
 
     config_path = temp_config_dir / "shortcuts.json"
     shortcuts = [Shortcut(hotkey="<ctrl>+<alt>+1")]
@@ -226,7 +226,7 @@ def test_save_shortcuts_validates_against_schema(
     config_path.write_text(json.dumps(invalid_data))
 
     # Trying to load this should fail
-    from stream_companion.config_loader import load_shortcuts
+    from saidcue.config_loader import load_shortcuts
 
     with pytest.raises(ConfigError):
         load_shortcuts(config_path, schema_path=temp_schema)

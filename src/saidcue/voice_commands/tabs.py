@@ -3,7 +3,7 @@
 Uses Windows UI Automation: Windows Terminal, Chrome, Edge and Firefox all
 expose their tab strips as ``TabItem`` elements that support
 ``SelectionItemPattern.Select()``. Must run on a thread that has COM
-initialized (see :class:`~stream_companion.voice_commands.service.VoiceCommandService`).
+initialized (see :class:`~saidcue.voice_commands.service.VoiceCommandService`).
 """
 
 from __future__ import annotations

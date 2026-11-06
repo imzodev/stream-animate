@@ -1,4 +1,4 @@
-"""Core data models for the Streaming Companion Tool."""
+"""Core data models for Saidcue."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# LLMConfig lives in stream_companion.llm.config but is re-exported here
+# LLMConfig lives in saidcue.llm.config but is re-exported here
 # for backward compatibility with code that does
-# ``from stream_companion.models import LLMConfig``.
+# ``from saidcue.models import LLMConfig``.
 from .llm.config import LLMConfig
 
 __all__ = [

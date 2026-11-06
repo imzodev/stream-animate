@@ -1,6 +1,6 @@
 """Fact-checker / concept-explainer engine.
 
-The engine subscribes to the existing :class:`stream_companion.stt.STTEngine`
+The engine subscribes to the existing :class:`saidcue.stt.STTEngine`
 phrase stream rather than opening its own microphone and running
 its own Whisper transcription pass. This avoids:
 

@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from stream_companion.llm.config import LLMConfig
-from stream_companion.llm.providers import (
+from saidcue.llm.config import LLMConfig
+from saidcue.llm.providers import (
     AdapterFactory,
     ADAPTERS,
     ProviderAdapter,
     StreamChunk,
 )
-from stream_companion.llm.providers.adapters.anthropic import AnthropicAdapter
-from stream_companion.llm.providers.adapters.deepseek import DeepSeekAdapter
-from stream_companion.llm.providers.adapters.openai_generic import (
+from saidcue.llm.providers.adapters.anthropic import AnthropicAdapter
+from saidcue.llm.providers.adapters.deepseek import DeepSeekAdapter
+from saidcue.llm.providers.adapters.openai_generic import (
     OpenAIGenericAdapter,
 )
 

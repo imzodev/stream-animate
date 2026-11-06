@@ -1,4 +1,4 @@
-"""Sound playback utilities for the Streaming Companion Tool.
+"""Sound playback utilities for Saidcue.
 
 This module provides the `SoundPlayer` class for loading and playing audio
 effects with `pygame.mixer`.

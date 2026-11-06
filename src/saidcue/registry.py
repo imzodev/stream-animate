@@ -1,4 +1,4 @@
-"""Shortcut registry for the Streaming Companion Tool MVP."""
+"""Shortcut registry for Saidcue."""
 
 from __future__ import annotations
 

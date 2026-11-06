@@ -1,4 +1,4 @@
-"""Speech-to-text typing engine for the Streaming Companion Tool.
+"""Speech-to-text typing engine for Saidcue.
 
 This package wires together three independent components:
 

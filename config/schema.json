@@ -1,6 +1,6 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Streaming Companion Shortcuts",
+    "title": "Saidcue Shortcuts",
     "version": "1.5.0",
     "type": "object",
     "required": ["shortcuts"],

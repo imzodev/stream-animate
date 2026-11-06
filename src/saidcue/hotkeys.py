@@ -1,4 +1,4 @@
-"""Hotkey management utilities for the Streaming Companion Tool."""
+"""Hotkey management utilities for Saidcue."""
 
 from __future__ import annotations
 

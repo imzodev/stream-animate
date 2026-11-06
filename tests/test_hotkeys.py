@@ -5,7 +5,7 @@ from typing import Callable, List
 
 import pytest
 
-from stream_companion.hotkeys import HotkeyManager
+from saidcue.hotkeys import HotkeyManager
 
 
 class FakeListener:
@@ -121,7 +121,7 @@ def test_dispatch_invokes_hotkey_press_and_release():
 
 
 def test_canonicalize_wraps_modifiers_in_angle_brackets():
-    from stream_companion.hotkeys import HotkeyManager
+    from saidcue.hotkeys import HotkeyManager
 
     assert HotkeyManager.canonicalize("ctrl+alt+9") == "<ctrl>+<alt>+9"
     assert HotkeyManager.canonicalize("<ctrl>+<alt>+9") == "<ctrl>+<alt>+9"
@@ -131,7 +131,7 @@ def test_canonicalize_wraps_modifiers_in_angle_brackets():
 
 
 def test_canonicalize_rejects_invalid_inputs():
-    from stream_companion.hotkeys import HotkeyManager
+    from saidcue.hotkeys import HotkeyManager
 
     import pytest
 
