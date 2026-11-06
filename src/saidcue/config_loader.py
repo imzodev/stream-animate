@@ -12,6 +12,7 @@ import jsonschema
 from .llm.config import LLMConfig
 from .llm.thinking import ThinkingStrategy
 from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
+from .paths import bundle_root, is_frozen, user_data_dir
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,15 +25,24 @@ class ConfigError(RuntimeError):
     """Raised when the configuration file cannot be loaded or validated."""
 
 
-def _repository_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
 def _default_paths() -> tuple[Path, Path, Path]:
-    root = _repository_root()
-    config_path = root / "config" / "shortcuts.json"
-    schema_path = root / "config" / "schema.json"
-    sample_path = root / "config" / "shortcuts.sample.json"
+    """The three config paths: writable shortcuts.json, read-only schema
+    and sample template.
+
+    Dev mode: all three sit under the repo's ``config/`` directory, as
+    always. A frozen (installed) build moves only the writable
+    ``shortcuts.json`` to a per-user directory — the read-only schema
+    and sample still ship inside the bundle (see :mod:`.paths`).
+    """
+
+    bundle = bundle_root()
+    schema_path = bundle / "config" / "schema.json"
+    sample_path = bundle / "config" / "shortcuts.sample.json"
+    config_path = (
+        user_data_dir() / "shortcuts.json"
+        if is_frozen()
+        else bundle / "config" / "shortcuts.json"
+    )
     return config_path, schema_path, sample_path
 
 

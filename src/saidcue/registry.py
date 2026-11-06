@@ -14,9 +14,10 @@ from .config_loader import (
 )
 from .llm.config import LLMConfig
 from .models import ActivatorConfig, Shortcut, STTConfig
+from .paths import bundle_root
 
 _LOGGER = logging.getLogger(__name__)
-_ASSETS_DIR = Path(__file__).resolve().parents[2] / "assets"
+_ASSETS_DIR = bundle_root() / "assets"
 
 _CACHED_ACTIVATOR: Optional[ActivatorConfig] = None
 _CACHED_SHORTCUTS: Optional[list[Shortcut]] = None

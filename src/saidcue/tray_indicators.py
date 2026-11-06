@@ -140,16 +140,12 @@ class TrayIndicatorState:
 # ---------------------------------------------------------------------------
 
 
-def _project_root() -> Path:
-    """Return the project root (parent of ``src/``)."""
-
-    return Path(__file__).resolve().parents[2]
-
-
 def _candidate_icon_paths() -> list[Path]:
     """Return the list of paths checked for a base tray icon (in order)."""
 
-    assets = _project_root() / "assets"
+    from .paths import bundle_root
+
+    assets = bundle_root() / "assets"
     return [
         assets / "icon.png",
         assets / "tray_icon.png",
