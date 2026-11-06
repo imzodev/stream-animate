@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import List
 
 import numpy as np
@@ -581,6 +582,33 @@ def test_set_volume_and_exact_mute():
 def test_volume_validation(action):
     with pytest.raises(ActionError):
         validate_action(action)
+
+
+def _strip_tags(html: str) -> str:
+    import html as html_module
+
+    return html_module.unescape(re.sub(r"<[^>]+>", "", html))
+
+
+def test_guide_html_covers_every_command_and_filters():
+    from stream_companion.configurator.voice_guide import build_guide_html
+
+    full = _strip_tags(build_guide_html())
+    for command in COMMANDS:
+        for phrase in command.phrases:
+            assert phrase in full
+        assert command.description in full
+        assert command.group in full
+    assert "How a command fires" in full
+    assert "When nothing matches" in full
+
+    only_volume = _strip_tags(build_guide_html("volume"))
+    assert "set volume to" in only_volume
+    assert "terminal" not in only_volume  # terminal_tab phrases don't mention volume
+    assert "How a command fires" not in only_volume  # narrative sections hidden
+
+    none_match = build_guide_html("xyzzyxyzzy")
+    assert "No command matches" in none_match
 
 
 def test_catalog_click_and_scroll_phrases():

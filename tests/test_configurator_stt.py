@@ -132,3 +132,27 @@ def test_voice_section_wake_word_and_command_toggles(qapp):
 
     section._wake_word.setCurrentText("  ")
     assert section.validate()  # enabled with no wake word is an error
+
+
+def test_voice_section_guide_button_opens_dialog(qapp, monkeypatch):
+    from stream_companion.configurator.voice_guide import VoiceGuideDialog
+    from stream_companion.configurator.voice_section import VoiceCommandsSection
+
+    opened = []
+    monkeypatch.setattr(VoiceGuideDialog, "exec", lambda self: opened.append(self) or 0)
+    section = VoiceCommandsSection()
+    section._open_guide()
+    assert len(opened) == 1 and isinstance(opened[0], VoiceGuideDialog)
+
+
+def test_voice_guide_dialog_search_updates_browser(qapp):
+    from stream_companion.configurator.voice_guide import VoiceGuideDialog
+
+    dialog = VoiceGuideDialog()
+    full_text = dialog._browser.toPlainText()
+    assert "Windows & tabs" in full_text and "How a command fires" in full_text
+
+    dialog._search.setText("volume")
+    filtered = dialog._browser.toPlainText()
+    assert "set volume to" in filtered
+    assert "How a command fires" not in filtered

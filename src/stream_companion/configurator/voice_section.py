@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from ..voice_commands import COMMANDS, WAKE_WORD_PRESETS, VoiceCommandsConfig
 from ..voice_commands.dictation_edits import DEFAULT_EDITS
+from .voice_guide import VoiceGuideDialog
 
 _ID_ROLE = Qt.ItemDataRole.UserRole
 
@@ -138,6 +140,13 @@ class VoiceCommandsSection(QWidget):
 
         group = QGroupBox("Commands")
         group_layout = QVBoxLayout(group)
+        header_row = QHBoxLayout()
+        header_row.addStretch(1)
+        guide_btn = QPushButton("📖 Commands guide")
+        guide_btn.setToolTip("Open a searchable guide to every command, with examples.")
+        guide_btn.clicked.connect(self._open_guide)
+        header_row.addWidget(guide_btn)
+        group_layout.addLayout(header_row)
         self._commands = QTreeWidget()
         self._commands.setColumnCount(2)
         self._commands.setHeaderLabels(["Say (after the wake word)", "Does"])
@@ -170,6 +179,9 @@ class VoiceCommandsSection(QWidget):
         hint.setWordWrap(True)
         group_layout.addWidget(hint)
         layout.addWidget(group, 1)
+
+    def _open_guide(self) -> None:
+        VoiceGuideDialog(self).exec()
 
     def _on_enabled_toggled(self, *_args) -> None:
         on = self._enabled.isChecked()
