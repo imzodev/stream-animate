@@ -37,6 +37,10 @@ class PositionPicker(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setCursor(QCursor(Qt.CursorShape.CrossCursor))
+        # Override the configurator window's stylesheet, which would
+        # otherwise paint an opaque background and defeat the
+        # translucency this full-screen overlay depends on.
+        self.setStyleSheet("background: transparent;")
 
     def showEvent(self, event) -> None:
         """Make the widget full screen when shown."""

@@ -12,7 +12,9 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -21,8 +23,11 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
+    QSizePolicy,
     QSpinBox,
-    QTabWidget,
+    QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -41,7 +46,16 @@ from ..overlay import OverlayWindow
 from ..sound import SoundPlayer
 from .llm_section import LLMSection
 from .sections import STTSection, ShortcutSection
+from .theme import STYLESHEET, logo_pixmap, window_icon
 from .widgets import HotkeyCapture
+
+_NAV_PAGES = (
+    "⚙  General",
+    "🎙  Speech-to-Text",
+    "🤖  AI Assistant",
+    "🗣  Voice Commands",
+    "⌨  Shortcuts",
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -51,8 +65,10 @@ class ConfiguratorWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Streaming Companion - Configurator")
-        self.resize(900, 600)
+        self.setWindowTitle("Stream Companion - Settings")
+        self.setWindowIcon(window_icon())
+        self.resize(1040, 680)
+        self.setStyleSheet(STYLESHEET)
 
         self._shortcuts: List[Shortcut] = []
         self._activator: Optional[ActivatorConfig] = None
@@ -66,19 +82,113 @@ class ConfiguratorWindow(QMainWindow):
         self._load_shortcuts()
 
     def _init_ui(self) -> None:
-        """Initialize the UI layout."""
+        """Initialize the UI layout: header, sidebar nav, pages, footer."""
         central = QWidget()
+        central.setObjectName("centralWidget")
         self.setCentralWidget(central)
 
-        main_layout = QHBoxLayout()
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(self._build_header())
 
-        # Left panel: shortcut list
-        left_panel = QVBoxLayout()
-        left_panel.addWidget(QLabel("<b>Shortcuts</b>"))
+        body = QWidget()
+        body_layout = QHBoxLayout(body)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(0)
+
+        self._nav_list = QListWidget()
+        self._nav_list.setObjectName("navList")
+        self._nav_list.setFixedWidth(200)
+        self._nav_list.setFrameShape(QFrame.Shape.NoFrame)
+        for label in _NAV_PAGES:
+            QListWidgetItem(label, self._nav_list)
+
+        self._stack = QStackedWidget()
+        self._stack.addWidget(self._scrollable(self._build_global_panel()))
+        self._stt_section = STTSection()
+        self._stack.addWidget(self._scrollable(self._stt_section))
+        self._llm_section = LLMSection()
+        self._stack.addWidget(self._scrollable(self._llm_section))
+        self._voice_section = VoiceCommandsSection()
+        self._stack.addWidget(self._voice_section)
+        self._stack.addWidget(self._build_shortcuts_page())
+
+        self._nav_list.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._nav_list.setCurrentRow(0)
+
+        body_layout.addWidget(self._nav_list)
+        body_layout.addWidget(self._stack, 1)
+        outer.addWidget(body, 1)
+        outer.addWidget(self._build_footer())
+
+        self._update_ui_state()
+
+    def _build_header(self) -> QWidget:
+        """App brand mark + title, shown above the sidebar and pages."""
+        header = QWidget()
+        header.setObjectName("headerBar")
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(20, 14, 20, 14)
+        layout.setSpacing(12)
+
+        logo = QLabel()
+        logo.setPixmap(logo_pixmap(36))
+        logo.setFixedSize(36, 36)
+        layout.addWidget(logo)
+
+        titles = QVBoxLayout()
+        titles.setSpacing(0)
+        title = QLabel("Stream Companion")
+        title.setObjectName("headerTitle")
+        subtitle = QLabel("Settings")
+        subtitle.setObjectName("headerSubtitle")
+        titles.addWidget(title)
+        titles.addWidget(subtitle)
+        layout.addLayout(titles)
+        layout.addStretch(1)
+        return header
+
+    def _build_footer(self) -> QWidget:
+        """Single "Save All Settings" action, visible from every page."""
+        footer = QWidget()
+        footer.setObjectName("footerBar")
+        layout = QHBoxLayout(footer)
+        layout.setContentsMargins(20, 12, 20, 12)
+        layout.addStretch(1)
+        self._save_btn = QPushButton("Save All Settings")
+        self._save_btn.setObjectName("primaryButton")
+        self._save_btn.setDefault(True)
+        self._save_btn.clicked.connect(self._save_changes)
+        layout.addWidget(self._save_btn)
+        return footer
+
+    @staticmethod
+    def _scrollable(widget: QWidget) -> QScrollArea:
+        """Wrap a settings-form page so long forms scroll instead of clipping."""
+        area = QScrollArea()
+        area.setObjectName("pageScroll")
+        area.setFrameShape(QFrame.Shape.NoFrame)
+        area.setWidgetResizable(True)
+        area.setWidget(widget)
+        return area
+
+    def _build_shortcuts_page(self) -> QWidget:
+        """The "Shortcuts" page: a master list beside the detail editor."""
+        page = QWidget()
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(20, 18, 20, 18)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        list_card = QWidget()
+        list_card.setObjectName("card")
+        list_layout = QVBoxLayout(list_card)
+        list_layout.addWidget(QLabel("<b>Shortcuts</b>"))
 
         self._list_widget = QListWidget()
         self._list_widget.currentRowChanged.connect(self._on_selection_changed)
-        left_panel.addWidget(self._list_widget)
+        list_layout.addWidget(self._list_widget)
 
         list_buttons = QHBoxLayout()
         self._add_btn = QPushButton("Add")
@@ -87,67 +197,51 @@ class ConfiguratorWindow(QMainWindow):
         self._delete_btn.clicked.connect(self._delete_shortcut)
         list_buttons.addWidget(self._add_btn)
         list_buttons.addWidget(self._delete_btn)
-        left_panel.addLayout(list_buttons)
+        list_layout.addLayout(list_buttons)
+        list_card.setMinimumWidth(240)
+        list_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
 
-        # Right panel uses tabs
-        tabs = QTabWidget()
-
-        # Tab 1: Global Settings
-        global_panel = self._build_global_panel()
-        # Tab 2: Speech-to-Text
-        self._stt_section = STTSection()
-        # Tab 3: AI Assistant (LLM)
-        self._llm_section = LLMSection()
-        self._voice_section = VoiceCommandsSection()
-        # Tab 4: Shortcut Details
-        shortcut_panel = QWidget()
-        shortcut_layout = QVBoxLayout()
-        shortcut_panel.setLayout(shortcut_layout)
+        detail_card = QWidget()
+        detail_card.setObjectName("card")
+        detail_layout = QVBoxLayout(detail_card)
         self._shortcut_section = ShortcutSection()
-        shortcut_layout.addWidget(self._shortcut_section)
+        detail_layout.addWidget(self._shortcut_section)
 
-        # Action buttons (Preview) for the selected shortcut. Saving
-        # is handled by the global "Save All Settings" button at the
-        # bottom of the window, which is visible from every tab.
+        # Preview the selected shortcut's sound/overlay. Saving is
+        # handled by the global "Save All Settings" button in the
+        # footer, which is visible from every page.
         action_buttons = QHBoxLayout()
         self._preview_btn = QPushButton("Preview")
         self._preview_btn.clicked.connect(self._preview_shortcut)
         action_buttons.addWidget(self._preview_btn)
-        shortcut_layout.addLayout(action_buttons)
+        action_buttons.addStretch(1)
+        detail_layout.addLayout(action_buttons)
 
-        tabs.addTab(global_panel, "Global Settings")
-        tabs.addTab(self._stt_section, "Speech-to-Text")
-        tabs.addTab(self._llm_section, "AI Assistant")
-        tabs.addTab(self._voice_section, "Voice Commands")
-        tabs.addTab(shortcut_panel, "Shortcuts")
+        detail_scroll = self._scrollable(detail_card)
 
-        # Footer with a single "Save All Settings" button. Visible from
-        # every tab so the user can always save regardless of which
-        # tab they edited.
-        footer = QHBoxLayout()
-        footer.addStretch(1)
-        self._save_btn = QPushButton("Save All Settings")
-        self._save_btn.setDefault(True)
-        self._save_btn.clicked.connect(self._save_changes)
-        footer.addWidget(self._save_btn)
+        splitter.addWidget(list_card)
+        splitter.addWidget(detail_scroll)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([260, 700])
 
-        main_layout.addLayout(left_panel, 1)
-        main_layout.addWidget(tabs, 2)
-        main_layout.addLayout(footer)
-        central.setLayout(main_layout)
-
-        self._update_ui_state()
+        layout.addWidget(splitter)
+        return page
 
     def _build_global_panel(self) -> QWidget:
-        """Construct the Global Settings tab."""
+        """Construct the General settings page."""
         global_panel = QWidget()
         global_layout = QVBoxLayout()
         global_panel.setLayout(global_layout)
-        global_layout.addWidget(QLabel("<b>Global Settings</b>"))
 
-        global_layout.addWidget(QLabel("Activator Hotkey:"))
+        group = QWidget()
+        group.setObjectName("card")
+        group_layout = QVBoxLayout(group)
+        group_layout.addWidget(QLabel("<b>Activator</b>"))
+
+        group_layout.addWidget(QLabel("Activator Hotkey:"))
         self._activator_capture = HotkeyCapture()
-        global_layout.addWidget(self._activator_capture)
+        group_layout.addWidget(self._activator_capture)
 
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(QLabel("Mode:"))
@@ -162,11 +256,10 @@ class ConfiguratorWindow(QMainWindow):
         self._timeout_input.setRange(100, 60000)
         self._timeout_input.setValue(1500)
         mode_layout.addWidget(self._timeout_input)
-        global_layout.addLayout(mode_layout)
+        mode_layout.addStretch(1)
+        group_layout.addLayout(mode_layout)
 
-        # Saving is handled by the global "Save All Settings" button
-        # at the bottom of the window, so this tab has no per-tab
-        # action button.
+        global_layout.addWidget(group)
         global_layout.addStretch()
         return global_panel
 

@@ -238,6 +238,13 @@ def test_catalog_is_english_unique_and_matchable():
     assert cmd.id == "terminal_tab" and slots == {"name": "two"}
     cmd, slots = m.match("go to notepad")
     assert cmd.id == "focus_window" and slots == {"name": "notepad"}
+    assert m.match("switch to notepad")[0].id == "focus_window"
+    # "focus ..." means focus a UI element (e.g. a text box), not switch
+    # windows — that's "go to"/"switch to" above, so there's no clash.
+    cmd, slots = m.match("focus search")
+    assert cmd.id == "click" and slots == {"name": "search"}
+    cmd, slots = m.match("focus the search box")
+    assert cmd.id == "click" and slots == {"name": "search box"}
     assert m.match("dictate in notes")[0].id == "dictate_in"
     assert DEFAULT_WAKE_WORD in WAKE_WORD_PRESETS
 
@@ -421,6 +428,16 @@ def test_best_element_prefers_page_then_onscreen():
 def test_best_element_exact_only():
     assert best_element(YOUTUBE, ["Skip ad", "skip"], exact=True) == 8
     assert best_element(YOUTUBE[:8], ["skip"], exact=True) is None
+
+
+def test_best_element_matches_query_containing_name_as_whole_word():
+    # Saying more than the label ("the search box") still finds "Search",
+    # the input listed before the button of the same name.
+    assert best_element(YOUTUBE, ["the search box"]) == 3
+    assert best_element(YOUTUBE, ["skip the ad please"]) == 8
+    # A real whole word is required, not just a substring: "search" is not
+    # a word inside "researching".
+    assert best_element(YOUTUBE, ["researching"]) is None
 
 
 def test_click_presses_in_foreground_window():

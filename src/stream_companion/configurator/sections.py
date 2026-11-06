@@ -247,7 +247,7 @@ class STTSection(QWidget):
         activation_layout.addLayout(hotkey_row)
         layout.addWidget(activation_group)
 
-        model_group = QGroupBox("Model & Language")
+        model_group = QGroupBox("Model && Language")
         model_layout = QVBoxLayout()
         model_group.setLayout(model_layout)
 

@@ -61,9 +61,12 @@ def best_element(
     """Index of the candidate that best matches any of ``queries``.
 
     Whole-word matching on normalized names: exact name, then name starting
-    with the query ("pause" → "Pause (k)"), then name containing it. With
-    ``exact`` only exact names count. Ties prefer on-screen elements, then
-    elements inside the page over browser UI, then document order.
+    with the query ("pause" → "Pause (k)"), then name containing the query
+    ("regida" → "Subscribe to FUERZA REGIDA."), then — the other way round —
+    the query containing the whole name ("the search box" → "Search"), so
+    saying more than the label still finds it. With ``exact`` only exact
+    names count. Ties prefer on-screen elements, then elements inside the
+    page over browser UI, then document order.
     """
 
     qs = [q for q in (normalize(q) for q in queries) if q]
@@ -82,6 +85,8 @@ def best_element(
                 r = 1
             elif f" {q} " in f" {n} ":
                 r = 2
+            elif f" {n} " in f" {q} ":
+                r = 3
             else:
                 continue
             rank = r if rank is None else min(rank, r)
