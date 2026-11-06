@@ -551,3 +551,48 @@ def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
     assert indicator.attached == (engine, False, "bottom-right")
     app.stop()
     assert indicator.detached >= 1
+
+
+def test_open_configurator_survives_garbage_collection(qt_app, monkeypatch) -> None:
+    """A regression test for a real bug: opening Settings from the tray quit
+    the whole app. ``_open_configurator`` kept no reference to the window it
+    created, so it was garbage-collected the instant the function returned;
+    since it was the only visible top-level widget, Qt's default
+    quitOnLastWindowClosed then quit the entire application.
+    """
+
+    import gc
+
+    from PySide6.QtWidgets import QWidget
+
+    import stream_companion.application as application_module
+    import stream_companion.configurator as configurator_module
+
+    class FakeConfiguratorWindow(QWidget):
+        pass
+
+    monkeypatch.setattr(configurator_module, "ConfiguratorWindow", FakeConfiguratorWindow)
+    application_module._open_configurator_windows.clear()
+
+    application_module._open_configurator()
+    gc.collect()  # the bug: this used to delete the (unreferenced) window
+
+    assert len(application_module._open_configurator_windows) == 1
+    window = application_module._open_configurator_windows[0]
+    # Alive at both the Python and the underlying Qt/C++ level — not just a
+    # stale reference to an object Qt already tore down.
+    assert window.isVisible()
+    assert window in QApplication.topLevelWidgets()
+
+    # Reopening while it's still there just raises/activates it, no 2nd window.
+    application_module._open_configurator()
+    assert len(application_module._open_configurator_windows) == 1
+
+    window.close()
+    # WA_DeleteOnClose defers the actual C++ deletion (and thus `destroyed`)
+    # to the event loop, so let it run instead of asserting synchronously.
+    for _ in range(20):
+        if not application_module._open_configurator_windows:
+            break
+        QApplication.processEvents()
+    assert application_module._open_configurator_windows == []

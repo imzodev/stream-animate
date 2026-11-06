@@ -856,6 +856,15 @@ def run_application(
         tray.hide()
 
 
+# Keeps the configurator window alive while open. Without this, the local
+# `window` variable in _open_configurator() is garbage-collected the moment
+# the function returns, which (with no Python reference left) deletes the
+# underlying Qt widget too. If it was the only visible top-level window,
+# Qt's default quitOnLastWindowClosed then quits the *entire* application —
+# so opening Settings from the tray silently shut everything down.
+_open_configurator_windows: List["ConfiguratorWindow"] = []  # noqa: F821
+
+
 def _open_configurator() -> None:
     """Open the configurator window from the tray menu."""
     from .configurator import ConfiguratorWindow
@@ -869,4 +878,17 @@ def _open_configurator() -> None:
 
     # Create new configurator window
     window = ConfiguratorWindow()
+    window.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+    _open_configurator_windows.append(window)
+
+    def _forget(*_args, _window_id: int = id(window)) -> None:
+        # Compare by id(), not equality/`in`: by the time `destroyed` fires
+        # the underlying C++ object is already gone, and comparing against a
+        # torn-down QObject is unreliable (observed to silently report "not
+        # in the list" rather than raise), which would leak the entry.
+        _open_configurator_windows[:] = [
+            w for w in _open_configurator_windows if id(w) != _window_id
+        ]
+
+    window.destroyed.connect(_forget)
     window.show()
