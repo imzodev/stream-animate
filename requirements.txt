@@ -8,3 +8,4 @@ sounddevice==0.5.1
 numpy==2.1.3
 httpx==0.27.2
 uiautomation==2.0.29; sys_platform == "win32"
+pycaw==20260927; sys_platform == "win32"

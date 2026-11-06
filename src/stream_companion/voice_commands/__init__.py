@@ -1,11 +1,14 @@
 """Voice control: wake word + commands, dictation editing, AI fallback."""
 
-from .config import ActionError, VoiceCommand, VoiceCommandsConfig, validate_action
+from .catalog import COMMANDS, WAKE_WORD_PRESETS, CatalogCommand
+from .config import ActionError, VoiceCommandsConfig, validate_action
 from .service import VoiceCommandService
 
 __all__ = [
     "ActionError",
-    "VoiceCommand",
+    "COMMANDS",
+    "CatalogCommand",
+    "WAKE_WORD_PRESETS",
     "VoiceCommandsConfig",
     "VoiceCommandService",
     "validate_action",

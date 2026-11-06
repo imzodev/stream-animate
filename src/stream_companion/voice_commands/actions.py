@@ -20,20 +20,20 @@ from .windows import find_window
 _LOGGER = logging.getLogger(__name__)
 
 _NUMBER_WORDS = {
-    "uno": 1, "una": 1, "primera": 1, "primero": 1, "one": 1, "first": 1,
-    "dos": 2, "segunda": 2, "segundo": 2, "two": 2, "second": 2,
-    "tres": 3, "tercera": 3, "tercero": 3, "three": 3, "third": 3,
-    "cuatro": 4, "cuarta": 4, "four": 4,
-    "cinco": 5, "quinta": 5, "five": 5,
-    "seis": 6, "sexta": 6, "six": 6,
-    "siete": 7, "septima": 7, "seven": 7,
-    "ocho": 8, "octava": 8, "eight": 8,
-    "nueve": 9, "novena": 9, "nine": 9,
+    "one": 1, "first": 1, "1st": 1,
+    "two": 2, "second": 2, "2nd": 2,
+    "three": 3, "third": 3, "3rd": 3,
+    "four": 4, "fourth": 4, "4th": 4,
+    "five": 5, "fifth": 5, "5th": 5,
+    "six": 6, "sixth": 6, "6th": 6,
+    "seven": 7, "seventh": 7, "7th": 7,
+    "eight": 8, "eighth": 8, "8th": 8,
+    "nine": 9, "ninth": 9, "9th": 9,
 }  # fmt: skip
 
 
 def tab_number(text: str) -> Optional[int]:
-    """``"2"``, ``"dos"``, ``"segunda"`` → 2 (1-9), else ``None``."""
+    """``"2"``, ``"two"``, ``"second"`` → 2 (1-9), else ``None``."""
 
     norm = normalize(text)
     if norm.isdigit() and 1 <= int(norm) <= 9:
@@ -58,7 +58,13 @@ class ActionRunner:
         typer: Any = None,
         engine_getter: Optional[Callable[[], Any]] = None,
         sleep: Callable[[float], None] = time.sleep,
+        elements_factory: Optional[Callable[[], Any]] = None,
+        volume_factory: Optional[Callable[[], Any]] = None,
     ) -> None:
+        self._elements_factory = elements_factory
+        self._elements = None
+        self._volume_factory = volume_factory
+        self._volume = None
         self._keyboard_factory = keyboard_factory or _default_keyboard
         self._keyboard = None
         self._windows = windows
@@ -121,9 +127,14 @@ class ActionRunner:
             "mute": Key.media_volume_mute,
         }[a["key"]]
         kb = self._kb()
-        kb.press(key)
-        kb.release(key)
-        return ActionResult(True, a["key"].replace("_", " ").capitalize())
+        repeat = a.get("repeat", 1)
+        for _ in range(repeat):
+            kb.press(key)
+            kb.release(key)
+        label = a["key"].replace("_", " ").capitalize()
+        if a["key"].startswith("volume_"):
+            label += f" {2 * repeat}%"  # each volume key press is 2% in Windows
+        return ActionResult(True, label)
 
     def _do_open(self, a) -> ActionResult:
         self._launcher(a["target"])
@@ -182,6 +193,49 @@ class ActionRunner:
         self._sleep(a["ms"] / 1000.0)
         return ActionResult(True, "")
 
+    def _do_click(self, a) -> ActionResult:
+        fg = self._require_windows().foreground()
+        if fg is None:
+            return ActionResult(False, "No window is in front")
+        queries = a.get("any") or [a["target"]]
+        hit = self._get_elements().click(fg.hwnd, queries, a.get("exact", False))
+        if hit is None:
+            return ActionResult(
+                False, a.get("missing") or f"Nothing called “{queries[0]}” here"
+            )
+        verb = "Focused" if hit.kind == "input" else "Clicked"
+        return ActionResult(True, f"{verb} “{hit.name[:40]}”")
+
+    def _do_volume(self, a) -> ActionResult:
+        from .audio import parse_percent
+
+        volume = self._get_volume()
+        if "mute" in a:
+            volume.set_mute(a["mute"])
+            return ActionResult(True, "Muted" if a["mute"] else "Unmuted")
+        level = a["level"]
+        percent = level if isinstance(level, int) else parse_percent(level)
+        if percent is None:
+            return ActionResult(False, f"Say a volume from 0 to 100, not “{level}”")
+        volume.set_level(percent)
+        return ActionResult(True, f"Volume {percent}%")
+
+    def _do_scroll(self, a) -> ActionResult:
+        fg = self._require_windows().foreground()
+        if fg is None:
+            return ActionResult(False, "No window is in front")
+        direction, amount = a["direction"], a.get("amount", "small")
+        elements = self._get_elements()
+        if not elements.scroll(fg.hwnd, direction, amount):
+            # The window doesn't support UI Automation scrolling (e.g. Firefox).
+            if direction in ("top", "bottom"):
+                self.press("<ctrl>+<home>" if direction == "top" else "<ctrl>+<end>")
+            elif not elements.wheel(fg.hwnd, direction, amount):
+                return ActionResult(False, "Couldn't scroll this window")
+        if direction in ("top", "bottom"):
+            return ActionResult(True, f"Scrolled to {direction}")
+        return ActionResult(True, f"Scrolled {direction}")
+
     # -- helpers ------------------------------------------------------------
 
     def _kb(self):
@@ -205,6 +259,26 @@ class ActionRunner:
 
                 self._tabs = UiaTabs()
         return self._tabs
+
+    def _get_volume(self):
+        if self._volume is None:
+            if self._volume_factory is not None:
+                self._volume = self._volume_factory()
+            else:
+                from .audio import SystemVolume
+
+                self._volume = SystemVolume()
+        return self._volume
+
+    def _get_elements(self):
+        if self._elements is None:
+            if self._elements_factory is not None:
+                self._elements = self._elements_factory()
+            else:
+                from .elements import UiaElements
+
+                self._elements = UiaElements()
+        return self._elements
 
 
 def _app_classes(app: str):

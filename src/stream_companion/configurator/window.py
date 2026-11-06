@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 from .. import model_downloader
 from ..config_loader import (
     ConfigError,
-    default_config_path,
     load_full_config,
     load_voice_commands_config,
     save_config,
@@ -215,7 +214,7 @@ class ConfiguratorWindow(QMainWindow):
             self._voice_load_error = str(exc)
             voice = None
             QMessageBox.warning(self, "Voice Commands", str(exc))
-        self._voice_section.populate(voice, default_config_path())
+        self._voice_section.populate(voice)
 
     def _refresh_list(self) -> None:
         """Refresh the shortcut list widget."""

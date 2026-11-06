@@ -299,38 +299,44 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - `dedup_window` — number of recent characters used for tail-based dedup.
 
 ## Voice Commands
-Control the PC by voice. Start a phrase with a **wake word**, then say a command. Normal talking on stream never triggers anything, because the phrase has to *start* with the wake word.
+Control the PC by voice. Start a phrase with the **wake word**, then say a command. Normal talking on stream never triggers anything, because the phrase has to *start* with the wake word.
 
-- "**computadora, terminal servidor**" → switches to the Windows Terminal tab named *servidor* and brings it to front
-- "**computadora, pestaña gmail**" → switches the browser (Chrome, Edge or Firefox) to the Gmail tab
-- "**computadora, dicta en notas**" → focuses the window whose title contains *notas* and turns dictation typing on
-- "**computadora, siguiente canción**" / "**pausa**" / "**sube el volumen**" → media keys
-- "**computadora, guarda**" → Ctrl+S
+- "**computer, terminal two**" / "**computer, terminal server**" → switches to that Windows Terminal tab (by number or name) and brings it to front
+- "**computer, tab gmail**" → switches the browser (Chrome, Edge or Firefox) to the Gmail tab
+- "**computer, go to spotify**" → brings the window whose title contains *spotify* to front
+- "**computer, dictate in notepad**" → focuses that window and turns dictation typing on
+- "**computer, next song**" / "**pause**" → media keys
+- "**computer, turn the volume down**" / "**volume up**" / "**turn it up**" → ±10% ("**volume down a lot**" → ±30%)
+- "**computer, set the volume to 50**" / "**volume to fifty percent**" / "**set volume to half**" → exact level
+- "**computer, mute**" / "**turn off the sound**" / "**volume off**" → muted; "**unmute**" / "**turn the sound on**" / "**volume on**" → unmuted. These are exact, not toggles: saying "mute" twice stays muted.
+- "**computer, save**" / "**copy**" / "**paste**" / "**undo**" / "**new tab**" / "**close tab**" → keyboard shortcuts
+- "**computer, open youtube**" / "**open twitch**" / "**open notepad**" / "**open calculator**"
+- "**computer, click subscribe**" / "**click search**" → presses the button or link with that label in the front window, or puts the cursor in the text box (then say "computer, start dictation" to type into it)
+- "**computer, skip ad**" → clicks YouTube's *Skip* button (also when YouTube shows it in Spanish, Portuguese, French or German); says "No ad to skip" otherwise
+- "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
 
-The on-screen pill confirms each command (✓ / ✗, or "Thinking…" while the AI works). A command is never typed into the focused window.
+Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by voice. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
 
-**Dictation editing** works while typing mode is on, with no wake word, but only when the *whole* phrase is the command: "nueva línea", "nuevo párrafo", "borra eso" (erases the last phrase), "borra la palabra", "selecciona todo", "deja de escribir".
+The commands are a built-in English set; the settings window's **Voice Commands** tab lists every one with a checkbox to turn it off. The on-screen pill confirms each command (✓ / ✗, or "Thinking…" while the AI works). A command is never typed into the focused window.
 
-**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computadora, abre la calculadora y busca recetas de tacos"). The AI can only use the same actions as your commands: there is no way to run shell commands. Its plan is checked before anything runs: it can never press Enter, never type into a terminal, and is limited to 8 steps. To pick the right window or tab it is sent your open window titles and tab names, so turn it off if those may contain anything you don't want sent to your LLM provider.
+**Wake word:** pick one of the presets (`computer`, `hey computer`, `assistant`, `hey assistant`, `companion`) or type your own. Two-word wake words like "hey computer" misfire less, because ordinary sentences rarely start with them.
+
+**Dictation editing** works while typing mode is on, with no wake word, but only when the *whole* phrase is the command: "new line", "new paragraph", "scratch that" (erases the last phrase), "delete word", "select all", "stop typing".
+
+**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computer, open paint and search for taco recipes"). The AI can only use the same actions as the built-in commands: there is no way to run shell commands. Its plan is checked before anything runs: it can never press Enter, never click anything, never type into a terminal, and is limited to 8 steps. To pick the right window or tab it is sent your open window titles and tab names, so turn it off if those may contain anything you don't want sent to your LLM provider.
 
 ```json
 "voice_commands": {
   "enabled": true,
-  "wake_words": ["computadora", "compu"],
+  "wake_word": "computer",
   "dictation_editing": true,
   "ai_fallback": false,
-  "commands": [
-    {"phrases": ["guarda", "guardar"], "actions": [{"type": "keys", "keys": "<ctrl>+s"}]},
-    {"phrases": ["terminal {name}"], "actions": [{"type": "switch_tab", "app": "terminal", "tab": "{name}"}]},
-    {"phrases": ["dicta en {name}"], "actions": [
-      {"type": "focus_window", "title": "{name}"}, {"type": "wait", "ms": 150}, {"type": "dictation", "state": "on"}]}
-  ]
+  "disabled_commands": ["open_twitch"]
 }
 ```
-- Phrases ignore case, accents and punctuation (write `pestana`, it matches "Pestaña."). A phrase may end with `{name}` to capture the rest of what you say.
-- Actions: `keys` (`keys`, optional `repeat`), `media` (`play_pause`, `next`, `previous`, `volume_up`, `volume_down`, `mute`), `open` (URL, `spotify:`-style protocol, or program), `focus_window` (`title`), `switch_tab` (`app`: `terminal` or `browser`; `tab`: part of the tab name, or a number 1–9 / "dos"), `type_text` (`text`), `dictation` (`on`, `off` or `toggle`), `wait` (`ms`).
-- Tip: Windows Terminal tabs are all called "Windows PowerShell" by default. Rename them (right-click a tab → Rename) so you can say their names, or use numbers ("computadora, terminal dos").
-- Switches and wake words are also in the settings window's **Voice Commands** tab. The command list is edited in `shortcuts.json`.
+- `disabled_commands` takes command ids (`save`, `next_track`, `browser_tab`, …); the settings tab writes it for you.
+- Commands are spoken in English. If Speech-to-Text `language` is set to another language, Whisper may spell English command words differently; `auto` or `en` works best.
+- Tip: Windows Terminal tabs are all called "Windows PowerShell" by default. Rename them (right-click a tab → Rename) so you can say their names, or use numbers ("computer, terminal two").
 
 ## AI Assistant (Fact-Checker)
 Press a global hotkey, speak a question, and an LLM streams a short answer into a small always-on-top panel. The fact-checker runs on a **separate microphone handle and separate Whisper instance** from the STT engine, so voice triggers and dictation keep working while the answer renders.

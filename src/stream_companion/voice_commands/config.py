@@ -4,16 +4,16 @@ The ``voice_commands`` block of ``shortcuts.json``::
 
     "voice_commands": {
       "enabled": true,
-      "wake_words": ["computadora", "compu"],
+      "wake_word": "computer",
       "dictation_editing": true,
-      "ai_fallback": true,
-      "commands": [
-        {"phrases": ["terminal {name}"],
-         "actions": [{"type": "switch_tab", "app": "terminal", "tab": "{name}"}]}
-      ]
+      "ai_fallback": false,
+      "disabled_commands": ["open_twitch"]
     }
 
-Every action — from the config *or* proposed by the AI agent — goes through
+The commands themselves are the built-in English catalog in
+:mod:`.catalog`; the config only switches individual ones off.
+
+Every action — built in *or* proposed by the AI agent — goes through
 :func:`validate_action`, so there is exactly one definition of what the app
 is allowed to do. There is deliberately no "run a shell command" action.
 """
@@ -21,7 +21,7 @@ is allowed to do. There is deliberately no "run a shell command" action.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 ACTION_TYPES = (
     "keys",
@@ -32,13 +32,18 @@ ACTION_TYPES = (
     "type_text",
     "dictation",
     "wait",
+    "click",
+    "scroll",
+    "volume",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser")
 DICTATION_STATES = ("on", "off", "toggle")
+SCROLL_DIRECTIONS = ("up", "down", "top", "bottom")
+SCROLL_AMOUNTS = ("small", "page", "large")
 MAX_WAIT_MS = 5000
 
-DEFAULT_WAKE_WORDS: Tuple[str, ...] = ("computadora", "compu")
+DEFAULT_WAKE_WORD = "computer"  # also the first preset in .catalog
 
 
 class ActionError(ValueError):
@@ -72,6 +77,10 @@ def validate_action(action: Any) -> Dict[str, Any]:
         if key not in MEDIA_KEYS:
             raise ActionError(f"media key must be one of {MEDIA_KEYS}")
         out["key"] = key
+        repeat = action.get("repeat", 1)
+        if not isinstance(repeat, int) or not 1 <= repeat <= 50:
+            raise ActionError("media 'repeat' must be an integer 1-50")
+        out["repeat"] = repeat
     elif kind == "open":
         out["target"] = _require_str(action, "target")
     elif kind == "focus_window":
@@ -97,30 +106,73 @@ def validate_action(action: Any) -> Dict[str, Any]:
         if not isinstance(ms, int) or not 0 <= ms <= MAX_WAIT_MS:
             raise ActionError(f"wait 'ms' must be an integer 0-{MAX_WAIT_MS}")
         out["ms"] = ms
+    elif kind == "click":
+        # ``target``: what the user said; or ``any``: a list of exact labels
+        # to look for (e.g. the skip-ad button in several languages).
+        names = action.get("any")
+        if names is not None:
+            if (
+                not isinstance(names, list)
+                or not names
+                or not all(isinstance(n, str) and n.strip() for n in names)
+            ):
+                raise ActionError("click 'any' must be a non-empty list of labels")
+            out["any"] = [n.strip() for n in names]
+        else:
+            out["target"] = _require_str(action, "target")
+        exact = action.get("exact", False)
+        if not isinstance(exact, bool):
+            raise ActionError("click 'exact' must be true or false")
+        out["exact"] = exact
+        if action.get("missing") is not None:  # feedback when nothing matches
+            out["missing"] = _require_str(action, "missing")
+    elif kind == "scroll":
+        direction = _require_str(action, "direction")
+        if direction not in SCROLL_DIRECTIONS:
+            raise ActionError(f"scroll 'direction' must be one of {SCROLL_DIRECTIONS}")
+        out["direction"] = direction
+        amount = action.get("amount", "small")
+        if amount not in SCROLL_AMOUNTS:
+            raise ActionError(f"scroll 'amount' must be one of {SCROLL_AMOUNTS}")
+        out["amount"] = amount
+    elif kind == "volume":
+        # Exactly one of: ``level`` (0-100, or spoken text like "fifty" /
+        # "{level}", parsed when it runs) or ``mute`` (true/false).
+        has_level, has_mute = "level" in action, "mute" in action
+        if has_level == has_mute:
+            raise ActionError("volume needs exactly one of 'level' or 'mute'")
+        if has_mute:
+            if not isinstance(action["mute"], bool):
+                raise ActionError("volume 'mute' must be true or false")
+            out["mute"] = action["mute"]
+        else:
+            level = action["level"]
+            if isinstance(level, bool) or not isinstance(level, (int, str)):
+                raise ActionError("volume 'level' must be 0-100")
+            if isinstance(level, int) and not 0 <= level <= 100:
+                raise ActionError("volume 'level' must be 0-100")
+            if isinstance(level, str) and not level.strip():
+                raise ActionError("volume 'level' must be 0-100")
+            out["level"] = level
     return out
-
-
-@dataclass(frozen=True)
-class VoiceCommand:
-    """One configured command: phrase templates and the actions they run."""
-
-    phrases: Tuple[str, ...]
-    actions: Tuple[Dict[str, Any], ...]
-
-    def __hash__(self) -> int:  # actions are dicts; hash by phrases
-        return hash(self.phrases)
 
 
 @dataclass(frozen=True)
 class VoiceCommandsConfig:
     enabled: bool = False
-    wake_words: Tuple[str, ...] = DEFAULT_WAKE_WORDS
+    wake_word: str = DEFAULT_WAKE_WORD
     dictation_editing: bool = True
     ai_fallback: bool = False
-    commands: Tuple[VoiceCommand, ...] = field(default_factory=tuple)
+    disabled_commands: Tuple[str, ...] = field(default_factory=tuple)
 
-    def __hash__(self) -> int:
-        return hash((self.enabled, self.wake_words, self.commands))
+    @property
+    def commands(self) -> Tuple[Any, ...]:
+        """The enabled built-in commands (see :mod:`.catalog`)."""
+
+        from .catalog import COMMANDS
+
+        off = set(self.disabled_commands)
+        return tuple(c for c in COMMANDS if c.id not in off)
 
     @classmethod
     def from_dict(cls, raw: Optional[Mapping[str, Any]]) -> "VoiceCommandsConfig":
@@ -128,39 +180,29 @@ class VoiceCommandsConfig:
 
         if not raw:
             return cls()
-        wake = tuple(
-            w.strip() for w in raw.get("wake_words", DEFAULT_WAKE_WORDS) if w.strip()
-        )
-        if not wake:
-            raise ActionError("voice_commands needs at least one wake word")
-        commands: List[VoiceCommand] = []
-        for i, entry in enumerate(raw.get("commands", [])):
-            phrases = tuple(p.strip() for p in entry.get("phrases", []) if p.strip())
-            if not phrases:
-                raise ActionError(f"command #{i + 1} has no phrases")
-            try:
-                actions = tuple(validate_action(a) for a in entry.get("actions", []))
-            except ActionError as exc:
-                raise ActionError(f"command {phrases[0]!r}: {exc}") from exc
-            if not actions:
-                raise ActionError(f"command {phrases[0]!r} has no actions")
-            commands.append(VoiceCommand(phrases=phrases, actions=actions))
+        wake = raw.get("wake_word", DEFAULT_WAKE_WORD)
+        if not isinstance(wake, str) or not wake.strip():
+            raise ActionError("voice_commands needs a wake word")
+        disabled = raw.get("disabled_commands", [])
+        if not isinstance(disabled, list) or not all(
+            isinstance(d, str) for d in disabled
+        ):
+            raise ActionError("disabled_commands must be a list of command ids")
         return cls(
             enabled=bool(raw.get("enabled", False)),
-            wake_words=wake,
+            wake_word=" ".join(wake.split()),
             dictation_editing=bool(raw.get("dictation_editing", True)),
             ai_fallback=bool(raw.get("ai_fallback", False)),
-            commands=tuple(commands),
+            # Unknown ids (e.g. a command removed in a later version) are kept
+            # harmlessly so saving doesn't silently re-enable anything.
+            disabled_commands=tuple(dict.fromkeys(disabled)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "enabled": self.enabled,
-            "wake_words": list(self.wake_words),
+            "wake_word": self.wake_word,
             "dictation_editing": self.dictation_editing,
             "ai_fallback": self.ai_fallback,
-            "commands": [
-                {"phrases": list(c.phrases), "actions": [dict(a) for a in c.actions]}
-                for c in self.commands
-            ],
+            "disabled_commands": list(self.disabled_commands),
         }

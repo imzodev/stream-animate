@@ -36,12 +36,6 @@ def _default_paths() -> tuple[Path, Path, Path]:
     return config_path, schema_path, sample_path
 
 
-def default_config_path() -> Path:
-    """Path of the user's ``shortcuts.json``."""
-
-    return _default_paths()[0]
-
-
 def load_shortcuts(
     config_path: Optional[Path] = None,
     *,

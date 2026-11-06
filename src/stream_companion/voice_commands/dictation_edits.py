@@ -1,7 +1,7 @@
 """Editing commands spoken while dictation typing is on.
 
 These need no wake word, but only fire when the **whole utterance** is the
-command. Utterances are split on pauses, so saying "nueva línea" on its own
+command. Utterances are split on pauses, so saying "new line" on its own
 is distinct from dictating a sentence that merely contains those words.
 """
 
@@ -11,14 +11,14 @@ from typing import Dict, Mapping, Optional
 
 from .parser import normalize
 
-# edit name -> spoken phrases (written without accents; matching ignores them)
+# edit name -> spoken phrases (matching ignores case and punctuation)
 DEFAULT_EDITS: Dict[str, tuple] = {
-    "newline": ("nueva linea", "salto de linea", "enter", "intro"),
-    "paragraph": ("nuevo parrafo", "punto y aparte"),
-    "undo_phrase": ("borra eso", "borrar eso", "deshacer", "deshaz eso"),
-    "delete_word": ("borra la palabra", "borrar palabra", "borra palabra"),
-    "select_all": ("selecciona todo", "seleccionar todo"),
-    "stop": ("deja de escribir", "deja de dictar", "para de dictar", "para de escribir"),
+    "newline": ("new line", "next line", "press enter"),
+    "paragraph": ("new paragraph",),
+    "undo_phrase": ("scratch that", "delete that", "undo that"),
+    "delete_word": ("delete word", "delete last word"),
+    "select_all": ("select all",),
+    "stop": ("stop typing", "stop dictation", "stop dictating"),
 }  # fmt: skip
 
 

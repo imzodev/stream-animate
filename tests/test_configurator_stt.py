@@ -92,30 +92,43 @@ def test_indicator_settings_round_trip(qapp):
     assert section.read().show_indicator is True
 
 
-def test_voice_section_edits_switches_and_keeps_commands(qapp):
+def test_voice_section_wake_word_and_command_toggles(qapp):
+    from PySide6.QtCore import Qt
+
     from stream_companion.configurator.voice_section import VoiceCommandsSection
-    from stream_companion.voice_commands import VoiceCommandsConfig
+    from stream_companion.voice_commands import (
+        COMMANDS,
+        WAKE_WORD_PRESETS,
+        VoiceCommandsConfig,
+    )
 
     cfg = VoiceCommandsConfig.from_dict(
         {
             "enabled": True,
-            "wake_words": ["computadora"],
-            "commands": [
-                {
-                    "phrases": ["guarda"],
-                    "actions": [{"type": "keys", "keys": "<ctrl>+s"}],
-                }
-            ],
+            "wake_word": "assistant",
+            "disabled_commands": ["open_twitch", "removed_in_future"],
         }
     )
     section = VoiceCommandsSection()
     section.populate(cfg)
-    assert "press <ctrl>+s" in section._commands_view.toPlainText()
-    section._wake_words.setText("compu, oye pc")
+    assert section.wake_word() == "assistant"
+    assert [section._wake_word.itemText(i) for i in range(section._wake_word.count())][
+        : len(WAKE_WORD_PRESETS)
+    ] == list(WAKE_WORD_PRESETS)
+    items = {i.data(0, Qt.ItemDataRole.UserRole): i for i in section._command_items()}
+    assert set(items) == {c.id for c in COMMANDS}
+    assert items["open_twitch"].checkState(0) == Qt.CheckState.Unchecked
+    assert items["save"].checkState(0) == Qt.CheckState.Checked
+
+    # Custom wake word + turn "save" off, Twitch back on.
+    section._wake_word.setCurrentText("  okay   stream ")
+    items["save"].setCheckState(0, Qt.CheckState.Unchecked)
+    items["open_twitch"].setCheckState(0, Qt.CheckState.Checked)
     section._ai_fallback.setChecked(True)
     out = section.read()
-    assert out["wake_words"] == ["compu", "oye pc"]
+    assert out["wake_word"] == "okay stream"
     assert out["ai_fallback"] is True
-    assert out["commands"][0]["phrases"] == ["guarda"]  # untouched
-    section._wake_words.setText("  ")
+    assert out["disabled_commands"] == ["removed_in_future", "save"]
+
+    section._wake_word.setCurrentText("  ")
     assert section.validate()  # enabled with no wake word is an error

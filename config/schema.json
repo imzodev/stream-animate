@@ -224,48 +224,29 @@
         },
         "voice_commands": {
             "type": "object",
-            "description": "Voice control. Phrases starting with a wake word run commands; action details are validated by the app.",
+            "description": "Voice control. Phrases starting with the wake word run one of the built-in English commands.",
             "properties": {
                 "enabled": {"type": "boolean", "default": false},
-                "wake_words": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "minItems": 1,
-                    "description": "Words that must start a spoken command, e.g. [\"computadora\", \"compu\"]"
+                "wake_word": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "computer",
+                    "description": "Word(s) that must start a spoken command, e.g. \"computer\" or \"hey assistant\""
                 },
                 "dictation_editing": {
                     "type": "boolean",
                     "default": true,
-                    "description": "While typing, 'nueva línea', 'borra eso', etc. edit instead of being typed"
+                    "description": "While typing, 'new line', 'scratch that', etc. edit instead of being typed"
                 },
                 "ai_fallback": {
                     "type": "boolean",
                     "default": false,
                     "description": "Send unrecognised wake-word commands to the configured LLM"
                 },
-                "commands": {
+                "disabled_commands": {
                     "type": "array",
-                    "items": {
-                        "type": "object",
-                        "required": ["phrases", "actions"],
-                        "properties": {
-                            "phrases": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                            "actions": {
-                                "type": "array",
-                                "minItems": 1,
-                                "items": {
-                                    "type": "object",
-                                    "required": ["type"],
-                                    "properties": {
-                                        "type": {
-                                            "enum": ["keys", "media", "open", "focus_window", "switch_tab", "type_text", "dictation", "wait"]
-                                        }
-                                    }
-                                }
-                            }
-                        },
-                        "additionalProperties": false
-                    }
+                    "items": {"type": "string"},
+                    "description": "Ids of built-in commands to turn off, e.g. [\"open_twitch\"]"
                 }
             },
             "additionalProperties": false

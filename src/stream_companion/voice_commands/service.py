@@ -2,11 +2,11 @@
 
 :meth:`VoiceCommandService.handle` is called by the STT engine *before* a
 phrase is typed. It returns ``True`` when the phrase was a command, so the
-engine doesn't also type "computadora, abre Spotify" into the focused window.
+engine doesn't also type "computer, open YouTube" into the focused window.
 
 Commands run synchronously on the STT thread: that keeps order intact (the
-next dictated sentence can't be typed before "nueva línea" pressed Enter or
-before "dicta en notas" focused Notepad). Audio keeps buffering meanwhile.
+next dictated sentence can't be typed before "new line" pressed Enter or
+before "dictate in notes" focused Notepad). Audio keeps buffering meanwhile.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class VoiceCommandService:
                 self._feedback(apply_edit(edit, self._runner, typer, engine), OK)
                 return True
 
-        rest = split_wake_word(text, self._config.wake_words)
+        rest = split_wake_word(text, [self._config.wake_word])
         if rest is None:
             return False
         if not rest:

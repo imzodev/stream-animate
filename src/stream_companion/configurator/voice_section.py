@@ -1,138 +1,128 @@
 """The "Voice Commands" settings tab.
 
-Edits the switches and wake words. The command list itself is shown
-read-only and edited in ``shortcuts.json`` (an "Open config file" button is
-provided) — a full command editor is out of scope for v1.
+The wake word is picked from presets or typed freely. Commands are the
+built-in English catalog; each one has a checkbox to turn it on or off.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import os
-from pathlib import Path
 from typing import List, Optional
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QPlainTextEdit,
-    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from ..voice_commands import VoiceCommandsConfig
+from ..voice_commands import COMMANDS, WAKE_WORD_PRESETS, VoiceCommandsConfig
+from ..voice_commands.dictation_edits import DEFAULT_EDITS
+
+_ID_ROLE = Qt.ItemDataRole.UserRole
 
 
-def describe_action(action: dict) -> str:
-    """One short human-readable line for an action dict."""
-
-    kind = action.get("type")
-    if kind == "keys":
-        return f"press {action.get('keys')}"
-    if kind == "media":
-        return f"media {action.get('key')}"
-    if kind == "open":
-        return f"open {action.get('target')}"
-    if kind == "focus_window":
-        return f"focus “{action.get('title')}”"
-    if kind == "switch_tab":
-        return f"{action.get('app')} tab “{action.get('tab')}”"
-    if kind == "type_text":
-        return f"type “{action.get('text')}”"
-    if kind == "dictation":
-        return f"dictation {action.get('state')}"
-    if kind == "wait":
-        return f"wait {action.get('ms')} ms"
-    return str(kind)
+def _say(phrase: str) -> str:
+    return f"“{phrase.replace('{name}', '…')}”"
 
 
 class VoiceCommandsSection(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._config = VoiceCommandsConfig()
-        self._config_path: Optional[Path] = None
         self._build_ui()
         self._on_enabled_toggled()
 
     # -- public API ---------------------------------------------------------
 
-    def populate(
-        self, config: Optional[VoiceCommandsConfig], config_path: Optional[Path] = None
-    ) -> None:
+    def populate(self, config: Optional[VoiceCommandsConfig]) -> None:
         self._config = config or VoiceCommandsConfig()
-        self._config_path = config_path
         cfg = self._config
         self._enabled.setChecked(cfg.enabled)
-        self._wake_words.setText(", ".join(cfg.wake_words))
+        self._wake_word.setCurrentText(cfg.wake_word)
         self._dictation_editing.setChecked(cfg.dictation_editing)
         self._ai_fallback.setChecked(cfg.ai_fallback)
-        lines = []
-        for command in cfg.commands:
-            phrases = " / ".join(command.phrases)
-            steps = " → ".join(describe_action(a) for a in command.actions)
-            lines.append(f"• {phrases}\n      {steps}")
-        self._commands_view.setPlainText(
-            "\n".join(lines)
-            if lines
-            else "No commands yet — add them in the config file."
-        )
+        off = set(cfg.disabled_commands)
+        for item in self._command_items():
+            checked = item.data(0, _ID_ROLE) not in off
+            item.setCheckState(0, Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
         self._on_enabled_toggled()
 
-    def wake_words(self) -> List[str]:
-        return [w.strip() for w in self._wake_words.text().split(",") if w.strip()]
+    def wake_word(self) -> str:
+        return " ".join(self._wake_word.currentText().split())
 
     def read(self) -> dict:
-        """The full ``voice_commands`` block (commands kept as loaded)."""
+        """The full ``voice_commands`` block."""
 
+        catalog_ids = {c.id for c in COMMANDS}
+        unchecked = [
+            item.data(0, _ID_ROLE)
+            for item in self._command_items()
+            if item.checkState(0) != Qt.CheckState.Checked
+        ]
+        # Keep ids this version doesn't know so saving never re-enables them.
+        unknown = [d for d in self._config.disabled_commands if d not in catalog_ids]
         cfg = dataclasses.replace(
             self._config,
             enabled=self._enabled.isChecked(),
-            wake_words=tuple(self.wake_words()) or self._config.wake_words,
+            wake_word=self.wake_word() or self._config.wake_word,
             dictation_editing=self._dictation_editing.isChecked(),
             ai_fallback=self._ai_fallback.isChecked(),
+            disabled_commands=tuple(unknown + unchecked),
         )
         return cfg.to_dict()
 
     def validate(self) -> List[str]:
-        if self._enabled.isChecked() and not self.wake_words():
-            return ["Voice commands: enter at least one wake word."]
+        if self._enabled.isChecked() and not self.wake_word():
+            return ["Voice commands: choose or type a wake word."]
         return []
 
     # -- internals ----------------------------------------------------------
+
+    def _command_items(self):
+        root = self._commands.invisibleRootItem()
+        for g in range(root.childCount()):
+            group = root.child(g)
+            for i in range(group.childCount()):
+                yield group.child(i)
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
 
         self._enabled = QCheckBox("Enable voice commands")
         self._enabled.setToolTip(
-            "Say the wake word, then a command: “computadora, terminal servidor”."
+            "Say the wake word, then a command: “computer, next song”."
         )
         self._enabled.toggled.connect(self._on_enabled_toggled)
         layout.addWidget(self._enabled)
 
         wake_row = QHBoxLayout()
-        wake_row.addWidget(QLabel("Wake words:"))
-        self._wake_words = QLineEdit()
-        self._wake_words.setPlaceholderText("computadora, compu")
-        self._wake_words.setToolTip(
-            "Comma-separated. A phrase must START with one of these to run a "
-            "command, so normal talking on stream never triggers actions. "
-            "Add variants if Whisper spells your wake word differently."
+        wake_row.addWidget(QLabel("Wake word:"))
+        self._wake_word = QComboBox()
+        self._wake_word.setEditable(True)
+        self._wake_word.addItems(WAKE_WORD_PRESETS)
+        self._wake_word.setToolTip(
+            "Pick one or type your own. A phrase must START with the wake word "
+            "to run a command, so normal talking on stream never triggers "
+            "actions. Two-word wake words like “hey computer” misfire less."
         )
-        wake_row.addWidget(self._wake_words, 1)
+        wake_row.addWidget(self._wake_word, 1)
         layout.addLayout(wake_row)
 
+        edits = ", ".join(_say(p[0]) for p in DEFAULT_EDITS.values())
         self._dictation_editing = QCheckBox(
-            "Dictation editing while typing (“nueva línea”, “borra eso”, "
-            "“deja de escribir”…)"
+            "Dictation editing while typing (no wake word needed)"
         )
         self._dictation_editing.setToolTip(
-            "Only when the whole phrase is the command, so dictating a sentence "
-            "that contains those words still types it."
+            f"Say on its own while dictating: {edits}. Only when the whole "
+            "phrase is the command, so a sentence containing those words is "
+            "still typed."
         )
         layout.addWidget(self._dictation_editing)
 
@@ -140,37 +130,48 @@ class VoiceCommandsSection(QWidget):
             "Ask the AI when a command isn't in the list (uses the AI Assistant's LLM)"
         )
         self._ai_fallback.setToolTip(
-            "The AI can only use the same safe actions as your commands. It "
-            "never presses Enter and never types into a terminal. It sees your "
-            "open window titles and tab names to pick the right one."
+            "The AI can only use the same safe actions as the built-in "
+            "commands. It never presses Enter and never types into a terminal. "
+            "It sees your open window titles and tab names to pick the right one."
         )
         layout.addWidget(self._ai_fallback)
 
         group = QGroupBox("Commands")
         group_layout = QVBoxLayout(group)
-        self._commands_view = QPlainTextEdit()
-        self._commands_view.setReadOnly(True)
-        group_layout.addWidget(self._commands_view)
+        self._commands = QTreeWidget()
+        self._commands.setColumnCount(2)
+        self._commands.setHeaderLabels(["Say (after the wake word)", "Does"])
+        self._commands.setRootIsDecorated(False)
+        groups = {}
+        for command in COMMANDS:
+            parent = groups.get(command.group)
+            if parent is None:
+                parent = QTreeWidgetItem(self._commands, [command.group])
+                parent.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                font = parent.font(0)
+                font.setBold(True)
+                parent.setFont(0, font)
+                parent.setFirstColumnSpanned(True)
+                groups[command.group] = parent
+            item = QTreeWidgetItem(
+                parent,
+                [" / ".join(_say(p) for p in command.phrases), command.description],
+            )
+            item.setData(0, _ID_ROLE, command.id)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(0, Qt.CheckState.Checked)
+        self._commands.expandAll()
+        self._commands.resizeColumnToContents(0)
+        group_layout.addWidget(self._commands)
         hint = QLabel(
-            "<i>Commands are edited in <b>shortcuts.json</b> under "
-            "<code>voice_commands.commands</code>. A phrase can end with "
-            "<code>{name}</code> to capture the rest of what you say.</i>"
+            "<i>“…” is a name you say, e.g. “computer, terminal two” or "
+            "“computer, tab gmail”. Uncheck a command to turn it off.</i>"
         )
         hint.setWordWrap(True)
         group_layout.addWidget(hint)
-        btn_row = QHBoxLayout()
-        self._open_btn = QPushButton("Open config file")
-        self._open_btn.clicked.connect(self._open_config_file)
-        btn_row.addWidget(self._open_btn)
-        btn_row.addStretch(1)
-        group_layout.addLayout(btn_row)
         layout.addWidget(group, 1)
 
     def _on_enabled_toggled(self, *_args) -> None:
         on = self._enabled.isChecked()
-        for w in (self._wake_words, self._dictation_editing, self._ai_fallback):
+        for w in (self._wake_word, self._dictation_editing, self._ai_fallback, self._commands):
             w.setEnabled(on)
-
-    def _open_config_file(self) -> None:
-        if self._config_path is not None and self._config_path.exists():
-            os.startfile(str(self._config_path))  # type: ignore[attr-defined]

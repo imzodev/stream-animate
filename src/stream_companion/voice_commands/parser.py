@@ -2,17 +2,14 @@
 
 Everything is compared after :func:`normalize`: lowercase, accents and
 punctuation removed, whitespace collapsed. Whisper writes the same speech
-many ways ("Computadora, abre YouTube." / "computadora abre youtube"), and
-users write config phrases without accents ("pestana {name}").
+many ways ("Computer, open YouTube." / "computer open youtube").
 """
 
 from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
-
-from .config import VoiceCommand
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 _SLOT = re.compile(r"\{(\w+)\}")
 
@@ -36,7 +33,7 @@ def split_wake_word(text: str, wake_words: Iterable[str]) -> Optional[str]:
 
     norm = normalize(text)
     words = norm.split()
-    # Longest wake word first so "oye computadora" beats "oye".
+    # Longest wake word first so "hey computer" beats "hey".
     for wake in sorted((normalize(w) for w in wake_words), key=len, reverse=True):
         if not wake:
             continue
@@ -47,16 +44,17 @@ def split_wake_word(text: str, wake_words: Iterable[str]) -> Optional[str]:
 
 
 class CommandMatcher:
-    """Match a command string against configured phrase templates.
+    """Match a command string against phrase templates.
 
     A template is plain words, optionally ending with one ``{slot}`` that
     captures the rest of the phrase: ``"terminal {name}"`` matches
-    "terminal servidor web" with ``{"name": "servidor web"}``. The most
-    specific template (most literal words) wins.
+    "terminal web server" with ``{"name": "web server"}``. The most
+    specific template (most literal words) wins. Commands are any objects
+    with ``phrases`` and ``actions``.
     """
 
-    def __init__(self, commands: Sequence[VoiceCommand]) -> None:
-        entries: List[Tuple[int, Tuple[str, ...], Optional[str], VoiceCommand]] = []
+    def __init__(self, commands: Sequence[Any]) -> None:
+        entries: List[Tuple[int, Tuple[str, ...], Optional[str], Any]] = []
         for command in commands:
             for phrase in command.phrases:
                 norm = normalize(phrase)
@@ -75,7 +73,7 @@ class CommandMatcher:
         entries.sort(key=lambda e: (e[0], e[2] is None), reverse=True)
         self._entries = entries
 
-    def match(self, command_text: str) -> Optional[Tuple[VoiceCommand, Dict[str, str]]]:
+    def match(self, command_text: str) -> Optional[Tuple[Any, Dict[str, str]]]:
         words = normalize(command_text).split()
         for _n, literal, slot, command in self._entries:
             if words[: len(literal)] != list(literal):

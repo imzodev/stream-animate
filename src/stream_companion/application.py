@@ -165,8 +165,8 @@ class Application:
             if self._stt_engine is not None:
                 self._stt_engine.set_command_handler(self._voice_service.handle)
             self._logger.info(
-                "Voice commands on: wake_words=%s commands=%d ai_fallback=%s",
-                list(self._voice_service.config.wake_words),
+                "Voice commands on: wake_word=%r commands=%d ai_fallback=%s",
+                self._voice_service.config.wake_word,
                 len(self._voice_service.config.commands),
                 self._voice_service.config.ai_fallback,
             )

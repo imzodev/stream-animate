@@ -14,6 +14,7 @@ Safety rules (enforced here, not trusted to the model):
   never submit it).
 * No ``type_text`` or ``keys`` when the input would land in a terminal
   window (Windows Terminal / console).
+* No ``click`` actions (a click can submit, buy or delete).
 * At most :data:`MAX_STEPS` actions.
 """
 
@@ -33,21 +34,23 @@ _LOGGER = logging.getLogger(__name__)
 MAX_STEPS = 8
 
 SYSTEM_PROMPT = f"""You control a Windows PC for a live streamer by voice.
-Turn the user's spoken request (Spanish or English; it comes from speech
-recognition, so expect typos) into a short plan of actions.
+Turn the user's spoken request (it comes from speech recognition, so expect
+typos) into a short plan of actions.
 
 Reply with ONLY a JSON object, no prose, no code fences:
-{{"actions": [ ... ], "say": "<very short confirmation, user's language>"}}
+{{"actions": [ ... ], "say": "<very short confirmation in English>"}}
 
 Allowed actions (nothing else exists):
 - {{"type": "open", "target": "<URL, protocol like spotify:, or program like notepad / calc / mspaint>"}}
 - {{"type": "focus_window", "title": "<part of an open window's title>"}}
 - {{"type": "switch_tab", "app": "terminal"|"browser", "tab": "<part of tab name, or a number 1-9>"}}
-- {{"type": "media", "key": one of {list(MEDIA_KEYS)}}}
+- {{"type": "media", "key": one of {list(MEDIA_KEYS)}, "repeat": 1}} (each volume press is 2%)
 - {{"type": "keys", "keys": "<combo like <ctrl>+t or <alt>+<f4>>", "repeat": 1}}
 - {{"type": "type_text", "text": "<text to paste>"}}
 - {{"type": "dictation", "state": "on"|"off"|"toggle"}}
 - {{"type": "wait", "ms": <0-5000>}}
+- {{"type": "volume", "level": <0-100>}} or {{"type": "volume", "mute": true|false}}
+- {{"type": "scroll", "direction": "up"|"down"|"top"|"bottom", "amount": "small"|"page"|"large"}}
 
 Rules:
 - At most {MAX_STEPS} actions. Prefer the fewest.
@@ -126,6 +129,10 @@ def check_plan(
                 raise PlanRejected("pressing Enter is not allowed")
             if target_is_terminal:
                 raise PlanRejected("sending keys to a terminal is not allowed")
+        elif kind == "click":
+            # Clicking is for the user's own "click …" command only: the AI
+            # can't see the page, and a click can submit, buy or delete.
+            raise PlanRejected("clicking is not allowed for the AI")
         elif kind == "type_text":
             if "\n" in a["text"] or "\r" in a["text"]:
                 raise PlanRejected("typing line breaks is not allowed")
