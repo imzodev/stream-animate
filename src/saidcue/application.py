@@ -159,6 +159,7 @@ class Application:
                 voice_commands_config,
                 engine_getter=lambda: self._stt_engine,
                 llm_config=llm_config,
+                assistant_getter=lambda: self._fact_checker,
             )
         if self._voice_service is not None:
             self._voice_service.set_feedback(self._signals.voice_feedback.emit)

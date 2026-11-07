@@ -217,44 +217,111 @@ class FactCheckerEngine:
                     self._phase,
                 )
                 return
-            self._listening = True
-            self._stop_event.clear()
-            # Reset the cancel flag too so a previous run's ESC
-            # press doesn't bleed into this run.
-            self._cancel_event.clear()
-            self._last_error = None
-            self._last_question = ""
-            self._started_at = time.time()
-            self._phrase_buffer = []
-            # 0.0 means "no phrase has arrived yet" — the silence
-            # detector in _run() ignores the silence timeout until at
-            # least one phrase is buffered, so a slow STT engine (which
-            # can take several seconds to produce its first phrase) does
-            # NOT cause us to give up with an empty question.
-            self._last_phrase_at = 0.0
-            self._thread = threading.Thread(
-                target=self._run,
-                name="fact-checker",
-                daemon=True,
-            )
-            self._thread.start()
-            self._phase = "listening"
-            # Subscribe to STT phrases. We register the observer only
-            # while listening so we don't accumulate callbacks when
-            # idle.
-            self._stt_engine.add_phrase_observer(self._on_stt_phrase_for_fact_check)
-            observers = list(self._observers)
-        for cb in observers:
-            try:
-                cb(FactCheckerEvent(phase="listening"))
-            except Exception:  # pragma: no cover - user callback
-                _LOGGER.exception("Fact-checker observer raised")
+            observers = self._begin_locked(None)
+        self._notify_listening(observers)
         _LOGGER.info(
             "Fact-checker toggle: start (model=%s, persona=%s, "
             "subscribed to STT phrase stream)",
             self._config.model,
             self._config.persona,
         )
+
+    def start_listening(self) -> bool:
+        """Start listening for a question without toggling (voice "ask a question").
+
+        Returns ``False`` when it cannot start: no STT engine is wired, or a
+        question is already being listened for or answered. Unlike
+        :meth:`toggle` it never stops an active listen.
+        """
+        if self._stt_engine is None:
+            _LOGGER.warning("Fact-checker start ignored: no STT engine wired")
+            return False
+        with self._lock:
+            if self._listening or self.is_running:
+                return False
+            observers = self._begin_locked(None)
+        self._notify_listening(observers)
+        _LOGGER.info("Fact-checker: start listening by voice")
+        return True
+
+    def ask(self, question: str) -> bool:
+        """Send ``question`` straight to the assistant, with no listening step.
+
+        Used by voice commands such as "computer, ask how tall is Everest".
+        If the assistant is already listening, the question replaces what it
+        heard so far and is sent right away. Returns ``False`` for an empty
+        question or when an answer is already being produced.
+        """
+        question = (question or "").strip()
+        if not question:
+            return False
+        with self._lock:
+            if self._listening:
+                self._phrase_buffer = [question]
+                self._last_phrase_at = time.time()
+                self._stop_event.set()
+                _LOGGER.info("Fact-checker: question supplied while listening")
+                return True
+            if self.is_running:
+                _LOGGER.info("Fact-checker ask ignored: already processing")
+                return False
+            observers = self._begin_locked(question)
+        self._notify_listening(observers)
+        _LOGGER.info("Fact-checker: asked by voice: %r", question)
+        return True
+
+    def _begin_locked(self, preset: Optional[str]) -> List[Callable[[FactCheckerEvent], None]]:
+        """Start the worker thread. Caller holds ``self._lock``.
+
+        With ``preset`` the question is already known, so the worker
+        finalises it immediately instead of waiting for speech.
+        """
+        self._listening = True
+        self._stop_event.clear()
+        # Reset the cancel flag too so a previous run's ESC
+        # press doesn't bleed into this run.
+        self._cancel_event.clear()
+        self._last_error = None
+        self._last_question = ""
+        self._started_at = time.time()
+        self._phrase_buffer = [preset] if preset else []
+        # 0.0 means "no phrase has arrived yet" — the silence
+        # detector in _run() ignores the silence timeout until at
+        # least one phrase is buffered, so a slow STT engine (which
+        # can take several seconds to produce its first phrase) does
+        # NOT cause us to give up with an empty question.
+        self._last_phrase_at = 0.0
+        if preset:
+            self._stop_event.set()
+        self._phase = "listening"
+        # Subscribe to STT phrases. We register the observer only
+        # while listening so we don't accumulate callbacks when
+        # idle. A preset question needs no further speech.
+        if preset is None and self._stt_engine is not None:
+            self._stt_engine.add_phrase_observer(self._on_stt_phrase_for_fact_check)
+        return list(self._observers)
+
+    def _notify_listening(
+        self, observers: List[Callable[[FactCheckerEvent], None]]
+    ) -> None:
+        """Tell observers we are listening, then start the worker.
+
+        The worker starts only after observers were told, so a question that
+        is already known cannot report "thinking" before "listening".
+        """
+        for cb in observers:
+            try:
+                cb(FactCheckerEvent(phase="listening"))
+            except Exception:  # pragma: no cover - user callback
+                _LOGGER.exception("Fact-checker observer raised")
+        with self._lock:
+            self._thread = threading.Thread(
+                target=self._run,
+                name="fact-checker",
+                daemon=True,
+            )
+            thread = self._thread
+        thread.start()
 
     def add_observer(self, callback: Callable[[FactCheckerEvent], None]) -> None:
         with self._lock:

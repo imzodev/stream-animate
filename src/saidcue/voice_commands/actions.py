@@ -60,7 +60,9 @@ class ActionRunner:
         sleep: Callable[[float], None] = time.sleep,
         elements_factory: Optional[Callable[[], Any]] = None,
         volume_factory: Optional[Callable[[], Any]] = None,
+        assistant_getter: Optional[Callable[[], Any]] = None,
     ) -> None:
+        self._assistant_getter = assistant_getter or (lambda: None)
         self._elements_factory = elements_factory
         self._elements = None
         self._volume_factory = volume_factory
@@ -188,6 +190,22 @@ class ActionRunner:
         active = (not engine.is_active) if state == "toggle" else state == "on"
         engine.set_active(active)
         return ActionResult(True, "Dictation on" if active else "Dictation off")
+
+    def _do_ask(self, a) -> ActionResult:
+        assistant = self._assistant_getter()
+        if assistant is None:
+            return ActionResult(False, "The AI assistant isn't set up (see the AI Assistant tab)")
+        if not assistant.ask(a["question"]):
+            return ActionResult(False, "The assistant is busy, try again in a moment")
+        return ActionResult(True, "Asking the assistant…")
+
+    def _do_ask_listen(self, a) -> ActionResult:
+        assistant = self._assistant_getter()
+        if assistant is None:
+            return ActionResult(False, "The AI assistant isn't set up (see the AI Assistant tab)")
+        if not assistant.start_listening():
+            return ActionResult(False, "The assistant is already listening or busy")
+        return ActionResult(True, "Listening for your question…")
 
     def _do_wait(self, a) -> ActionResult:
         self._sleep(a["ms"] / 1000.0)

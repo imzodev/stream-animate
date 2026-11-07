@@ -6,7 +6,7 @@ Turn your keyboard into a live-production command center. Saidcue listens for yo
 - **Always-on control:** Define global shortcuts (e.g., `<ctrl>+<alt>+c`) that work even when your streaming software is focused.
 - **Instant reactions:** Fire sound bites (WAV/MP3) and overlays (PNG/GIF/JPG/Video) with a tap.
 - **Speech-to-text typing:** Use OpenAI Whisper to dictate into any focused text field. Toggle with a hotkey or run it always-on, in 99+ languages with auto-detect.
-- **AI Assistant:** Press a hotkey, speak a question, and an LLM streams a short answer (fact-checker, explainer, tutor, or custom persona) into a floating on-screen panel. Works with any OpenAI-compatible provider.
+- **AI Assistant:** Press a hotkey, or just say "computer, ask …", speak a question, and an LLM streams a short answer (fact-checker, explainer, tutor, or custom persona) into a floating on-screen panel. Works with any OpenAI-compatible provider.
 - **Configurable visuals:** Choose overlay positions, screen duration, and transparency to match your brand.
 - **Desktop configurator:** A streamlined UI with file-browser selection, live preview, and hotkey capture makes setup effortless—no manual JSON editing required.
 - **Low footprint:** Runs quietly in the background so you can focus on the show.
@@ -314,6 +314,7 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 - "**computer, click subscribe**" / "**click search**" → presses the button or link with that label in the front window, or puts the cursor in the text box (then say "computer, start dictation" to type into it)
 - "**computer, skip ad**" → clicks YouTube's *Skip* button (also when YouTube shows it in Spanish, Portuguese, French or German); says "No ad to skip" otherwise
 - "**computer, press enter**" / "**hit enter**" / "**submit**" / "**send it**" → presses Enter, to submit the form or message you just typed. Spanish "presiona enter" / "enviar" work too
+- "**computer, ask how tall is Everest**" / "**explain …**" / "**what is …**" / "**who is …**" / "**why …**" / "**how …**" → asks the AI Assistant and shows the answer in its panel. "**computer, ask a question**" (or just "**computer, assistant**") starts listening, then you say the question. Needs the AI Assistant set up (see below)
 - "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
 
 Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by voice. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
@@ -361,6 +362,13 @@ Press a global hotkey, speak a question, and an LLM streams a short answer into 
    - **Custom** — supply your own system prompt.
 5. Set a **toggle hotkey** (e.g. `<ctrl>+<alt>+q`).
 6. Save the configuration. The fact-checker is now active.
+
+### Ask by voice
+With voice commands on, you do not need the hotkey. Start with your wake word:
+- **One sentence:** "computer, ask how tall is Everest", "computer, explain quantum computing", "computer, what is a heron", "computer, who is Ada Lovelace", "computer, why is the sky blue", "computer, how many moons does Mars have". The question is sent straight away and the answer streams into the panel. Spanish works too: "computer, pregunta …".
+- **Two steps:** say "computer, ask a question" (also "computer, assistant" or "computer, I have a question"), then say the question after the panel opens. It is sent after a short silence, exactly as with the hotkey.
+- Saying a question while the assistant is already listening replaces what it heard and sends it. While it is answering, a new question is refused until it finishes; press the cancel hotkey to stop an answer.
+- These commands appear under **AI assistant** in the Voice Commands tab and can be switched off one by one. Like the hotkey, they need the AI Assistant configured and the speech engine running.
 
 ### How it works
 - **Press the hotkey** → a daemon thread opens a microphone stream and starts transcribing audio with Whisper.

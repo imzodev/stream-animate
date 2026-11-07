@@ -35,6 +35,8 @@ ACTION_TYPES = (
     "click",
     "scroll",
     "volume",
+    "ask",
+    "ask_listen",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser")
@@ -135,6 +137,11 @@ def validate_action(action: Any) -> Dict[str, Any]:
         if amount not in SCROLL_AMOUNTS:
             raise ActionError(f"scroll 'amount' must be one of {SCROLL_AMOUNTS}")
         out["amount"] = amount
+    elif kind == "ask":
+        # A question for the AI assistant's answer panel.
+        out["question"] = _require_str(action, "question")
+    elif kind == "ask_listen":
+        pass  # start listening for a spoken question; takes no arguments
     elif kind == "volume":
         # Exactly one of: ``level`` (0-100, or spoken text like "fifty" /
         # "{level}", parsed when it runs) or ``mute`` (true/false).

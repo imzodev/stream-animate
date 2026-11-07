@@ -16,7 +16,9 @@ __all__ = [
 ]
 
 
-def build_service(config, *, engine_getter, llm_config=None, on_feedback=None):
+def build_service(
+    config, *, engine_getter, llm_config=None, on_feedback=None, assistant_getter=None
+):
     """Wire the real Windows backends into a :class:`VoiceCommandService`."""
 
     from .actions import ActionRunner
@@ -52,6 +54,7 @@ def build_service(config, *, engine_getter, llm_config=None, on_feedback=None):
         tabs_factory=tabs_factory,
         typer=_LazyTyper(),
         engine_getter=engine_getter,
+        assistant_getter=assistant_getter,
     )
 
     agent = None

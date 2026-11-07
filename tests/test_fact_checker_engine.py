@@ -646,3 +646,83 @@ def test_fact_checker_falsy_language_falls_back_to_auto(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "sk-test")
     engine = FactCheckerEngine(_fast_config(), stt_engine=FakeSTTEngine(), language="")
     assert engine.language == "auto"
+
+
+# ---------------------------------------------------------------------------
+# Voice activation: ask() and start_listening()
+# ---------------------------------------------------------------------------
+
+
+def test_ask_sends_the_question_without_listening(monkeypatch) -> None:
+    _short_silence(monkeypatch)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    stt = FakeSTTEngine()
+    client = FakeClient(tokens=["Tall", "."])
+    events: List[FactCheckerEvent] = []
+    engine = FactCheckerEngine(_fast_config(), stt_engine=stt, client=client)
+    engine.add_observer(events.append)
+
+    assert engine.ask("how tall is Everest") is True
+    _wait_for(lambda: not engine.is_running, timeout=3.0)
+
+    phases = [e.phase for e in events]
+    # "listening" is reported first so the panel opens, then the usual flow.
+    assert phases[0] == "listening"
+    assert phases.index("listening") < phases.index("thinking") < phases.index("streaming")
+    assert phases[-1] == "done"
+    assert client.streamed == ["how tall is Everest"]
+    thinking = [e for e in events if e.phase == "thinking"][0]
+    assert thinking.text == "how tall is Everest"
+    engine.close()
+
+
+def test_ask_rejects_empty_and_busy(monkeypatch) -> None:
+    _short_silence(monkeypatch)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    engine = FactCheckerEngine(
+        _fast_config(),
+        stt_engine=FakeSTTEngine(),
+        client=FakeClient(tokens=["a", "b", "c"], token_delay=0.15),
+    )
+    assert engine.ask("   ") is False
+    assert engine.ask("first") is True
+    _wait_for(lambda: engine.phase in ("thinking", "streaming"), timeout=3.0)
+    assert engine.ask("second") is False  # an answer is already being produced
+    engine.close()
+
+
+def test_ask_while_listening_replaces_what_was_heard(monkeypatch) -> None:
+    _short_silence(monkeypatch)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    stt = FakeSTTEngine()
+    client = FakeClient(tokens=["ok"])
+    engine = FactCheckerEngine(_fast_config(), stt_engine=stt, client=client)
+
+    assert engine.start_listening() is True
+    stt.emit_phrase("um let me think")
+    assert engine.ask("what is a heron") is True
+    _wait_for(lambda: not engine.is_running, timeout=3.0)
+    assert client.streamed == ["what is a heron"]
+    engine.close()
+
+
+def test_start_listening_never_stops_an_active_listen(monkeypatch) -> None:
+    _short_silence(monkeypatch)
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    stt = FakeSTTEngine()
+    client = FakeClient(tokens=["ok"])
+    engine = FactCheckerEngine(_fast_config(), stt_engine=stt, client=client)
+
+    assert engine.start_listening() is True
+    assert engine.start_listening() is False  # unlike toggle(), no stop
+    assert engine.is_listening
+    stt.emit_phrase("why is the sky blue")
+    _wait_for(lambda: not engine.is_running, timeout=3.0)
+    assert client.streamed == ["why is the sky blue"]
+    engine.close()
+
+
+def test_start_listening_without_stt_engine_returns_false(monkeypatch) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    engine = FactCheckerEngine(_fast_config(), client=FakeClient())
+    assert engine.start_listening() is False

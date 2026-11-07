@@ -274,6 +274,14 @@ button { font: inherit; cursor: pointer; }
 .mini-enter .cmp { display: flex; align-items: center; gap: 10px; border: 2px solid var(--ink); border-radius: 14px; padding: 10px 10px 10px 14px; font-size: 0.9rem; }
 .mini-enter .cmp .t { flex: 1; white-space: nowrap; overflow: hidden; animation: txt 6s infinite; } .mini-enter .cmp b { background: var(--ink); color: #fff; border-radius: 10px; padding: 7px 14px; font-size: 0.82rem; animation: sendb 6s infinite; }
 @keyframes txt { 0%, 42% { opacity: 1; } 46%, 92% { opacity: 0; } 100% { opacity: 1; } } @keyframes sendb { 0%, 38% { transform: none; background: var(--ink); } 42%, 50% { transform: scale(0.9); background: #3b3f3d; box-shadow: 0 0 0 4px rgba(184, 242, 222, 0.95); } 56%, 100% { transform: none; background: var(--ink); box-shadow: none; } }
+.mini-ai { background: #fff; border-radius: 22px; padding: 24px; display: grid; gap: 12px; box-shadow: 0 30px 60px -26px rgba(30, 20, 60, 0.5); position: relative; }
+.mini-ai .q { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: #6a6f6c; }
+.mini-ai .qt { font-weight: 600; font-size: 1.15rem; letter-spacing: -0.02em; }
+.mini-ai .th { position: absolute; right: 22px; top: 22px; font-family: var(--font-mono); font-size: 0.72rem; background: var(--lilac); border-radius: 99px; padding: 3px 10px; animation: think 6s infinite; }
+@keyframes think { 0%, 18% { opacity: 1; } 24%, 100% { opacity: 0; } }
+.mini-ai .ln { display: block; height: 10px; border-radius: 99px; background: #d9d5ee; transform-origin: left; animation: ans 6s infinite; animation-delay: calc(var(--i) * 0.35s); }
+.mini-ai .ln:nth-of-type(2) { width: 90%; } .mini-ai .ln:nth-of-type(3) { width: 64%; }
+@keyframes ans { 0%, 22% { transform: scaleX(0); } 52%, 90% { transform: scaleX(1); } 100% { transform: scaleX(0); } }
 @media (max-width: 900px) {
   .stage { grid-template-columns: minmax(0, 1fr); }
   .stage-left { position: static; }
@@ -739,10 +747,11 @@ footer { margin-top: 12px; background: var(--block); color: var(--block-fg); bor
             <li class="cl" data-i="3"><span class="pre">computer,</span><b>scroll down</b><p>Scrolls the front window. Page up, top and bottom work too.</p></li>
             <li class="cl" data-i="4"><span class="pre">computer,</span><b>volume to 50</b><p>Sets the exact level. Mute and unmute are exact, not toggles.</p></li>
             <li class="cl" data-i="5"><span class="pre">computer,</span><b>press enter</b><p>Submits the form or message you just typed. &ldquo;Submit&rdquo; and &ldquo;send it&rdquo; work too.</p></li>
+            <li class="cl" data-i="6"><span class="pre">computer,</span><b>ask how tall is everest</b><p>Asks the AI assistant and streams the answer into its panel. Try &ldquo;explain&hellip;&rdquo;, &ldquo;what is&hellip;&rdquo;, &ldquo;why&hellip;&rdquo;, or say &ldquo;ask a question&rdquo; first.</p></li>
           </ul>
           <div class="stage-note">
             <div class="wakes" aria-label="Wake word presets"><code>computer</code><code>hey computer</code><code>assistant</code><code>hey assistant</code><code>companion</code><code>or your own</code></div>
-            <p class="fine">39 commands are built in and each can be switched off. Also: media keys, save, copy, paste, undo, new tab. Say a command twice in one breath and it still works. Anything unmatched can go to your AI if you turn that on, and it can never click, press Enter or type into a terminal.</p>
+            <p class="fine">47 commands are built in and each can be switched off. Also: ask the AI by voice, media keys, save, copy, paste, undo, new tab. Say a command twice in one breath and it still works. Anything unmatched can go to your AI if you turn that on, and it can never click, press Enter or type into a terminal.</p>
             <p class="win">Windows only for now: voice commands use Windows UI Automation.</p>
           </div>
         </div>
@@ -783,6 +792,12 @@ footer { margin-top: 12px; background: var(--block); color: var(--block-fg); bor
             <div class="mini"><div class="mini-enter"><div class="bub">Are you joining the standup?</div><div class="bub me">Running ten minutes late.</div><div class="cmp"><span class="t">Running ten minutes late.</span><b>Send</b></div></div></div>
             <p class="desc"><b>Press enter.</b> Submits the message you just typed.</p>
             <span class="chip res">Message sent</span>
+          </article>
+          <article class="scene" data-i="6" style="--sc:var(--lilac)">
+            <span class="chip say">computer, ask how tall is everest</span>
+            <div class="mini"><div class="mini-ai"><span class="q">AI assistant</span><span class="th">Thinking&hellip;</span><span class="qt">How tall is Everest?</span><span class="ln" style="--i:0"></span><span class="ln" style="--i:1"></span><span class="ln" style="--i:2"></span></div></div>
+            <p class="desc"><b>Ask.</b> Sends the question to your AI assistant and streams the answer.</p>
+            <span class="chip res">Answer in the assistant panel</span>
           </article>
         </div>
       </div>
@@ -1131,7 +1146,7 @@ footer { margin-top: 12px; background: var(--block); color: var(--block-fg); bor
         <table class="cmp">
           <thead><tr><th></th><th>Dictation apps</th><th>Stream bots and deck software</th><th class="us">Saidcue</th></tr></thead>
           <tbody>
-            <tr><td>Controls your PC by voice</td><td>Rarely</td><td>Needs scripts and actions</td><td class="us yes">Yes, 39 commands</td></tr>
+            <tr><td>Controls your PC by voice</td><td>Rarely</td><td>Needs scripts and actions</td><td class="us yes">Yes, 47 commands</td></tr>
             <tr><td>Types what you say</td><td class="yes">Yes</td><td>No</td><td class="us yes">Yes</td></tr>
             <tr><td>Sends it when you say &ldquo;press enter&rdquo;</td><td>Varies by app</td><td>No</td><td class="us yes">Yes</td></tr>
             <tr><td>AI answers on your screen</td><td>Uncommon</td><td>Bots answer chat, not you</td><td class="us yes">Yes</td></tr>
@@ -1202,7 +1217,7 @@ footer { margin-top: 12px; background: var(--block); color: var(--block-fg); bor
     <div class="wrap">
       <div class="sec-head"><span class="label">Questions</span><h2>Before you install.</h2></div>
       <div class="faq">
-        <details><summary>What can I control by voice?</summary><p>Anything with a keyboard shortcut, plus any button, link or text box that Windows UI Automation can see, which includes web pages in your browser. You can open sites and programs, scroll, set the volume, use media keys and press Enter. The full list is in the Voice Commands tab of the settings window.</p></details>
+        <details><summary>What can I control by voice?</summary><p>Anything with a keyboard shortcut, plus any button, link or text box that Windows UI Automation can see, which includes web pages in your browser. You can open sites and programs, scroll, set the volume, use media keys, ask the AI assistant a question out loud and press Enter. The full list is in the Voice Commands tab of the settings window.</p></details>
         <details><summary>Does it work on Linux?</summary><p>Voice commands are Windows-only for now. The Linux build is an early release focused on dictation, voice triggers and the AI co-pilot, and it has had less testing.</p></details>
         <details><summary>What do I need to run it?</summary><p>A Windows 10 or 11 64-bit PC, or a 64-bit Linux desktop, with 8 GB of RAM (16 GB recommended) and a microphone. An NVIDIA GPU makes dictation faster on Windows, and it runs on the CPU if you don't have one. See the full requirements above.</p></details>
         <details><summary>Will it fire when I'm just talking?</summary><p>No. A command only runs when your phrase starts with the wake word, so ordinary conversation is ignored. A two-word wake word such as &ldquo;hey computer&rdquo; misfires even less.</p></details>

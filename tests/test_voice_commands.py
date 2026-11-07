@@ -918,3 +918,90 @@ def test_enter_command_beats_the_click_command():
     assert matcher.match("press the save button")[0].id == "click"
     enter = next(c for c in COMMANDS if c.id == "press_enter")
     assert enter.actions[0]["keys"] == "<enter>"
+
+
+# ---------------------------------------------------------------------------
+# Asking the AI assistant by voice
+# ---------------------------------------------------------------------------
+
+
+class _FakeAssistant:
+    def __init__(self, ask_ok=True, listen_ok=True):
+        self.questions, self.listened = [], 0
+        self._ask_ok, self._listen_ok = ask_ok, listen_ok
+
+    def ask(self, question):
+        self.questions.append(question)
+        return self._ask_ok
+
+    def start_listening(self):
+        self.listened += 1
+        return self._listen_ok
+
+
+def _spoken(text):
+    from saidcue.voice_commands.parser import fill_slots
+
+    matcher = CommandMatcher(COMMANDS)
+    rest = split_wake_word(text, ["computer"])
+    matched = matcher.match(rest)
+    assert matched is not None, text
+    command, slots = matched
+    return command.id, [fill_slots(a, slots) for a in command.actions]
+
+
+@pytest.mark.parametrize(
+    "spoken, command_id, question",
+    [
+        ("computer, ask how tall is Everest", "ask", "how tall is everest"),
+        ("computer ask the assistant who won in 1998", "ask", "who won in 1998"),
+        ("computer, explain quantum computing", "explain", "Explain quantum computing"),
+        ("computer, what is a heron?", "what_is", "What is a heron"),
+        ("computer, what's the capital of France", "what_is", "What is the capital of france"),
+        ("computer, what are black holes", "what_are", "What are black holes"),
+        ("computer, who is Ada Lovelace", "who_is", "Who is ada lovelace"),
+        ("computer, why is the sky blue", "why", "Why is the sky blue"),
+        ("computer, how many moons does Mars have", "how", "How many moons does mars have"),
+        ("computer, pregunta cuántos años tiene la luna", "ask", "cuantos anos tiene la luna"),
+    ],
+)
+def test_spoken_questions_become_ask_actions(spoken, command_id, question):
+    cid, actions = _spoken(spoken)
+    assert cid == command_id
+    assert actions[0]["question"] == question
+    assert actions[0]["type"] == "ask"
+
+
+@pytest.mark.parametrize(
+    "spoken",
+    ["computer, ask a question", "computer, I have a question", "computer, assistant",
+     "computer, ask the assistant", "computer, ask", "computer, pregunta"],
+)
+def test_bare_ask_phrases_start_listening(spoken):
+    cid, actions = _spoken(spoken)
+    assert cid == "ask_listen"
+    assert actions[0]["type"] == "ask_listen"
+
+
+def test_ask_actions_reach_the_assistant():
+    assistant = _FakeAssistant()
+    runner = ActionRunner(assistant_getter=lambda: assistant)
+    result = runner.run([{"type": "ask", "question": "How tall is Everest"}])
+    assert result.ok and assistant.questions == ["How tall is Everest"]
+    result = runner.run([{"type": "ask_listen"}])
+    assert result.ok and assistant.listened == 1
+
+
+def test_ask_actions_report_missing_or_busy_assistant():
+    assert not ActionRunner().run([{"type": "ask", "question": "hi"}]).ok
+    assert not ActionRunner().run([{"type": "ask_listen"}]).ok
+    busy = _FakeAssistant(ask_ok=False, listen_ok=False)
+    runner = ActionRunner(assistant_getter=lambda: busy)
+    assert "busy" in runner.run([{"type": "ask", "question": "hi"}]).message
+    assert not runner.run([{"type": "ask_listen"}]).ok
+
+
+def test_ask_action_needs_a_question():
+    with pytest.raises(ActionError):
+        validate_action({"type": "ask", "question": "  "})
+    assert validate_action({"type": "ask_listen"}) == {"type": "ask_listen"}

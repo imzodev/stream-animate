@@ -72,6 +72,9 @@ def build_guide_html(query: str = "") -> str:
             f'e.g. <code {_CODE}>computer, skip ad</code>. Normal talk never '
             "triggers anything, because the phrase has to start with the wake "
             "word.</p>"
+            "<p>To ask the AI assistant something, say <b>ask</b> and then the "
+            "question, e.g. <code " + _CODE + ">computer, ask how tall is Everest</code>, "
+            "or say <b>ask a question</b> and speak it after the panel opens.</p>"
             "<p>To submit what you typed, say <b>press enter</b> (or "
             "<b>submit</b>, <b>send it</b>). You can say a command twice in "
             "one breath and it still works.</p>"
