@@ -313,6 +313,7 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 - "**computer, open youtube**" / "**open twitch**" / "**open notepad**" / "**open calculator**"
 - "**computer, click subscribe**" / "**click search**" → presses the button or link with that label in the front window, or puts the cursor in the text box (then say "computer, start dictation" to type into it)
 - "**computer, skip ad**" → clicks YouTube's *Skip* button (also when YouTube shows it in Spanish, Portuguese, French or German); says "No ad to skip" otherwise
+- "**computer, press enter**" / "**hit enter**" / "**submit**" / "**send it**" → presses Enter, to submit the form or message you just typed. Spanish "presiona enter" / "enviar" work too
 - "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
 
 Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by voice. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
@@ -321,9 +322,9 @@ The commands are a built-in English set; the settings window's **Voice Commands*
 
 **Wake word:** pick one of the presets (`computer`, `hey computer`, `assistant`, `hey assistant`, `companion`) or type your own. Two-word wake words like "hey computer" misfire less, because ordinary sentences rarely start with them.
 
-**Dictation editing** works while typing mode is on, with no wake word, but only when the *whole* phrase is the command: "new line", "new paragraph", "scratch that" (erases the last phrase), "delete word", "select all", "stop typing".
+**Dictation editing** works while typing mode is on, with no wake word, but only when the *whole* phrase is the command: "new line", "new paragraph", "scratch that" (erases the last phrase), "delete word", "select all", "stop typing". To submit what you typed, say "**press enter**", "**submit**" or "**send it**" (also "hit enter", "press return", "send message", "enter") after a short pause; it presses Enter, which sends a chat message or submits a form. "New line" only adds a line, in the same way.
 
-**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computer, open paint and search for taco recipes"). The AI can only use the same actions as the built-in commands: there is no way to run shell commands. Its plan is checked before anything runs: it can never press Enter, never click anything, never type into a terminal, and is limited to 8 steps. To pick the right window or tab it is sent your open window titles and tab names, so turn it off if those may contain anything you don't want sent to your LLM provider.
+**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computer, open paint and search for taco recipes"). The AI can only use the same actions as the built-in commands: there is no way to run shell commands. You can say a command twice in one breath ("computer skip ad, computer skip ad") and it still matches. Its plan is checked before anything runs: it can never press Enter, never click anything, never type into a terminal, and is limited to 8 steps. To pick the right window or tab it is sent your open window titles and tab names, so turn it off if those may contain anything you don't want sent to your LLM provider.
 
 ```json
 "voice_commands": {
@@ -395,9 +396,15 @@ The "Toggle Fact-Checker" entry in the right-click tray menu has the same effect
   "temperature": 0.3,
   "max_tokens": 512,
   "toggle_hotkey": "<ctrl>+<alt>+q",
-  "timeout_seconds": 30
+  "timeout_seconds": 30,
+  "thinking": "separate",
+  "reasoning_effort": "default"
 }
 ```
+
+- `thinking` — how reasoning that arrives inline in the answer (`<thinking>…</thinking>`) is shown: `separate`, `strip` or `keep`. It only changes the display; the model still reasons and you still wait for it.
+- `reasoning_effort` — how much the *model* reasons before answering: `default` (send nothing), `none`, `minimal`, `low`, `medium` or `high`. Anything but `default` is sent as the OpenAI-style `reasoning_effort` field. It is the way to make a reasoning model (o-series, GPT-5, Gemini, MiniMax and similar) answer faster, and it also applies to the AI voice fallback. Which values a model accepts differs: if requests fail with HTTP 400, go back to `default`. Non-reasoning models such as `gpt-4o-mini` have nothing to turn off. In the settings window it is the **Model reasoning** drop-down.
+- If a reasoning model spends its whole token budget thinking and returns no answer, Saidcue reports "ran out of tokens while reasoning". Lower the reasoning effort or use a non-reasoning model.
 
 ## Logging & Troubleshooting
 - **Structured logs:** All components share the standard Python logger. Use `--log-level DEBUG` for verbose output. Events include application start/stop, hotkey registration, trigger execution, and overlay/sound warnings.

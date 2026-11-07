@@ -72,6 +72,9 @@ def build_guide_html(query: str = "") -> str:
             f'e.g. <code {_CODE}>computer, skip ad</code>. Normal talk never '
             "triggers anything, because the phrase has to start with the wake "
             "word.</p>"
+            "<p>To submit what you typed, say <b>press enter</b> (or "
+            "<b>submit</b>, <b>send it</b>). You can say a command twice in "
+            "one breath and it still works.</p>"
             "<p>The on-screen pill confirms what happened: a green check for "
             "success, a red cross if it failed, or “Thinking…” while the AI "
             "plans a reply.</p>"
@@ -98,7 +101,8 @@ def build_guide_html(query: str = "") -> str:
             "<h2>Editing while you dictate</h2>"
             "<p>No wake word needed — but only when the <b>whole</b> phrase is "
             "the command, said while dictation is on. A sentence that merely "
-            "contains the words is still typed.</p>"
+            "contains the words is still typed. Pause before "
+            "<b>press enter</b> so it is heard as its own phrase.</p>"
             f'<table cellspacing="0">{edit_rows}</table>'
         )
 
@@ -108,7 +112,9 @@ def build_guide_html(query: str = "") -> str:
             "command above goes to your configured LLM instead. It can only "
             "use the same actions as the built-in commands — open an app or "
             "URL, focus a window, switch a tab, press media keys, set volume, "
-            "scroll, type text, or toggle dictation.</p>"
+            "scroll, type text, or toggle dictation. If your model reasons "
+            "(o-series, GPT-5, MiniMax…) and replies slowly, lower "
+            "<b>Model reasoning</b> in the LLM settings.</p>"
             "<p>It can <b>never</b> click anything, press Enter, type into a "
             "terminal, or run a shell command, and it's capped at 8 steps. "
             "Each unmatched command costs roughly 1.5k tokens, since your "
