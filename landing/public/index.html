@@ -1,44 +1,45 @@
-<title>Saidcue: talk to your stream</title>
+<title>Saidcue: control your PC by voice</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Saidcue is a voice co-pilot for Windows and Linux. Say a phrase to fire sounds and overlays, control your PC by voice, ask out loud for an AI answer on screen, and dictate into any app.">
+<meta name="description" content="Saidcue lets you control your PC with your voice: skip ads, scroll, click, open sites and press Enter by speaking. Dictate into any app, ask an AI out loud, and fire stream overlays. Windows and Linux.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Saidcue">
-<meta property="og:title" content="Saidcue: talk to your stream">
-<meta property="og:description" content="Voice triggers, voice commands, AI answers and dictation. Free download for Windows and Linux.">
+<meta property="og:title" content="Saidcue: control your PC by voice">
+<meta property="og:description" content="Control your PC with your voice. Free download for Windows and Linux.">
 <meta property="og:url" content="https://saidcue.com/">
 <meta property="og:image" content="https://saidcue.com/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Saidcue: talk to your stream. Voice triggers, voice commands, AI answers and dictation.">
+<meta property="og:image:alt" content="Saidcue: control your PC by voice. Control your PC with your voice.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Saidcue: talk to your stream">
-<meta name="twitter:description" content="Voice triggers, voice commands, AI answers and dictation. Free download for Windows and Linux.">
+<meta name="twitter:title" content="Saidcue: control your PC by voice">
+<meta name="twitter:description" content="Control your PC with your voice. Free download for Windows and Linux.">
 <meta name="twitter:image" content="https://saidcue.com/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=JetBrains+Mono:wght@400;500;700&display=swap">
-<meta name="theme-color" content="#2339f2">
+<meta name="theme-color" content="#0b4d3b">
 <style>
-/* Layout concept: a stage manager's cue sheet on a chroma-key blue ground.
-   Cobalt is the brand ground, signal yellow is the "GO" key, and ink is the blackout. */
+/* Layout concept: a stage manager's cue sheet, retuned for hands-free PC control.
+   Evergreen is the ground, tangerine is the "GO" key, and sage paper holds the reading. */
 :root {
-  --brand: #2339f2;
-  --signal: #ffd60a;
-  --ink: #0a0e27;
-  --ink-band: #0a0e27;
-  --bg: #eef0f7;
-  --surface: #ffffff;
-  --surface-2: #e2e6f3;
-  --fg: #0a0e27;
-  --muted: #474e75;
-  --line: #c9cee3;
-  --accent: #2339f2;
+  --brand: #0b4d3b;
+  --signal: #ff6b1a;
+  --signal-fg: #1b0d04;
+  --ink: #07201a;
+  --ink-band: #07201a;
+  --bg: #e9eee6;
+  --surface: #fafbf8;
+  --surface-2: #dce4d8;
+  --fg: #0a1f18;
+  --muted: #44574d;
+  --line: #c5d0c1;
+  --accent: #c24a0b;
   --accent-fg: #ffffff;
-  --verb: #2339f2;
+  --verb: #0b4d3b;
   --ok: #0d7a52;
-  --hl: #fff1a8;
+  --hl: #ffe0c9;
   --font-display: "Archivo", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
   --font-body: "Archivo", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
@@ -48,16 +49,16 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ink-band: #04061a; --bg: #070a1c; --surface: #0e1330; --surface-2: #171d45; --fg: #edefff;
-    --muted: #9ba3cf; --line: #252c5a; --accent: #8a98ff; --accent-fg: #070a1c; --verb: #7586ff;
-    --ok: #4cc88a; --hl: rgba(255, 214, 10, 0.16);
+    --ink-band: #030c09; --bg: #06130e; --surface: #0c1f17; --surface-2: #13291f; --fg: #e8f2eb;
+    --muted: #9cb3a5; --line: #21392d; --accent: #ff8a47; --accent-fg: #06130e; --verb: #4cc795;
+    --ok: #4cc88a; --hl: rgba(255, 107, 26, 0.18);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --ink-band: #04061a; --bg: #070a1c; --surface: #0e1330; --surface-2: #171d45; --fg: #edefff;
-  --muted: #9ba3cf; --line: #252c5a; --accent: #8a98ff; --accent-fg: #070a1c; --verb: #7586ff;
-  --ok: #4cc88a; --hl: rgba(255, 214, 10, 0.16);
+  --ink-band: #030c09; --bg: #06130e; --surface: #0c1f17; --surface-2: #13291f; --fg: #e8f2eb;
+  --muted: #9cb3a5; --line: #21392d; --accent: #ff8a47; --accent-fg: #06130e; --verb: #4cc795;
+  --ok: #4cc88a; --hl: rgba(255, 107, 26, 0.18);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -97,11 +98,11 @@ button { font: inherit; cursor: pointer; }
   --surface: rgba(255, 255, 255, 0.06); --surface-2: rgba(255, 255, 255, 0.1);
   --accent: var(--signal); --accent-fg: var(--ink); --ok: #4cc88a;
 }
-.band.cobalt {
+.band.deep {
   background: var(--brand); color: #fff;
   --fg: #ffffff; --muted: rgba(255, 255, 255, 0.8); --line: rgba(255, 255, 255, 0.3);
   --surface: rgba(255, 255, 255, 0.1); --surface-2: rgba(255, 255, 255, 0.16);
-  --accent: var(--signal); --accent-fg: var(--ink);
+  --accent: var(--signal); --accent-fg: var(--signal-fg); --ok: #4cc88a;
 }
 .sec-head { display: grid; gap: 20px; max-width: 52rem; margin-bottom: clamp(32px, 5vw, 64px); }
 .sec-head p { color: var(--muted); font-size: 1.12rem; max-width: 40rem; }
@@ -118,12 +119,12 @@ section[id] { scroll-margin-top: 76px; }
 .dl b { font-weight: 700; font-size: 1.02rem; overflow-wrap: anywhere; }
 .dl small { font-family: var(--font-mono); font-size: 0.72rem; opacity: 0.8; }
 .dl svg { flex: 0 0 auto; }
-.dl-primary { background: var(--signal); color: var(--ink); border-color: var(--ink); box-shadow: 0 5px 0 var(--ink); }
+.dl-primary { background: var(--signal); color: var(--signal-fg); border-color: var(--ink); box-shadow: 0 5px 0 var(--ink); }
 .dl-primary:hover { background: var(--signal); transform: translateY(2px); box-shadow: 0 3px 0 var(--ink); }
 .dl-primary:active { transform: translateY(5px); box-shadow: 0 0 0 var(--ink); }
 .dl.is-os { order: -1; }
 .btn {
-  font-weight: 700; border: 2px solid var(--ink); border-radius: 6px; background: var(--signal); color: var(--ink);
+  font-weight: 700; border: 2px solid var(--ink); border-radius: 6px; background: var(--signal); color: var(--signal-fg);
   padding: 13px 22px; flex: 0 0 auto; box-shadow: 0 4px 0 var(--ink); transition: transform 0.1s, box-shadow 0.1s;
 }
 .btn:hover { transform: translateY(2px); box-shadow: 0 2px 0 var(--ink); }
@@ -132,13 +133,13 @@ section[id] { scroll-margin-top: 76px; }
 .navband { position: sticky; top: 0; z-index: 30; background: var(--brand); color: #fff; }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 68px; }
 .brand { display: flex; align-items: center; gap: 12px; font-family: var(--font-display); font-stretch: 68%; font-weight: 800; font-size: 1.9rem; text-transform: uppercase; letter-spacing: 0.01em; text-decoration: none; }
-.tally { width: 13px; height: 13px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px rgba(255, 214, 10, 0.3); animation: pulse 2.4s ease-in-out infinite; }
-@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(255, 214, 10, 0.1); } }
+.tally { width: 13px; height: 13px; border-radius: 50%; background: var(--signal); box-shadow: 0 0 0 4px rgba(255, 107, 26, 0.35); animation: pulse 2.4s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 8px rgba(255, 107, 26, 0.12); } }
 .nav { display: flex; align-items: center; gap: 26px; }
 .nav a { text-decoration: none; font-size: 0.95rem; font-weight: 500; color: rgba(255, 255, 255, 0.85); }
 .nav a:hover { color: #fff; }
-.nav a.nav-cta { color: var(--ink); background: var(--signal); padding: 9px 18px; border-radius: 5px; font-weight: 700; box-shadow: 0 3px 0 var(--ink); }
-.nav a.nav-cta:hover { color: var(--ink); transform: translateY(1px); box-shadow: 0 2px 0 var(--ink); }
+.nav a.nav-cta { color: var(--signal-fg); background: var(--signal); padding: 9px 18px; border-radius: 5px; font-weight: 700; box-shadow: 0 3px 0 var(--ink); }
+.nav a.nav-cta:hover { color: var(--signal-fg); transform: translateY(1px); box-shadow: 0 2px 0 var(--ink); }
 @media (max-width: 720px) { .nav a:not(.nav-cta) { display: none; } }
 
 /* ---------- hero ---------- */
@@ -161,7 +162,7 @@ section[id] { scroll-margin-top: 76px; }
 
 /* the monitor */
 .demo { padding: 12px; }
-.hero .screen { border: 0; border-radius: 6px; box-shadow: 0 0 0 9px #050820, 0 0 0 11px rgba(255, 255, 255, 0.28), 0 50px 80px -24px rgba(2, 4, 34, 0.75); }
+.hero .screen { border: 0; border-radius: 6px; box-shadow: 0 0 0 9px #04130d, 0 0 0 11px rgba(255, 255, 255, 0.25), 0 50px 80px -24px rgba(0, 12, 8, 0.8); }
 .hero .tagline { color: rgba(255, 255, 255, 0.85); margin-top: 8px; }
 .hero .tagline b { color: #fff; }
 
@@ -340,7 +341,7 @@ kbd { font-family: var(--font-mono); font-size: 0.78rem; border: 1.5px solid var
 .cue-side ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 0.95rem; }
 .cue-side li { padding-left: 22px; position: relative; color: var(--muted); }
 .cue-side li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 10px; height: 2px; background: var(--fg); }
-.viz { --fg: #fff; --muted: rgba(255, 255, 255, 0.6); --line: rgba(255, 255, 255, 0.3); --surface: rgba(255, 255, 255, 0.08); --accent: var(--signal); --accent-fg: var(--ink); height: 78px; border-radius: 6px; background: var(--ink); color: #fff; padding: 14px; display: flex; align-items: center; gap: 8px; overflow: hidden; }
+.viz { --fg: #fff; --muted: rgba(255, 255, 255, 0.6); --line: rgba(255, 255, 255, 0.3); --surface: rgba(255, 255, 255, 0.08); --accent: var(--signal); --accent-fg: var(--signal-fg); height: 78px; border-radius: 6px; background: var(--ink); color: #fff; padding: 14px; display: flex; align-items: center; gap: 8px; overflow: hidden; }
 .viz .w { font-family: var(--font-mono); font-size: 0.78rem; border: 1.5px solid var(--line); background: var(--surface); border-radius: 4px; padding: 4px 10px; white-space: nowrap; }
 .live .viz .w { animation: pick 3.6s infinite; animation-delay: calc(var(--i) * 1.2s); }
 @keyframes pick { 0%, 28%, 100% { border-color: var(--line); background: var(--surface); color: var(--fg); } 6%, 22% { border-color: var(--accent); background: var(--accent); color: var(--accent-fg); } }
@@ -426,7 +427,7 @@ table.req td:first-child { font-weight: 700; white-space: nowrap; }
 table.cmp { min-width: 680px; }
 th.us, td.us { background: var(--hl); color: var(--fg); }
 td.us { font-weight: 600; }
-th.us { background: var(--signal); color: var(--ink); }
+th.us { background: var(--signal); color: var(--signal-fg); }
 .yes { color: var(--ok); font-weight: 700; }
 td.us.yes { color: var(--fg); }
 
@@ -470,6 +471,58 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
 .foot-top a:hover { color: var(--signal); }
 .mark { font-family: var(--font-display); font-stretch: 62%; font-weight: 900; text-transform: uppercase; font-size: clamp(5rem, 24vw, 21rem); line-height: 0.74; letter-spacing: 0.005em; color: transparent; -webkit-text-stroke: 2px rgba(255, 255, 255, 0.28); margin-top: clamp(28px, 5vw, 56px); white-space: nowrap; user-select: none; padding-bottom: 0.02em; }
 
+
+.note { font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.5; color: var(--signal); border-left: 3px solid var(--signal); padding: 4px 0 4px 14px; max-width: 30rem; }
+
+/* streamers band */
+.stream-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); gap: clamp(28px, 6vw, 88px); align-items: center; }
+.stream-copy { display: grid; gap: 22px; }
+.stream-copy h2 { font-size: clamp(2.4rem, 5.4vw, 4.4rem); }
+.stream-copy p { color: var(--muted); font-size: 1.1rem; max-width: 34rem; }
+.stream-side { display: grid; gap: 18px; min-width: 0; }
+.ticks { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 0.97rem; color: var(--muted); }
+.ticks li { padding-left: 22px; position: relative; }
+.ticks li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 10px; height: 2px; background: var(--signal); }
+@media (max-width: 960px) { .stream-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* demo scenes: desktop (voice commands) and message form (dictate + enter) */
+.screen[data-skin="desk"] .skin-desk, .screen[data-skin="form"] .skin-form { opacity: 1; }
+.screen[data-skin="desk"] .cam, .screen[data-skin="form"] .cam { display: none; }
+.skin-desk { background: linear-gradient(135deg, #0e2d25, #15473a 55%, #1d5a49); }
+.dk-win { position: absolute; left: 6%; right: 6%; top: 8%; bottom: 9%; background: #0e1512; border-radius: calc(var(--f) * 1.2); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 calc(var(--f) * 2) calc(var(--f) * 5) rgba(0, 0, 0, 0.5); }
+.dk-bar { display: flex; align-items: center; gap: calc(var(--f) * 0.8); padding: calc(var(--f) * 1.1) calc(var(--f) * 1.6); background: #1b2520; }
+.dk-bar i { width: calc(var(--f) * 1.2); height: calc(var(--f) * 1.2); border-radius: 50%; background: #44574d; }
+.dk-url { margin-left: calc(var(--f) * 1.4); font-family: var(--font-mono); font-size: calc(var(--f) * 1.5); color: #9cb3a5; background: #0e1512; border-radius: 99px; padding: calc(var(--f) * 0.4) calc(var(--f) * 1.6); }
+.dk-video { position: relative; flex: 1; overflow: hidden; background: radial-gradient(120% 90% at 30% 20%, #2f6a58, #0b1914 72%); }
+.dk-content { position: absolute; inset: 0; display: grid; align-content: center; justify-items: center; gap: calc(var(--f) * 1); text-align: center; }
+.dk-content b { font-family: var(--font-display); font-stretch: 68%; font-weight: 800; text-transform: uppercase; font-size: calc(var(--f) * 6.4); line-height: 0.95; color: #fff; }
+.dk-content span { font-family: var(--font-mono); font-size: calc(var(--f) * 1.5); letter-spacing: 0.08em; text-transform: uppercase; color: #9cb3a5; }
+.dk-progress { position: absolute; left: 3%; right: 3%; bottom: 5%; height: calc(var(--f) * 0.6); background: rgba(255, 255, 255, 0.25); border-radius: 99px; overflow: hidden; }
+.dk-progress i { display: block; height: 100%; width: 34%; background: #ff6b1a; }
+.dk-ad { position: absolute; inset: 0; background: linear-gradient(120deg, #ff6b1a, #ffb347); display: grid; place-items: center; transition: opacity 0.35s; }
+.dk-ad b { font-family: var(--font-display); font-stretch: 62%; font-weight: 900; text-transform: uppercase; font-size: calc(var(--f) * 9); line-height: 0.9; color: #1b0d04; text-align: center; }
+.dk-adtag { position: absolute; left: 3%; bottom: 14%; font-family: var(--font-mono); font-size: calc(var(--f) * 1.6); background: rgba(0, 0, 0, 0.72); color: #fff; padding: calc(var(--f) * 0.5) calc(var(--f) * 1.2); }
+.dk-skip { position: absolute; right: 0; bottom: 13%; background: rgba(0, 0, 0, 0.82); color: #fff; padding: calc(var(--f) * 1.1) calc(var(--f) * 2.2); font-size: calc(var(--f) * 2); font-weight: 600; border-left: calc(var(--f) * 0.3) solid #fff; transition: transform 0.15s, background 0.15s, box-shadow 0.15s; }
+.screen.skip-press .dk-skip { background: #fff; color: #111; transform: scale(0.94); box-shadow: 0 0 0 calc(var(--f) * 0.7) rgba(255, 107, 26, 0.7); }
+.screen.ad-skipped .dk-ad { opacity: 0; }
+.dk-vol { position: absolute; top: 5%; left: 50%; transform: translate(-50%, -40%); opacity: 0; display: flex; align-items: center; gap: calc(var(--f) * 1.2); background: rgba(6, 19, 14, 0.94); color: #fff; border-radius: 99px; padding: calc(var(--f) * 0.9) calc(var(--f) * 2); font-family: var(--font-mono); font-size: calc(var(--f) * 1.8); transition: opacity 0.25s, transform 0.25s; z-index: 4; }
+.dk-vol svg { width: calc(var(--f) * 2.4); height: calc(var(--f) * 2.4); }
+.dk-volbar { width: calc(var(--f) * 18); height: calc(var(--f) * 0.9); background: rgba(255, 255, 255, 0.25); border-radius: 99px; overflow: hidden; }
+.dk-volbar i { display: block; height: 100%; width: var(--vol, 60%); background: #ff6b1a; transition: width 0.7s ease; }
+.screen.vol-show .dk-vol { opacity: 1; transform: translate(-50%, 0); }
+.skin-form { background: #e9eee6; color: #0a1f18; }
+.fm-head { position: absolute; left: 0; right: 0; top: 0; height: 13%; background: #0b4d3b; color: #fff; display: flex; align-items: center; padding-left: 5%; font-weight: 700; font-size: calc(var(--f) * 2.3); }
+.fm-list { position: absolute; left: 5%; right: 5%; top: 17%; bottom: 27%; display: flex; flex-direction: column; justify-content: flex-end; gap: calc(var(--f) * 1.2); }
+.fm-msg { max-width: 64%; border-radius: calc(var(--f) * 1.2); padding: calc(var(--f) * 1.1) calc(var(--f) * 1.6); font-size: calc(var(--f) * 2); line-height: 1.3; }
+.fm-msg.them { align-self: flex-start; background: #fff; }
+.fm-msg.me { align-self: flex-end; background: #0b4d3b; color: #fff; opacity: 0; transform: translateY(35%); transition: opacity 0.3s, transform 0.3s; }
+.fm-msg.me.show { opacity: 1; transform: none; }
+.fm-compose { position: absolute; left: 5%; right: 5%; bottom: 6%; height: 15%; background: #fff; border: calc(var(--f) * 0.25) solid #0b4d3b; border-radius: calc(var(--f) * 1.2); display: flex; align-items: center; gap: calc(var(--f) * 1.4); padding: 0 calc(var(--f) * 1.8); font-size: calc(var(--f) * 2.1); }
+.fm-text { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+.fm-text.typing::after { content: ""; display: inline-block; width: 2px; height: 1em; background: #ff6b1a; vertical-align: -0.12em; margin-left: 1px; animation: blink 0.9s steps(1) infinite; }
+.fm-send { flex: 0 0 auto; background: #0b4d3b; color: #fff; border-radius: calc(var(--f) * 0.9); padding: calc(var(--f) * 0.8) calc(var(--f) * 1.8); font-weight: 700; font-size: calc(var(--f) * 1.8); transition: transform 0.15s, background 0.15s, box-shadow 0.15s; }
+.screen.enter-press .fm-send { background: #ff6b1a; color: #1b0d04; transform: scale(0.93); box-shadow: 0 0 0 calc(var(--f) * 0.6) rgba(255, 107, 26, 0.45); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {
   .hero-grid, .cmd-grid, .notify { grid-template-columns: minmax(0, 1fr); }
@@ -510,8 +563,9 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     <header class="topbar">
       <a class="brand" href="#top" aria-label="Saidcue home"><span class="tally" aria-hidden="true"></span>Saidcue</a>
       <nav class="nav" aria-label="Sections">
-        <a href="#features">Features</a>
-        <a href="#commands">Voice commands</a>
+        <a href="#commands">Voice control</a>
+        <a href="#features">Dictation and AI</a>
+        <a href="#streamers">Streamers</a>
         <a href="#requirements">Requirements</a>
         <a href="#pricing">Pricing</a>
         <a class="nav-cta" href="#get">Download</a>
@@ -521,14 +575,14 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
 </div>
 
 <main id="top">
-  <div class="band cobalt hero">
+  <div class="band deep hero">
     <div class="wrap">
-      <p class="kicker">Voice co-pilot &middot; Windows and Linux &middot; Free early build</p>
-      <h1><span>Talk to</span> <span class="hl">your stream.</span></h1>
+      <p class="kicker">Hands-free control for your PC &middot; Windows and Linux &middot; Free early build</p>
+      <h1><span>Say it.</span> <span class="hl">Your PC does it.</span></h1>
 
       <div class="hero-grid">
         <div class="hero-copy">
-          <p class="lead">Say a phrase and a sound or overlay fires. Say <b>&ldquo;computer, skip ad&rdquo;</b> and it clicks Skip. Ask out loud and an AI answer lands on your screen. Dictate into any app. Your voice is transcribed on your own PC.</p>
+          <p class="lead">Say <b>&ldquo;computer, skip ad&rdquo;</b>, <b>&ldquo;scroll down&rdquo;</b> or <b>&ldquo;open YouTube&rdquo;</b> and it happens. Dictate into any app, then say <b>&ldquo;press enter&rdquo;</b> to send it. Your voice is transcribed on your own PC.</p>
 
           <div class="get" id="get">
             <div class="get-btns">
@@ -548,12 +602,32 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
               <li>Mic</li>
               <li>GPU optional</li>
             </ul>
-            <p class="fine">v0.1.0 &middot; <a href="#requirements">Full requirements</a> &middot; <a href="#download">.deb and install steps</a></p>
+            <p class="fine">v0.1.0 &middot; Voice commands need Windows for now &middot; <a href="#requirements">Full requirements</a> &middot; <a href="#download">.deb and install steps</a></p>
           </div>
         </div>
 
       <div class="demo" id="demo">
-        <div class="screen" id="screen" data-skin="game" aria-label="Animated examples of Saidcue in use by streamers, presenters, teachers, podcasters, meeting hosts and game masters">
+        <div class="screen" id="screen" data-skin="desk" aria-label="Animated examples of Saidcue controlling a PC by voice, dictating and sending a message, answering a question, and firing stream overlays">
+
+          <div class="skin skin-desk" aria-hidden="true">
+            <div class="dk-win">
+              <div class="dk-bar"><i></i><i></i><i></i><span class="dk-url">youtube.com/watch</span></div>
+              <div class="dk-video">
+                <div class="dk-content"><span>Now playing</span><b>How tides work</b><div class="dk-progress"><i></i></div></div>
+                <div class="dk-ad"><b>Fresh kicks<br>40% off</b><span class="dk-adtag">Ad &middot; 0:05</span><span class="dk-skip" id="dkSkip">Skip &#9654;</span></div>
+              </div>
+            </div>
+            <div class="dk-vol" id="dkVol"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 9v6h4l5 4V5L7 9zM16.5 12a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/></svg><div class="dk-volbar"><i></i></div><b id="dkVolNum">60</b></div>
+          </div>
+
+          <div class="skin skin-form" aria-hidden="true">
+            <div class="fm-head">Team chat</div>
+            <div class="fm-list">
+              <div class="fm-msg them">Are you joining the standup?</div>
+              <div class="fm-msg me" id="fmSent"></div>
+            </div>
+            <div class="fm-compose"><span class="fm-text" id="fmText"></span><span class="fm-send">Send</span></div>
+          </div>
 
           <div class="skin skin-game">
             <div class="hud" aria-hidden="true"><i></i><i></i></div>
@@ -641,7 +715,7 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
           <div class="captionbox">
             <div class="row2">
               <span class="label" id="caplabel">You say</span>
-              <span class="feat" id="feat">Voice trigger</span>
+              <span class="feat" id="feat">Voice command</span>
               <span class="keys" id="keys" aria-hidden="true"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>A</kbd></span>
             </div>
             <p class="cap" id="cap" aria-live="polite"></p>
@@ -651,27 +725,29 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
 
         <div class="status" aria-hidden="true">
           <span class="st" id="st-mic">Mic</span>
+          <span class="st" id="st-cmd">Command</span>
           <span class="st" id="st-trig">Trigger</span>
           <span class="st" id="st-ask">AI</span>
           <span class="st" id="st-type">Typing</span>
         </div>
 
-        <p class="tagline" id="tagline"><b>For streamers.</b> Say a phrase and your sound and overlay fire, with your hands still on the game.</p>
+        <p class="tagline" id="tagline"><b>Hands-free control.</b> Skip the ad, scroll, click a button or open a site, without touching the mouse.</p>
 
-        <div class="ctrls" role="group" aria-roledescription="carousel" aria-label="Who uses Saidcue">
+        <div class="ctrls" role="group" aria-roledescription="carousel" aria-label="Examples of what Saidcue does">
           <button class="arrow" type="button" id="prev" aria-label="Previous example">&#8249;</button>
           <div class="chips" id="chips">
-            <button class="tab" type="button" data-i="0" aria-pressed="true">Streamers</button>
-            <button class="tab" type="button" data-i="1" aria-pressed="false">Presenters</button>
-            <button class="tab" type="button" data-i="2" aria-pressed="false">Teachers</button>
-            <button class="tab" type="button" data-i="3" aria-pressed="false">Podcasters</button>
-            <button class="tab" type="button" data-i="4" aria-pressed="false">Meeting hosts</button>
-            <button class="tab" type="button" data-i="5" aria-pressed="false">Game masters</button>
+            <button class="tab" type="button" data-i="0" aria-pressed="true">Skip ads</button>
+            <button class="tab" type="button" data-i="1" aria-pressed="false">Dictate and send</button>
+            <button class="tab" type="button" data-i="2" aria-pressed="false">Volume</button>
+            <button class="tab" type="button" data-i="3" aria-pressed="false">Ask the AI</button>
+            <button class="tab" type="button" data-i="4" aria-pressed="false">Streamers</button>
+            <button class="tab" type="button" data-i="5" aria-pressed="false">Teachers</button>
+            <button class="tab" type="button" data-i="6" aria-pressed="false">Game masters</button>
           </div>
           <button class="arrow" type="button" id="next" aria-label="Next example">&#8250;</button>
         </div>
         <div class="below">
-          <p class="fine">Also: language learners, writers, and anyone who wants to type hands-free.</p>
+          <p class="fine">Also for writers, language learners, and anyone who wants to type hands-free.</p>
           <button class="pause" type="button" id="pause">Pause loop</button>
         </div>
       </div>
@@ -679,23 +755,52 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     </div>
   </div>
 
+  <section class="band ink" id="commands">
+    <div class="wrap">
+      <div class="cmd-grid">
+        <div class="cmd-intro">
+          <span class="label">Voice control</span>
+          <h2>Say the wake word, then anything</h2>
+          <p>Start with <b>computer</b>, or pick another wake word. Normal talk never triggers anything, because the phrase has to start with it. 39 commands are built in, and each one can be switched off.</p>
+          <div class="wakes" aria-label="Wake word presets"><code>computer</code><code>hey computer</code><code>assistant</code><code>hey assistant</code><code>companion</code><code>or your own</code></div>
+          <p class="fine">Say a command twice in one breath and it still works. Anything that matches no command can go to your AI, if you turn that on. It can never click, press Enter or type into a terminal.</p>
+          <p class="note">Voice commands use Windows UI Automation, so they are Windows-only for now.</p>
+        </div>
+        <div>
+          <div class="sheet" role="list">
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>skip ad</span><p>Clicks YouTube's Skip button, in English, Spanish, Portuguese, French or German.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>open youtube</span><p>Opens a site or a program such as Notepad or the calculator.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>click subscribe</span><p>Presses the button or link with that label, or puts the cursor in a text box.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>scroll down</span><p>Scrolls the front window. Page up, top and bottom work too.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>volume to 50</span><p>Sets the exact level. Mute and unmute are exact, not toggles.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>press enter</span><p>Submits the form or message you just typed. &ldquo;Submit&rdquo; and &ldquo;send it&rdquo; work too.</p></div>
+            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>next song</span><p>Media keys: pause, next, previous. Plus save, copy, paste, undo and new tab.</p></div>
+          </div>
+          <div class="sheet-foot">
+            <p class="fine">While dictating, no wake word is needed for: &ldquo;new line&rdquo;, &ldquo;new paragraph&rdquo;, &ldquo;scratch that&rdquo;, &ldquo;delete word&rdquo;, &ldquo;select all&rdquo;, &ldquo;press enter&rdquo; and &ldquo;stop typing&rdquo;. Pause first so it is heard as its own phrase.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="band" id="features">
     <div class="wrap">
       <div class="sec-head">
-        <span class="label">What it does</span>
-        <h2>Three ways to use your voice</h2>
-        <p>One small app that lives in the tray. Each part works on its own, so use whichever you need.</p>
+        <span class="label">Beyond commands</span>
+        <h2>Dictate and ask, too</h2>
+        <p>The same microphone also types for you and answers questions. Each part works on its own, so use whichever you need.</p>
       </div>
       <div class="cues" data-live>
         <article class="cue">
-          <span class="verb" aria-hidden="true">Say</span>
+          <span class="verb" aria-hidden="true">Type</span>
           <div class="cue-main">
-            <h3>Say it, and it plays</h3>
-            <p>Link a word or phrase to a sound, image, GIF or video overlay. Say it and it appears on your screen, with the position, size and duration you chose.</p>
+            <h3>Speak it, and it types</h3>
+            <p>Dictate into chat, docs, email or any text field. Transcription runs on your own PC in more than 90 languages. When you finish, say &ldquo;press enter&rdquo; to submit.</p>
           </div>
           <div class="cue-side">
-            <div class="viz" aria-hidden="true"><span class="w" style="--i:0">let's go</span><span class="w" style="--i:1">ding</span><span class="w" style="--i:2">roll initiative</span></div>
-            <ul><li>Per-phrase cooldown, so it never spams</li><li>Keyboard hotkeys too, with chord sequences</li><li>Visual editor, no config files</li></ul>
+            <div class="viz" aria-hidden="true"><span class="typed">Thanks for the follow</span></div>
+            <ul><li>Toggle with a hotkey or leave it on</li><li>Edit by voice: &ldquo;new line&rdquo;, &ldquo;scratch that&rdquo;, &ldquo;delete word&rdquo;</li><li>Uses your GPU when you have one, and works offline once the model is downloaded</li></ul>
           </div>
         </article>
         <article class="cue">
@@ -709,50 +814,11 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
             <ul><li>Fact-checker, explain-it-simply, tutor, devil's advocate, or your own persona</li><li>Works with any OpenAI-compatible provider</li><li>Choose how much the model thinks, so answers start sooner</li></ul>
           </div>
         </article>
-        <article class="cue">
-          <span class="verb" aria-hidden="true">Type</span>
-          <div class="cue-main">
-            <h3>Speak it, and it types</h3>
-            <p>Dictate into chat, docs, email or any text field. Transcription runs on your own PC in more than 90 languages. When you finish, say &ldquo;press enter&rdquo; to submit.</p>
-          </div>
-          <div class="cue-side">
-            <div class="viz" aria-hidden="true"><span class="typed">Thanks for the follow</span></div>
-            <ul><li>Toggle with a hotkey or leave it on</li><li>Edit by voice: &ldquo;new line&rdquo;, &ldquo;scratch that&rdquo;, &ldquo;delete word&rdquo;</li><li>Uses your GPU when you have one, and works offline once the model is downloaded</li></ul>
-          </div>
-        </article>
       </div>
     </div>
   </section>
 
-  <section class="band ink" id="commands">
-    <div class="wrap">
-      <div class="cmd-grid">
-        <div class="cmd-intro">
-          <span class="label">Voice commands</span>
-          <h2>Say the wake word, then anything</h2>
-          <p>Start with <b>computer</b>, or pick another wake word. Normal talk never triggers anything, because the phrase has to start with it. 39 commands are built in, and each one can be switched off.</p>
-          <div class="wakes" aria-label="Wake word presets"><code>computer</code><code>hey computer</code><code>assistant</code><code>hey assistant</code><code>companion</code><code>or your own</code></div>
-          <p class="fine">Say a command twice in one breath and it still works. Anything that matches no command can go to your AI, if you turn that on. It can never click, press Enter or type into a terminal.</p>
-        </div>
-        <div>
-          <div class="sheet" role="list">
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>skip ad</span><p>Clicks YouTube's Skip button, in English, Spanish, Portuguese, French or German.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>press enter</span><p>Submits the form or message you just typed. &ldquo;Submit&rdquo; and &ldquo;send it&rdquo; work too.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>volume to 50</span><p>Sets the exact level. Mute and unmute are exact, not toggles.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>open youtube</span><p>Opens a site or a program such as Notepad or the calculator.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>click subscribe</span><p>Presses the button or link with that label, or puts the cursor in a text box.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>scroll down</span><p>Scrolls the front window. Page up, top and bottom work too.</p></div>
-            <div class="sheet-row" role="listitem"><span class="say"><i>computer,</i>next song</span><p>Media keys: pause, next, previous. Plus save, copy, paste, undo and new tab.</p></div>
-          </div>
-          <div class="sheet-foot">
-            <p class="fine">While dictating, no wake word is needed for: &ldquo;new line&rdquo;, &ldquo;new paragraph&rdquo;, &ldquo;scratch that&rdquo;, &ldquo;delete word&rdquo;, &ldquo;select all&rdquo;, &ldquo;press enter&rdquo; and &ldquo;stop typing&rdquo;. Pause first so it is heard as its own phrase.</p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="band" id="download">
+  <section class="band" id="download" style="padding-top:0">
     <div class="wrap">
       <div class="sec-head">
         <span class="label">Install</span>
@@ -762,12 +828,12 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
       <div class="dl-grid">
         <div class="dl-card">
           <h3>Windows</h3>
-          <p>Installer with a Start menu entry and an optional startup shortcut. No admin rights needed.</p>
+          <p>Everything, including voice commands. Installer with a Start menu entry and an optional startup shortcut. No admin rights needed.</p>
           <a class="dl dl-primary" href="https://github.com/imzodev/stream-animate/releases/latest/download/SaidcueSetup.exe"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path fill="currentColor" d="M3 5.4 10.4 4.4v7H3zM11.4 4.3 21 3v8.4h-9.6zM3 12.6h7.4v7L3 18.6zM11.4 12.6H21V21l-9.6-1.3z"/></svg><span><b>SaidcueSetup.exe</b><small>Windows 10 and 11 &middot; 64-bit &middot; 237 MB</small></span></a>
         </div>
         <div class="dl-card">
           <h3>Linux</h3>
-          <p>Run the AppImage on any recent distribution, or install the .deb on Debian and Ubuntu.</p>
+          <p>An early release focused on dictation, voice triggers and the AI co-pilot. Voice commands are Windows-only for now. Run the AppImage anywhere, or install the .deb on Debian and Ubuntu.</p>
           <a class="dl dl-primary" href="https://github.com/imzodev/stream-animate/releases/latest/download/Saidcue-x86_64.AppImage"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><rect x="2.5" y="4" width="19" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7 9.5 3.2 2.5L7 14.5M12.5 15h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>Saidcue-x86_64.AppImage</b><small>x86_64 &middot; 753 MB</small></span></a>
           <a class="dl" href="https://github.com/imzodev/stream-animate/releases/latest/download/saidcue_0.1.0_amd64.deb"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 20h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>saidcue_0.1.0_amd64.deb</b><small>Debian, Ubuntu &middot; 487 MB</small></span></a>
         </div>
@@ -793,13 +859,13 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
             <tr><td>RAM</td><td>8 GB</td><td>16 GB, especially when streaming or gaming at the same time</td></tr>
             <tr><td>GPU</td><td>None. Dictation falls back to the CPU</td><td>NVIDIA GPU with CUDA for much faster dictation (Windows)</td></tr>
             <tr><td>Disk</td><td>1 GB for the app, plus 1 to 3 GB for the speech model</td><td>5 GB free on an SSD</td></tr>
-            <tr><td>Audio</td><td>A microphone and an output device</td><td>A dedicated headset or USB mic</td></tr>
+            <tr><td>Audio</td><td>A microphone and an output device</td><td>A headset or USB mic, so speakers don't feed back into it</td></tr>
             <tr><td>Network</td><td>Only for the first model download and the AI co-pilot</td><td>Broadband</td></tr>
           </tbody>
         </table>
       </div>
       <div class="req-notes">
-        <p class="fine">The speech model downloads the first time you turn dictation on, and its size depends on the model you choose. Voice triggers and hotkeys work without it. The Linux build uses the CPU for dictation.</p>
+        <p class="fine">The speech model downloads the first time you turn dictation on, and its size depends on the model you choose. Hotkeys and triggers work without it. The Linux build uses the CPU for dictation.</p>
         <h3>Libraries and packages</h3>
         <p>The installers bundle everything below, including their own Python runtime, so you install nothing separately. This list is for people running from source (Python 3.11 or newer).</p>
         <div class="pkgs"><span>PySide6 6.9</span><span>pynput 1.8</span><span>pygame 2.6</span><span>jsonschema 4.23</span><span>faster-whisper 1.1</span><span>openai-whisper</span><span>PyTorch</span><span>sounddevice 0.5</span><span>numpy 2.1</span><span>httpx 0.27</span><span>uiautomation (Windows)</span><span>pycaw (Windows)</span></div>
@@ -835,7 +901,7 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
           <div class="link" style="--d:1.9s"></div>
           <div class="node" style="--d:2.8s">
             <span class="num">3</span><h3>Saidcue routes it</h3>
-            <p>Is it a trigger phrase, a question after your AI hotkey, or text to type? It picks one.</p>
+            <p>Is it a voice command, a trigger phrase, a question after your AI hotkey, or text to type? It picks one.</p>
             <span class="tag">On your PC</span>
           </div>
         </div>
@@ -865,20 +931,36 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     <div class="wrap">
       <div class="sec-head">
         <span class="label">Who it's for</span>
-        <h2>Anyone who talks and wants the screen to keep up</h2>
+        <h2>Anyone who wants their hands free</h2>
       </div>
       <div class="who">
+        <div><h3>Hands-free at your desk</h3><p>Skip, scroll, click and open things by voice, when your hands are full or you want a break from the mouse.</p></div>
+        <div><h3>People who type a lot</h3><p>Dictate emails, docs and chat in more than 90 languages, fix mistakes by voice, then say &ldquo;press enter&rdquo; to send.</p></div>
+        <div><h3>Tired wrists and hands</h3><p>Cut down on typing and clicking. It only reacts after your wake word, so normal talk never triggers anything.</p></div>
         <div><h3>Streamers</h3><p>Fire stingers and alerts while your hands stay on the game. Settle &ldquo;is that true?&rdquo; arguments with an answer on screen.</p></div>
-        <div><h3>Presenters</h3><p>When someone asks a question you can't answer, ask Saidcue out loud and glance at the screen.</p></div>
-        <div><h3>Teachers</h3><p>Reward a right answer with a sound and a stamp, or get a plain-language explanation mid-lesson.</p></div>
-        <div><h3>Podcasters and video creators</h3><p>Drop sound cues as you record and dictate show notes straight into your editor.</p></div>
-        <div><h3>Meeting hosts and coaches</h3><p>Get a quick fact-check or the opposing view while someone else is still talking.</p></div>
-        <div><h3>Game masters</h3><p>Land a dice roll or a dramatic sting with a spoken line, and keep both hands for the table.</p></div>
+        <div><h3>Presenters and teachers</h3><p>Ask Saidcue a question you can't answer, or reward a right answer with a sound and a stamp.</p></div>
+        <div><h3>Podcasters and game masters</h3><p>Drop sound cues as you record, or land a dice roll with a spoken line and keep both hands for the table.</p></div>
       </div>
     </div>
   </section>
 
-  <section class="band" id="compare" style="padding-top:0">
+  <section class="band deep" id="streamers">
+    <div class="wrap" data-live>
+      <div class="stream-grid">
+        <div class="stream-copy">
+          <span class="label">Also for streamers and creators</span>
+          <h2>Fire sounds and overlays by voice</h2>
+          <p>Link a word or phrase to a sound, image, GIF or video overlay. Say it and it appears on your screen, with the position, size and duration you chose. Your hands stay on the game, the mixer or the table.</p>
+        </div>
+        <div class="stream-side">
+          <div class="viz" aria-hidden="true"><span class="w" style="--i:0">let's go</span><span class="w" style="--i:1">ding</span><span class="w" style="--i:2">roll initiative</span></div>
+          <ul class="ticks"><li>Per-phrase cooldown, so it never spams</li><li>Keyboard hotkeys too, with chord sequences</li><li>Visual editor, no config files</li><li>Works over a full-screen capture in OBS or Streamlabs</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="compare">
     <div class="wrap">
       <div class="sec-head">
         <span class="label">How it compares</span>
@@ -889,12 +971,12 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
         <table class="cmp">
           <thead><tr><th></th><th>Dictation apps</th><th>Stream bots and deck software</th><th class="us">Saidcue</th></tr></thead>
           <tbody>
-            <tr><td>Types what you say</td><td class="yes">Yes</td><td>No</td><td class="us yes">Yes</td></tr>
-            <tr><td>Fires sounds and overlays by voice</td><td>No</td><td>Usually needs setup or a plugin</td><td class="us yes">Yes, built in</td></tr>
             <tr><td>Controls your PC by voice</td><td>Rarely</td><td>Needs scripts and actions</td><td class="us yes">Yes, 39 commands</td></tr>
+            <tr><td>Types what you say</td><td class="yes">Yes</td><td>No</td><td class="us yes">Yes</td></tr>
+            <tr><td>Sends it when you say &ldquo;press enter&rdquo;</td><td>Varies by app</td><td>No</td><td class="us yes">Yes</td></tr>
             <tr><td>AI answers on your screen</td><td>Uncommon</td><td>Bots answer chat, not you</td><td class="us yes">Yes</td></tr>
+            <tr><td>Fires sounds and overlays by voice</td><td>No</td><td>Usually needs setup or a plugin</td><td class="us yes">Yes, built in</td></tr>
             <tr><td>Speech stays on your PC</td><td>Varies by app</td><td>Varies</td><td class="us yes">Yes</td></tr>
-            <tr><td>Setup</td><td>Install and go</td><td>Scripts and actions to build</td><td class="us yes">Visual editor</td></tr>
           </tbody>
         </table>
       </div>
@@ -913,12 +995,12 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
         <div class="tier">
           <h3>Free</h3>
           <div class="price">$0</div>
-          <ul><li>Local dictation, on your PC</li><li>Voice commands and voice triggers</li><li>Visual editor</li><li>AI co-pilot with your own API key</li></ul>
+          <ul><li>Voice commands and local dictation, on your PC</li><li>Voice triggers for sounds and overlays</li><li>Visual editor</li><li>AI co-pilot with your own API key</li></ul>
         </div>
         <div class="tier pro">
           <h3>Pro <span class="label" style="display:inline-flex;vertical-align:middle;margin-left:8px;color:var(--signal)">Planned</span></h3>
           <div class="price">$9 <small>/ month</small></div>
-          <ul><li>Everything in Free</li><li>AI co-pilot hosted for you, no key to set up</li><li>Cloud library of trigger packs, sounds and overlays</li><li>Settings sync across your PCs</li></ul>
+          <ul><li>Everything in Free</li><li>AI co-pilot hosted for you, no key to set up</li><li>Cloud library of command and trigger packs</li><li>Settings sync across your PCs</li></ul>
         </div>
       </div>
       <div class="notify">
@@ -960,14 +1042,15 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     <div class="wrap">
       <div class="sec-head"><span class="label">Questions</span><h2>Before you install</h2></div>
       <div class="faq">
+        <details><summary>What can I control by voice?</summary><p>Anything with a keyboard shortcut, plus any button, link or text box that Windows UI Automation can see, which includes web pages in your browser. You can open sites and programs, scroll, set the volume, use media keys and press Enter. The full list is in the Voice Commands tab of the settings window.</p></details>
+        <details><summary>Does it work on Linux?</summary><p>Voice commands are Windows-only for now. The Linux build is an early release focused on dictation, voice triggers and the AI co-pilot, and it has had less testing.</p></details>
         <details><summary>What do I need to run it?</summary><p>A Windows 10 or 11 64-bit PC, or a 64-bit Linux desktop, with 8 GB of RAM (16 GB recommended) and a microphone. An NVIDIA GPU makes dictation faster on Windows, and it runs on the CPU if you don't have one. See the full requirements above.</p></details>
-        <details><summary>Do I have to press hotkeys?</summary><p>No. Voice commands, triggers and dictation can run hands-free. The AI co-pilot uses one hotkey so it only listens for a question when you mean to ask one.</p></details>
+        <details><summary>Will it fire when I'm just talking?</summary><p>No. A command only runs when your phrase starts with the wake word, so ordinary conversation is ignored. A two-word wake word such as &ldquo;hey computer&rdquo; misfires even less.</p></details>
         <details><summary>What leaves my computer?</summary><p>Your voice is transcribed on your PC. Dictation, triggers and built-in voice commands send nothing. When you ask the AI co-pilot, or a voice command goes to the AI fallback, the text goes to the AI provider you configured.</p></details>
-        <details><summary>Do I need my own AI account?</summary><p>Today, yes, for the AI parts only. Add an API key for any OpenAI-compatible provider, or point Saidcue at a local model. A hosted option with no key to set up is planned for Pro.</p></details>
+        <details><summary>Do I need my own AI account?</summary><p>Only for the AI parts, and today, yes. Add an API key for any OpenAI-compatible provider, or point Saidcue at a local model. A hosted option with no key to set up is planned for Pro.</p></details>
         <details><summary>Why is the AI slow to answer?</summary><p>Reasoning models think before they write. Set Model reasoning to Off or Low in the LLM settings, or pick a model that doesn't reason.</p></details>
-        <details><summary>Will my viewers or audience see the AI panel?</summary><p>The panel is a normal window on your screen. If you capture your whole display or share your screen, people will see it. If you capture a single game or window, they won't.</p></details>
+        <details><summary>Will my viewers see the AI panel?</summary><p>The panel is a normal window on your screen. If you capture your whole display or share your screen, people will see it. If you capture a single game or window, they won't.</p></details>
         <details><summary>Does it work with OBS and Streamlabs?</summary><p>Overlays are drawn on top of your screen, so any capture setup that sees your display or game sees them. Direct scene control for OBS is planned, not available yet.</p></details>
-        <details><summary>What is the cloud library?</summary><p>Ready-made packs of trigger phrases, sounds and overlays you can add in one click, plus your own settings synced between PCs. It is planned for Pro and not built yet.</p></details>
         <details><summary>Is it safe to install?</summary><p>The builds are not code-signed yet, which is why Windows SmartScreen asks you to confirm. The source is public on GitHub, and the installers are built from it.</p></details>
         <details><summary>What about Mac?</summary><p>Windows and Linux are available now. Mac is on the list after launch.</p></details>
       </div>
@@ -1038,23 +1121,26 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
   /* ---------- the persona demo ---------- */
   // Each persona is one short moment on its own screen. Sticker art is original; swap `sticker` for your own licensed image later.
   var personas = [
+    { skin: "desk", kind: "command", action: "skip", feat: "Voice command", dur: 8,
+      tagline: "<b>Hands-free control.</b> Skip the ad, scroll, click a button or open a site, without touching the mouse.",
+      say: "computer, skip ad", result: "Command matched: skip ad. Clicked the Skip button" },
+    { skin: "form", kind: "send", feat: "Dictation and Enter", dur: 12,
+      tagline: "<b>Type by voice, then send it.</b> Dictate your message, say \u201cpress enter\u201d, and it is submitted.",
+      say: "Running ten minutes late, start without me.", typed: "Running ten minutes late, start without me.",
+      result: "Enter pressed. Message sent" },
+    { skin: "desk", kind: "command", action: "volume", vol: 30, feat: "Voice command", dur: 8,
+      tagline: "<b>Set it exactly.</b> \u201cVolume to 30\u201d, \u201cmute\u201d, \u201cnext song\u201d. Volume and media keys, by voice.",
+      say: "computer, volume to 30", result: "Command matched: volume to 30. Volume set" },
+    { skin: "slide", kind: "ask", feat: "AI co-pilot", dur: 11, persona: "Explain simply",
+      tagline: "<b>Ask the AI.</b> Someone asks something you can't answer. Ask out loud and glance at the screen.",
+      question: "How many people live in Tokyo?",
+      answer: "About 14 million in the city itself, and roughly 37 million across the wider metro area, the largest in the world." },
     { skin: "game", kind: "trigger", feat: "Voice trigger", dur: 6, sticker: "w",
       tagline: "<b>For streamers.</b> Say a phrase and your sound and overlay fire, with your hands still on the game.",
       say: "let's go!", result: "Phrase matched: let's go. Sound and overlay fired" },
-    { skin: "slide", kind: "ask", feat: "AI co-pilot", dur: 11, persona: "Explain simply",
-      tagline: "<b>For presenters.</b> Someone asks something you can't answer. Ask Saidcue out loud and glance at the screen.",
-      question: "How many people live in Tokyo?",
-      answer: "About 14 million in the city itself, and roughly 37 million across the wider metro area, the largest in the world." },
     { skin: "board", kind: "trigger", feat: "Voice trigger", dur: 6, sticker: "stamp", stampText: "CORRECT!",
       tagline: "<b>For teachers.</b> Reward a right answer with a sound and a stamp, without leaving the board.",
       say: "ding!", result: "Phrase matched: ding. Sound and overlay fired" },
-    { skin: "editor", kind: "dictate", feat: "Dictation", dur: 9,
-      tagline: "<b>For podcasters and video creators.</b> Dictate show notes straight into your editor while the tape rolls.",
-      say: "Chapter three, guest on building in public.", typed: "12:40  Chapter 3: guest on building in public" },
-    { skin: "call", kind: "ask", feat: "AI co-pilot", dur: 11, persona: "Devil's advocate",
-      tagline: "<b>For meeting hosts and coaches.</b> Get the other side of an argument while the conversation keeps moving.",
-      question: "Give me the opposing view on a four day work week.",
-      answer: "Compressed weeks can mean longer days and more burnout, and customers may find your team unavailable one day a week." },
     { skin: "map", kind: "trigger", feat: "Voice trigger", dur: 6, sticker: "d20", d20Text: "ROLL INITIATIVE!",
       tagline: "<b>For game masters.</b> Land a dice roll or a dramatic sting with a spoken line, and keep both hands for the table.",
       say: "roll initiative!", result: "Phrase matched: roll initiative. Sound and overlay fired" }
@@ -1067,7 +1153,8 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     wave: $("#wave"), pause: $("#pause"), tagline: $("#tagline"), chips: $("#chips"),
     stamp: $("#stampText"), d20: $("#d20Text"),
     tabs: Array.prototype.slice.call(document.querySelectorAll(".tab")),
-    st: { mic: $("#st-mic"), trig: $("#st-trig"), ask: $("#st-ask"), type: $("#st-type") }
+    st: { mic: $("#st-mic"), cmd: $("#st-cmd"), trig: $("#st-trig"), ask: $("#st-ask"), type: $("#st-type") },
+    fmText: $("#fmText"), fmSent: $("#fmSent"), vol: $("#dkVol"), volNum: $("#dkVolNum")
   };
   var runId = 0, current = 0, auto = !reduce, visible = false, speaking = false, idle = true;
 
@@ -1111,7 +1198,12 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
     el.notes.textContent = ""; el.notes.classList.remove("typing");
     el.keys.classList.remove("show", "down");
     el.cap.textContent = ""; el.result.textContent = ""; el.capLabel.textContent = "You say";
-    setSt("mic", false); setSt("trig", false); setSt("ask", false); setSt("type", false);
+    setSt("mic", false); setSt("cmd", false); setSt("trig", false); setSt("ask", false); setSt("type", false);
+    screen.classList.remove("skip-press", "ad-skipped", "vol-show", "enter-press");
+    screen.style.removeProperty("--vol");
+    el.volNum.textContent = "60";
+    el.fmText.textContent = ""; el.fmText.classList.remove("typing");
+    el.fmSent.textContent = ""; el.fmSent.classList.remove("show");
   }
 
   /* show the screen, caption and sticker that belong to a persona */
@@ -1159,6 +1251,52 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
   }
 
   var runners = {
+    command: function (p, id) {
+      el.capLabel.textContent = "You say";
+      if (p.action === "volume") { screen.classList.add("ad-skipped"); screen.style.setProperty("--vol", "60%"); }
+      return chain(id, [
+        function () { return sleep(500, id); },
+        function () { return say(p.say, id); },
+        function () {
+          setSt("cmd", true); el.result.textContent = p.result;
+          if (p.action === "skip") screen.classList.add("skip-press");
+          if (p.action === "volume") {
+            screen.classList.add("vol-show");
+            return sleep(350, id).then(function (ok) {
+              if (!ok) return false;
+              screen.style.setProperty("--vol", p.vol + "%"); el.volNum.textContent = String(p.vol);
+              return sleep(2300, id);
+            });
+          }
+          return sleep(550, id);
+        },
+        function () {
+          if (p.action === "skip") { screen.classList.remove("skip-press"); screen.classList.add("ad-skipped"); return sleep(2600, id); }
+          return sleep(500, id);
+        },
+        function () { screen.classList.remove("vol-show"); return sleep(600, id); }
+      ]);
+    },
+    send: function (p, id) {
+      el.capLabel.textContent = "You dictate";
+      return chain(id, [
+        function () { return sleep(500, id); },
+        function () { setSt("type", true); return say(p.say, id); },
+        function () { el.fmText.classList.add("typing"); return stream(p.typed, el.fmText, id, 26); },
+        function () { el.fmText.classList.remove("typing"); el.capLabel.textContent = "You say"; return sleep(700, id); },
+        function () { return say("press enter", id); },
+        function () {
+          setSt("type", false); setSt("cmd", true);
+          screen.classList.add("enter-press"); el.result.textContent = p.result;
+          return sleep(450, id);
+        },
+        function () {
+          screen.classList.remove("enter-press");
+          el.fmSent.textContent = p.typed; el.fmSent.classList.add("show"); el.fmText.textContent = "";
+          return sleep(2800, id);
+        }
+      ]);
+    },
     trigger: function (p, id) {
       el.capLabel.textContent = "You say";
       return chain(id, [
@@ -1229,7 +1367,7 @@ footer { background: var(--ink-band); color: #fff; padding-top: clamp(48px, 7vw,
   function poster() {
     reset(); setPersona(0);
     el.cap.textContent = personas[0].say;
-    el.burst.classList.add("show"); setSt("trig", true);
+    screen.classList.add("ad-skipped"); setSt("cmd", true);
     el.result.textContent = personas[0].result;
     markTabs(false);
   }
