@@ -519,3 +519,31 @@ def test_context_manager_closes_owned_client(
     with FactCheckerClient(LLMConfig()) as c:
         assert c.config.model == "gpt-4o-mini"
     # No assertion needed — close() on the default client is safe to call.
+
+
+@pytest.mark.parametrize(
+    "effort, expected",
+    [("default", None), ("none", "none"), ("Low", "low"), ("high", "high")],
+)
+def test_reasoning_effort_is_sent_only_when_chosen(
+    monkeypatch: pytest.MonkeyPatch, effort: str, expected: str | None
+) -> None:
+    monkeypatch.setenv("LLM_API_KEY", "sk-test")
+    bodies: List[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        bodies.append(json.loads(req.content))
+        return _ok_response(_chunks_with_tokens("ok"))
+
+    http_client = httpx.Client(transport=_make_handler(handler))
+    try:
+        client = FactCheckerClient(
+            LLMConfig(reasoning_effort=effort), http_client=http_client
+        )
+        list(client.stream("hi"))
+    finally:
+        http_client.close()
+
+    assert len(bodies) == 1
+    assert bodies[0].get("reasoning_effort") == expected
+    assert ("reasoning_effort" in bodies[0]) is (expected is not None)

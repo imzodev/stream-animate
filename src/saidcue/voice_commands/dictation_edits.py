@@ -13,7 +13,12 @@ from .parser import normalize
 
 # edit name -> spoken phrases (matching ignores case and punctuation)
 DEFAULT_EDITS: Dict[str, tuple] = {
-    "newline": ("new line", "next line", "press enter"),
+    "newline": ("new line", "next line"),
+    "submit": (
+        "press enter", "hit enter", "enter", "press return", "hit return",
+        "submit", "submit it", "send it", "send message", "send that",
+        "presiona enter", "oprime enter", "presiona intro", "enviar",
+    ),
     "paragraph": ("new paragraph",),
     "undo_phrase": ("scratch that", "delete that", "undo that"),
     "delete_word": ("delete word", "delete last word"),
@@ -38,6 +43,9 @@ def apply_edit(name: str, runner, typer, engine) -> str:
     if name == "newline":
         runner.press("<enter>")
         return "New line"
+    if name == "submit":
+        runner.press("<enter>")
+        return "Enter"
     if name == "paragraph":
         runner.press("<enter>", repeat=2)
         return "New paragraph"

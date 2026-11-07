@@ -383,6 +383,9 @@ def _hydrate_llm_config(raw: Optional[dict]) -> Optional[LLMConfig]:
                 str(raw["esc_hotkey"]) if raw.get("esc_hotkey") is not None else None
             ),
             thinking=ThinkingStrategy(raw.get("thinking", LLMConfig().thinking.value)),
+            reasoning_effort=str(
+                raw.get("reasoning_effort", LLMConfig().reasoning_effort)
+            ),
         )
     except (TypeError, ValueError) as exc:
         raise ConfigError(f"Invalid LLM configuration: {exc}") from exc
@@ -490,6 +493,7 @@ def _serialize(
             "silence_timeout": llm.silence_timeout,
             "esc_hotkey": llm.esc_hotkey,
             "thinking": llm.thinking.value,
+            "reasoning_effort": llm.reasoning_effort,
         }
     return data
 

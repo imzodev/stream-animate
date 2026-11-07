@@ -19,6 +19,15 @@ class _Binding:
     hotkey: keyboard.HotKey
 
 
+# Named keys that pynput only parses inside angle brackets ("<right>"), but
+# that people and language models write bare ("right").
+_SPECIAL_KEYS = frozenset({
+    "left", "right", "up", "down", "home", "end", "space", "tab", "enter",
+    "esc", "backspace", "delete", "insert", "page_up", "page_down",
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+})  # fmt: skip
+
+
 class HotkeyManager:
     """Manage registration and dispatch of global hotkeys."""
 
@@ -87,7 +96,7 @@ class HotkeyManager:
             token = raw.strip().lower()
             if not token:
                 continue
-            if token in modifiers:
+            if token in modifiers or token in _SPECIAL_KEYS:
                 out.append(f"<{token}>")
             else:
                 out.append(token)

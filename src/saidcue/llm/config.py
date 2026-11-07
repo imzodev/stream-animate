@@ -70,6 +70,13 @@ class LLMConfig:
     # panel can render it as italic grey; STRIP drops it entirely;
     # KEEP leaves the tags visible in the answer (debugging).
     thinking: ThinkingStrategy = ThinkingStrategy.SEPARATE
+    # How much the *model* reasons before answering. ``"default"`` sends
+    # nothing and lets the provider decide. Any other value
+    # (``none``/``minimal``/``low``/``medium``/``high``) is sent verbatim
+    # as the OpenAI-style ``reasoning_effort`` request field, which is the
+    # only way to make a reasoning model answer faster. ``thinking`` above
+    # only controls how returned reasoning is displayed.
+    reasoning_effort: str = "default"
 
     def resolved_system_prompt(self) -> str:
         """Return the active system prompt (custom → preset → default)."""

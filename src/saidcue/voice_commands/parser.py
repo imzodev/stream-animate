@@ -39,8 +39,25 @@ def split_wake_word(text: str, wake_words: Iterable[str]) -> Optional[str]:
             continue
         wake_tokens = wake.split()
         if words[: len(wake_tokens)] == wake_tokens:
-            return " ".join(words[len(wake_tokens) :])
+            rest = words[len(wake_tokens) :]
+            return " ".join(_collapse_repeat(rest, wake_tokens))
     return None
+
+
+def _collapse_repeat(words: List[str], wake_tokens: List[str]) -> List[str]:
+    """Turn ``X <wake> X`` into ``X``.
+
+    People (and Whisper) often say a command twice in one breath, e.g.
+    "computer skip ad computer skip ad". The repeat would otherwise make
+    the whole phrase unmatchable. Only an exact repeat is collapsed, so a
+    command that legitimately contains the wake word is left alone.
+    """
+
+    n = len(wake_tokens)
+    for i in range(1, len(words) - n):
+        if words[i : i + n] == wake_tokens and words[:i] == words[i + n :]:
+            return words[:i]
+    return words
 
 
 class CommandMatcher:

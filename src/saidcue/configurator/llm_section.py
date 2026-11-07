@@ -75,6 +75,12 @@ class LLMSection(QWidget):
             if self._thinking_combo.itemData(i) == cfg.thinking.value:
                 self._thinking_combo.setCurrentIndex(i)
                 break
+        for i in range(self._reasoning_combo.count()):
+            if self._reasoning_combo.itemData(i) == cfg.reasoning_effort:
+                self._reasoning_combo.setCurrentIndex(i)
+                break
+        else:
+            self._reasoning_combo.setCurrentIndex(0)
         self._toggle_hotkey_capture.set_hotkey(cfg.toggle_hotkey or "")
         self._refresh_api_key_status()
         self._on_persona_changed(self._persona_combo.currentText())
@@ -98,6 +104,7 @@ class LLMSection(QWidget):
             toggle_hotkey=self._toggle_hotkey_capture.get_hotkey().strip() or None,
             timeout_seconds=int(self._timeout_input.value()),
             thinking=ThinkingStrategy(self._thinking_combo.currentData()),
+            reasoning_effort=str(self._reasoning_combo.currentData() or "default"),
         )
 
     def validate(self, config: LLMConfig) -> List[str]:
@@ -260,6 +267,27 @@ class LLMSection(QWidget):
             "Keep: leave the tags visible in the answer."
         )
         row.addWidget(self._thinking_combo)
+        row.addStretch(1)
+        behavior_layout.addLayout(row)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Model reasoning:"))
+        self._reasoning_combo = QComboBox()
+        self._reasoning_combo.addItem("Provider default", "default")
+        self._reasoning_combo.addItem("Off (fastest)", "none")
+        self._reasoning_combo.addItem("Minimal", "minimal")
+        self._reasoning_combo.addItem("Low", "low")
+        self._reasoning_combo.addItem("Medium", "medium")
+        self._reasoning_combo.addItem("High", "high")
+        self._reasoning_combo.setToolTip(
+            "How much the model thinks before it starts answering. Lower "
+            "is faster on reasoning models (o-series, GPT-5, Gemini, "
+            "DeepSeek-style).\n"
+            "Sent as 'reasoning_effort'. Pick a value your model accepts: "
+            "if answers fail with an HTTP 400 error, go back to "
+            "Provider default.\n"
+            "Models that do not reason ignore this, and some providers reject it."
+        )
+        row.addWidget(self._reasoning_combo)
         row.addStretch(1)
         behavior_layout.addLayout(row)
         row = QHBoxLayout()

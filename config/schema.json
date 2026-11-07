@@ -218,6 +218,12 @@
                     "enum": ["separate", "strip", "keep"],
                     "default": "separate",
                     "description": "How to handle chain-of-thought that arrives inline inside the answer wrapped in tags like <thinking>...</thinking>. 'separate' (default) splits it into the reasoning stream so the panel renders it as italic grey. 'strip' drops it entirely. 'keep' leaves the tags visible."
+                },
+                "reasoning_effort": {
+                    "type": "string",
+                    "enum": ["default", "none", "minimal", "low", "medium", "high"],
+                    "default": "default",
+                    "description": "How much the model reasons before answering, sent as the OpenAI-style reasoning_effort field. 'default' sends nothing. Lower values answer faster on reasoning models; which values are accepted depends on the model (e.g. 'none' or 'minimal' for recent OpenAI and Gemini models)."
                 }
             },
             "additionalProperties": false

@@ -127,7 +127,7 @@ def test_canonicalize_wraps_modifiers_in_angle_brackets():
     assert HotkeyManager.canonicalize("<ctrl>+<alt>+9") == "<ctrl>+<alt>+9"
     assert HotkeyManager.canonicalize("Ctrl + Alt + 9") == "<ctrl>+<alt>+9"
     assert HotkeyManager.canonicalize("shift+a") == "<shift>+a"
-    assert HotkeyManager.canonicalize("F5") == "f5"
+    assert HotkeyManager.canonicalize("F5") == "<f5>"
 
 
 def test_canonicalize_rejects_invalid_inputs():
@@ -156,3 +156,11 @@ def test_register_hotkey_normalizes_bare_form():
     # And via the bare form too (since it normalizes)
     assert manager.trigger("Ctrl + Alt + 9") is True
     assert calls == ["hit", "hit"]
+
+
+def test_canonicalize_wraps_bare_named_keys():
+    from saidcue.hotkeys import HotkeyManager
+
+    assert HotkeyManager.canonicalize("right") == "<right>"
+    assert HotkeyManager.canonicalize("ctrl+left") == "<ctrl>+<left>"
+    assert HotkeyManager.canonicalize("ctrl+t") == "<ctrl>+t"

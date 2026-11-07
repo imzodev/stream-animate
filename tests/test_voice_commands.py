@@ -879,3 +879,42 @@ def test_engine_does_not_type_consumed_commands():
     assert engine._process_chunk(chunk, type_into_window=True) == "transcribed"
     assert controller.typed == ["Hello world. "]
     assert handled[0] == ("Computer, save.", True)
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("computer skip ad computer skip ad", "skip ad"),
+        ("Computer, skip ad. Computer, skip ad.", "skip ad"),
+        ("computer open computer", "open computer"),  # not a repeat: left alone
+    ],
+)
+def test_repeated_command_is_collapsed(text, expected):
+    assert split_wake_word(text, ["computer"]) == expected
+
+
+def test_skip_ad_survives_a_repeat_and_a_mishearing():
+    matcher = CommandMatcher(COMMANDS)
+    for spoken in ("computer skip ad computer skip ad", "computer skip add"):
+        rest = split_wake_word(spoken, ["computer"])
+        matched = matcher.match(rest)
+        assert matched is not None and matched[0].id == "skip_ad"
+
+
+@pytest.mark.parametrize(
+    "spoken", ["press enter", "Hit enter.", "submit", "Send it!", "presiona enter"]
+)
+def test_enter_phrases_press_enter_while_dictating(spoken):
+    from saidcue.voice_commands.dictation_edits import build_lookup, match_edit
+
+    assert match_edit(spoken, build_lookup()) == "submit"
+
+
+def test_enter_command_beats_the_click_command():
+    matcher = CommandMatcher(COMMANDS)
+    for spoken in ("computer press enter", "computer submit", "computer enter"):
+        matched = matcher.match(split_wake_word(spoken, ["computer"]))
+        assert matched is not None and matched[0].id == "press_enter", spoken
+    assert matcher.match("press the save button")[0].id == "click"
+    enter = next(c for c in COMMANDS if c.id == "press_enter")
+    assert enter.actions[0]["keys"] == "<enter>"

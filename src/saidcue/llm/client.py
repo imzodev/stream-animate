@@ -157,6 +157,17 @@ class FactCheckerClient:
     # Streaming
     # ------------------------------------------------------------------
 
+    def _apply_reasoning_effort(self, payload: dict) -> None:
+        """Add ``reasoning_effort`` to a request when the user chose one.
+
+        ``"default"`` leaves the payload untouched so models that do not
+        know the field are never sent it unless the user opts in.
+        """
+
+        effort = (self._config.reasoning_effort or "default").strip().lower()
+        if effort and effort != "default":
+            payload["reasoning_effort"] = effort
+
     def stream(self, user_text: str) -> Iterator[StreamChunk]:
         """Yield normalized streaming chunks from the LLM endpoint.
 
@@ -207,6 +218,7 @@ class FactCheckerClient:
                 {"role": "user", "content": user_text},
             ],
         }
+        self._apply_reasoning_effort(payload)
         url = self._chat_completions_url()
         _LOGGER.info(
             "Fact-checker LLM request: model=%s url=%s system=%r user=%r",
@@ -334,6 +346,7 @@ class FactCheckerClient:
                 {"role": "user", "content": user},
             ],
         }
+        self._apply_reasoning_effort(payload)
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
@@ -352,9 +365,21 @@ class FactCheckerClient:
                 body=_redact_body(response.text),
             )
         try:
-            content = response.json()["choices"][0]["message"]["content"] or ""
-        except (ValueError, KeyError, IndexError, TypeError) as exc:
+            choice = response.json()["choices"][0]
+            content = choice["message"].get("content") or ""
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError) as exc:
             raise LLMError("bad response", body=_redact_body(response.text)) from exc
+        if not content.strip() and choice.get("finish_reason") == "length":
+            # Reasoning models spend the token budget on hidden reasoning and
+            # can run out before writing any answer.
+            raise LLMError(
+                "ran out of tokens while reasoning",
+                body=(
+                    "The model used its whole token budget thinking and never "
+                    "answered. Set 'Model reasoning' to Off or Low in the LLM "
+                    "settings, or use a non-reasoning model."
+                ),
+            )
         return re.sub(r"<thinking>.*?</thinking>", "", content, flags=re.S).strip()
 
     def _provider_headers(self) -> dict:

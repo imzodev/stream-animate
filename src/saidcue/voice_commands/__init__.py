@@ -60,7 +60,7 @@ def build_service(config, *, engine_getter, llm_config=None, on_feedback=None):
 
         def complete(system: str, user: str) -> str:
             with FactCheckerClient(llm_config) as client:
-                return client.complete(system, user, max_tokens=800)
+                return client.complete(system, user, max_tokens=4000)
 
         try:
             tabs = tabs_factory()
