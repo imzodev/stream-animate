@@ -57,7 +57,10 @@ RUN wget -q -O /tmp/appimagetool.AppImage \
 
 WORKDIR /src
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt pyinstaller==6.22.3
+# CPU-only torch: the default Linux wheel bundles ~2.5 GB of CUDA libraries,
+# which pushes the packages past GitHub's 2 GB release-asset limit.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir -r requirements.txt pyinstaller==6.22.3
 
 COPY . .
 
