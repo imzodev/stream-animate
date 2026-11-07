@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Saidcue
+Comment=Voice co-pilot: voice triggers, AI answers and dictation
+Exec=saidcue
+Icon=saidcue
+Categories=Utility;AudioVideo;
+Terminal=false

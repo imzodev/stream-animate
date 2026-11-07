@@ -355,6 +355,23 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
   .chips { gap: 18px; }
   .tab { font-size: 0.92rem; padding-block: 14px; }
 }
+/* download + requirements */
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.dl-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 24px; display: grid; gap: 10px; align-content: start; }
+.dl-card h3 { font-family: var(--font-display); font-size: 1.25rem; }
+.dl-card p { color: var(--muted); font-size: 0.95rem; }
+.dl-card.soon { opacity: 0.8; }
+.btn-dl { display: inline-block; text-align: center; text-decoration: none; font-weight: 600; border-radius: 8px; background: var(--accent); color: var(--accent-fg); padding: 13px 22px; }
+.btn-dl:hover { filter: brightness(1.06); }
+.btn-dl[aria-disabled="true"] { background: var(--surface-2); color: var(--muted); pointer-events: none; }
+.dl-meta { font-family: var(--font-mono); font-size: 0.8rem; color: var(--muted); }
+.req-wrap { overflow-x: auto; }
+table.req { width: 100%; border-collapse: collapse; font-size: 0.95rem; min-width: 520px; }
+table.req th, table.req td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.req th { font-family: var(--font-mono); font-weight: 500; font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+table.req td:first-child { font-weight: 600; white-space: nowrap; }
+.pkgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.pkgs span { font-family: var(--font-mono); font-size: 0.8rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 4px 9px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
@@ -363,7 +380,7 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
 <div class="wrap">
   <header>
     <div class="brand"><span class="tally" aria-hidden="true"></span>Saidcue</div>
-    <a class="nav-cta" href="#join">Join the waitlist</a>
+    <a class="nav-cta" href="#download">Download</a>
   </header>
 
   <main>
@@ -661,9 +678,66 @@ footer { padding-block: 40px 56px; border-top: 1.5px solid var(--line); color: v
       </div>
     </section>
 
+    <section id="download">
+      <div class="sec-head">
+        <span class="label">Download</span>
+        <h2>Get the early build</h2>
+        <p>Version 0.1.0, hosted on GitHub Releases. It is unsigned, so Windows SmartScreen may ask you to confirm: choose More info, then Run anyway.</p>
+      </div>
+      <div class="dl-grid">
+        <div class="dl-card">
+          <h3>Windows 10 / 11</h3>
+          <p>Installer with a Start menu entry and an optional startup shortcut. No admin rights needed.</p>
+          <a class="btn-dl" id="dl-win" href="https://github.com/imzodev/stream-animate/releases/latest/download/SaidcueSetup.exe">Download for Windows</a>
+          <span class="dl-meta">SaidcueSetup.exe &middot; 64-bit &middot; about 230 MB</span>
+        </div>
+        <div class="dl-card soon">
+          <h3>Linux</h3>
+          <p>AppImage and .deb packages are being prepared and are not published yet.</p>
+          <a class="btn-dl" href="https://github.com/imzodev/stream-animate/releases" aria-disabled="true" tabindex="-1">Coming soon</a>
+          <span class="dl-meta">x86_64</span>
+        </div>
+        <div class="dl-card">
+          <h3>All releases</h3>
+          <p>Older versions, release notes and the source code.</p>
+          <a class="btn-dl" href="https://github.com/imzodev/stream-animate/releases">View on GitHub</a>
+          <span class="dl-meta">github.com/imzodev/stream-animate</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="requirements">
+      <div class="sec-head">
+        <span class="label">Requirements</span>
+        <h2>What your PC needs</h2>
+        <p>Dictation runs a speech model on your own machine, so it needs more memory than a typical overlay tool.</p>
+      </div>
+      <div class="req-wrap">
+        <table class="req">
+          <thead><tr><th>Component</th><th>Minimum</th><th>Recommended</th></tr></thead>
+          <tbody>
+            <tr><td>OS</td><td>Windows 10 64-bit</td><td>Windows 11</td></tr>
+            <tr><td>CPU</td><td>4 cores, 64-bit x86 (Intel or AMD)</td><td>6+ cores for fast dictation on CPU</td></tr>
+            <tr><td>RAM</td><td>8 GB</td><td>16 GB, especially when streaming or gaming at the same time</td></tr>
+            <tr><td>GPU</td><td>None. Dictation falls back to the CPU</td><td>NVIDIA GPU with CUDA for much faster dictation</td></tr>
+            <tr><td>Disk</td><td>1 GB for the app, plus 1 to 3 GB for the speech model</td><td>5 GB free on an SSD</td></tr>
+            <tr><td>Audio</td><td>A microphone and an output device</td><td>A dedicated headset or USB mic</td></tr>
+            <tr><td>Network</td><td>Only for the first model download and the AI co-pilot</td><td>Broadband</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="fine" style="margin-top:12px">The speech model downloads the first time you turn dictation on, and its size depends on the model you choose. Voice triggers and hotkeys work without it.</p>
+      <h3 style="margin-top:28px;font-family:var(--font-display)">Libraries and packages</h3>
+      <p style="color:var(--muted)">The installer bundles everything below, including its own Python runtime, so you install nothing separately. This list is for people running from source (Python 3.11 or newer).</p>
+      <div class="pkgs">
+        <span>PySide6 6.9</span><span>pynput 1.8</span><span>pygame 2.6</span><span>jsonschema 4.23</span><span>faster-whisper 1.1</span><span>openai-whisper</span><span>PyTorch</span><span>sounddevice 0.5</span><span>numpy 2.1</span><span>httpx 0.27</span><span>uiautomation (Windows)</span><span>pycaw (Windows)</span>
+      </div>
+      <p class="fine" style="margin-top:12px">Run from source: <code>pip install -r requirements.txt</code> then <code>python main.py</code>.</p>
+    </section>
+
     <section>
       <div class="sec-head"><span class="label">Questions</span><h2>Before you join</h2></div>
-      <details><summary>What do I need to run it?</summary><p>A Windows 10 or 11 PC and a microphone. An NVIDIA GPU makes dictation faster, and it runs on the CPU if you don't have one.</p></details>
+      <details><summary>What do I need to run it?</summary><p>A Windows 10 or 11 64-bit PC with 8 GB of RAM (16 GB recommended) and a microphone. An NVIDIA GPU makes dictation faster, and it runs on the CPU if you don't have one. See the full requirements above.</p></details>
       <details><summary>Do I have to press hotkeys?</summary><p>Voice triggers and dictation can run hands-free. The AI co-pilot uses one hotkey so it only listens for a question when you mean to ask one.</p></details>
       <details><summary>What leaves my computer?</summary><p>Your voice is transcribed on your PC. When you ask the AI co-pilot something, only the text of that question is sent to get an answer: to our servers. Dictation and voice triggers send nothing.</p></details>
       <details><summary>Will my viewers or audience see the AI panel?</summary><p>The panel is a normal window on your screen. If you capture your whole display or share your screen, people will see it. If you capture a single game or window, they won't.</p></details>
