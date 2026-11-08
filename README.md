@@ -457,6 +457,40 @@ The "Toggle Fact-Checker" entry in the right-click tray menu has the same effect
   - `python main.py --log-level DEBUG` shows every state transition (engine start/stop, hotkey toggle, mic open/close, transcription calls, typed character counts).
   - The `STTEngine.status()` method returns a JSON-serializable dict with `running`, `active`, `mic_open`, `transcriber_loaded`, `model`, `language`, `device`, `chunk_seconds`, `always_on`, `hotkey`, `typed_chars`, `started_at`, and `last_error` — useful for custom diagnostics.
 
+## Building the Installers
+The version lives in two places that must agree with the landing page:
+`installer/windows/saidcue.iss` (`MyAppVersion`) and `installer/linux/build.sh`
+(`VERSION`). The `.deb` file name carries the version, so the download links on
+the landing page have to be updated too.
+
+**Windows** (needs PyInstaller and Inno Setup 6):
+```bash
+pyinstaller installer/windows/saidcue.spec --noconfirm --distpath dist --workpath build/win
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer/windows/saidcue.iss
+```
+Output: `installer/windows/output/SaidcueSetup.exe`.
+
+**Linux** (everything happens inside Docker — this machine is Windows):
+```bash
+docker build -f installer/linux/Dockerfile -t saidcue-linux-build .
+docker run --rm -v "$PWD/installer/linux/output:/output" saidcue-linux-build
+```
+Output: `installer/linux/output/Saidcue-x86_64.AppImage` and
+`saidcue_<version>_amd64.deb`.
+
+Two things the Linux build has to do by hand, because PyInstaller gets them
+wrong on Linux:
+- The Qt platform plugins are collected explicitly in `installer/linux/saidcue.spec`.
+  PyInstaller's Qt hooks look for them in the Windows wheel layout, so without
+  that the frozen app has no `xcb` plugin and cannot open a window.
+- `libglib` is copied into the bundle by `build.sh` *after* the PyInstaller run.
+  Installing it before the build makes PyInstaller 6.22 collect the plugins twice
+  and fail with a file/directory conflict.
+
+`pynput` also needs its X11 backend, which it picks at runtime, so
+`pynput.keyboard._xorg`, `pynput.mouse._xorg` and `Xlib` are listed as hidden
+imports.
+
 ## Power Tips
 - **Layer multiple shortcuts:** Build themed reactions (victory, defeat, raid) with unique audio/visual combos.
 - **Stay organized:** Keep assets in `assets/sounds/` and `assets/overlays/` to simplify sharing setups.
