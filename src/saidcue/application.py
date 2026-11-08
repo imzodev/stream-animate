@@ -53,6 +53,7 @@ class Application:
         fact_checker: Optional[FactCheckerEngine] = None,
         answer_panel: Optional[AnswerPanel] = None,
         listening_indicator=None,
+        tab_picker=None,
         voice_commands_config=None,
         voice_command_service=None,
         logger: Optional[logging.Logger] = None,
@@ -61,6 +62,9 @@ class Application:
         # On-screen "Listening" pill (a ListeningIndicator). Optional and
         # injected so the Application stays constructible without a GUI.
         self._listening_indicator = listening_indicator
+        # Floating list of matching tabs, shown when a voice command
+        # matches more than one tab. Same deal: optional, injected.
+        self._tab_picker = tab_picker
         self._sound_player = sound_player or SoundPlayer()
         self._overlay_window = overlay_window or OverlayWindow()
         self._hotkey_manager = hotkey_manager or HotkeyManager()
@@ -163,6 +167,7 @@ class Application:
             )
         if self._voice_service is not None:
             self._voice_service.set_feedback(self._signals.voice_feedback.emit)
+            self._attach_tab_picker()
             if self._stt_engine is not None:
                 self._stt_engine.set_command_handler(self._voice_service.handle)
             self._logger.info(
@@ -171,6 +176,33 @@ class Application:
                 len(self._voice_service.config.commands),
                 self._voice_service.config.ai_fallback,
             )
+
+    def _attach_tab_picker(self) -> None:
+        """Wire the tab picker to the voice service.
+
+        The picker is a GUI widget; the service runs on the speech
+        thread. The widget marshals its own calls, so both the voice
+        path and the mouse path end up on the right thread.
+        """
+
+        picker = self._tab_picker
+        if picker is None or self._voice_service is None:
+            return
+        self._voice_service.set_picker(picker)
+        picker.chosen.connect(self._on_tab_picker_chosen)
+        picker.dismissed.connect(self._on_tab_picker_dismissed)
+
+    def _on_tab_picker_chosen(self, index: int) -> None:
+        """A row was clicked: switch to that tab."""
+
+        if self._voice_service is not None:
+            self._voice_service.resolve_choice(index)
+
+    def _on_tab_picker_dismissed(self) -> None:
+        """The picker closed without a pick: forget the candidates."""
+
+        if self._voice_service is not None:
+            self._voice_service.clear_pending()
 
     def start(self) -> None:
         """Preload assets, register shortcuts, and start the listener."""
@@ -784,12 +816,21 @@ def run_application(
 
     listening_indicator = ListeningIndicator() if stt_config is not None else None
 
+    # The tab picker only exists when voice commands are on: it is the
+    # list shown when a command matches more than one tab.
+    tab_picker = None
+    if voice_commands_config is not None and voice_commands_config.enabled:
+        from .voice_commands.tab_picker import TabPicker
+
+        tab_picker = TabPicker()
+
     application = Application(
         shortcuts,
         stt_config=stt_config,
         llm_config=llm_config,
         answer_panel=answer_panel,
         listening_indicator=listening_indicator,
+        tab_picker=tab_picker,
         voice_commands_config=voice_commands_config,
     )
     application.start()
@@ -854,6 +895,8 @@ def run_application(
             answer_panel.close()
         if listening_indicator is not None:
             listening_indicator.close()
+        if tab_picker is not None:
+            tab_picker.close()
         tray.hide()
 
 

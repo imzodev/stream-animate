@@ -80,10 +80,14 @@ def _focus_then_dictate() -> tuple:
 
 COMMANDS: Tuple[CatalogCommand, ...] = (
     # -- windows & tabs ------------------------------------------------------
-    _cmd("terminal_tab", "Windows & tabs", "Switch to a Windows Terminal tab by name or number",
+    _cmd("terminal_tab", "Windows & tabs",
+         "Switch to a Windows Terminal tab by name or number "
+         "(shows a list when several match)",
          ["terminal {name}", "go to terminal {name}"],
          {"type": "switch_tab", "app": "terminal", "tab": "{name}"}),
-    _cmd("browser_tab", "Windows & tabs", "Switch to a browser tab by name or number",
+    _cmd("browser_tab", "Windows & tabs",
+         "Switch to a browser tab by name or number "
+         "(shows a list when several match)",
          ["tab {name}", "browser tab {name}", "go to tab {name}"],
          {"type": "switch_tab", "app": "browser", "tab": "{name}"}),
     _cmd("focus_window", "Windows & tabs", "Bring a window to the front by its title",

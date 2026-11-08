@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -29,6 +30,16 @@ _NUMBER_WORDS = {
     "seven": 7, "seventh": 7, "7th": 7,
     "eight": 8, "eighth": 8, "8th": 8,
     "nine": 9, "ninth": 9, "9th": 9,
+    # Spanish: Whisper transcribes commands in the language it hears.
+    "un": 1, "uno": 1, "una": 1, "primer": 1, "primero": 1, "primera": 1,
+    "dos": 2, "segundo": 2, "segunda": 2,
+    "tres": 3, "tercero": 3, "tercera": 3,
+    "cuatro": 4, "cuarto": 4, "cuarta": 4,
+    "cinco": 5, "quinto": 5, "quinta": 5,
+    "seis": 6, "sexto": 6, "sexta": 6,
+    "siete": 7, "septimo": 7, "septima": 7,
+    "ocho": 8, "octavo": 8, "octava": 8,
+    "nueve": 9, "noveno": 9, "novena": 9,
 }  # fmt: skip
 
 
@@ -61,6 +72,7 @@ class ActionRunner:
         elements_factory: Optional[Callable[[], Any]] = None,
         volume_factory: Optional[Callable[[], Any]] = None,
         assistant_getter: Optional[Callable[[], Any]] = None,
+        on_ambiguous: Optional[Callable[[List[Any], str], None]] = None,
     ) -> None:
         self._assistant_getter = assistant_getter or (lambda: None)
         self._elements_factory = elements_factory
@@ -72,10 +84,17 @@ class ActionRunner:
         self._windows = windows
         self._tabs_factory = tabs_factory
         self._tabs = None
+        self._tabs_lock = threading.Lock()
         self._launcher = launcher or _default_launcher
         self._typer = typer
         self._engine_getter = engine_getter or (lambda: None)
         self._sleep = sleep
+        self._on_ambiguous = on_ambiguous or (lambda _candidates, _query: None)
+
+    def set_ambiguous_handler(self, handler: Callable[[List[Any], str], None]) -> None:
+        """Called with the candidates when a query matches several tabs."""
+
+        self._on_ambiguous = handler or (lambda _candidates, _query: None)
 
     # -- public -------------------------------------------------------------
 
@@ -157,9 +176,7 @@ class ActionRunner:
         if number is not None:
             # Tab by position: focus the app's front window, then its shortcut.
             classes = _app_classes(a["app"])
-            target = next(
-                (w for w in windows.list_windows() if w.class_name in classes), None
-            )
+            target = self._front_window(windows, classes)
             if target is None:
                 return ActionResult(False, f"No {a['app']} window is open")
             windows.focus(target.hwnd)
@@ -170,11 +187,38 @@ class ActionRunner:
             )
             self.press(combo)
             return ActionResult(True, f"Tab {number}")
-        match = self._get_tabs().select(a["app"], a["tab"])
-        if match is None:
+        candidates = self._get_tabs().find(a["app"], a["tab"])
+        if not candidates:
             return ActionResult(False, f"No {a['app']} tab matches “{a['tab']}”")
-        windows.focus(match.hwnd)
+        if len(candidates) == 1:
+            match = self._select_candidate(candidates[0])
+            if match is None:
+                return ActionResult(False, f"No {a['app']} tab matches “{a['tab']}”")
+            windows.focus(match.hwnd)
+            return ActionResult(True, f"Tab: {match.tab_name[:40]}")
+        # Several tabs match: do not guess. Hand the list over so the
+        # user can pick the one they meant.
+        self._on_ambiguous(candidates, a["tab"])
+        return ActionResult(True, f"{len(candidates)} tabs match “{a['tab']}”")
+
+    def _front_window(self, windows, classes):
+        """The front-most window whose class is in ``classes``."""
+
+        return next(
+            (w for w in windows.list_windows() if w.class_name in classes), None
+        )
+
+    def select_tab_candidate(self, candidate: Any) -> ActionResult:
+        """Select one tab out of an ambiguous match and focus its window."""
+
+        match = self._select_candidate(candidate)
+        if match is None:
+            return ActionResult(False, "That tab is gone")
+        self._require_windows().focus(match.hwnd)
         return ActionResult(True, f"Tab: {match.tab_name[:40]}")
+
+    def _select_candidate(self, candidate: Any):
+        return self._get_tabs().select_candidate(candidate)
 
     def _do_type_text(self, a) -> ActionResult:
         if self._typer is None:
@@ -269,14 +313,18 @@ class ActionRunner:
         return self._windows
 
     def _get_tabs(self):
-        if self._tabs is None:
-            if self._tabs_factory is not None:
-                self._tabs = self._tabs_factory()
-            else:
-                from .tabs import UiaTabs
+        # The tab backend is used from the voice thread and from the GUI
+        # thread (the mouse pick in the tab picker), so the lazy init
+        # needs a lock.
+        with self._tabs_lock:
+            if self._tabs is None:
+                if self._tabs_factory is not None:
+                    self._tabs = self._tabs_factory()
+                else:
+                    from .tabs import UiaTabs
 
-                self._tabs = UiaTabs()
-        return self._tabs
+                    self._tabs = UiaTabs()
+            return self._tabs
 
     def _get_volume(self):
         if self._volume is None:

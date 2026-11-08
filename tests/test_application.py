@@ -4,11 +4,12 @@ import logging
 from typing import Dict, List, Optional
 
 import pytest
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtCore import QCoreApplication, QObject, Signal
 from PySide6.QtWidgets import QApplication
 
 from saidcue.application import Application
 from saidcue.models import OverlayConfig, Shortcut
+from saidcue.voice_commands.config import VoiceCommandsConfig
 
 
 @pytest.fixture(scope="module")
@@ -551,6 +552,69 @@ def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
     assert indicator.attached == (engine, False, "bottom-right")
     app.stop()
     assert indicator.detached >= 1
+
+
+class _FakePicker(QObject):
+    """Same API as the real TabPicker: two signals plus show/dismiss."""
+
+    chosen = Signal(int)
+    dismissed = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.shown: List[tuple] = []
+        self.dismiss_count = 0
+
+    def show_candidates(self, candidates, *, query: str = "") -> None:
+        self.shown.append((list(candidates), query))
+
+    def dismiss(self) -> None:
+        self.dismiss_count += 1
+
+
+class _FakeVoiceService:
+    def __init__(self) -> None:
+        self.picker = None
+        self.resolved: List[int] = []
+        self.cleared = 0
+        self.config = VoiceCommandsConfig(enabled=True)
+
+    def set_feedback(self, _callback) -> None:
+        pass
+
+    def set_picker(self, picker) -> None:
+        self.picker = picker
+
+    def resolve_choice(self, index: int) -> None:
+        self.resolved.append(index)
+
+    def clear_pending(self) -> None:
+        self.cleared += 1
+
+
+def test_application_wires_the_tab_picker_to_the_voice_service(qt_app) -> None:
+    """A click on the picker must reach the voice service."""
+
+    picker = _FakePicker()
+    service = _FakeVoiceService()
+    # The Application must stay referenced: the picker's signal connects
+    # to its bound methods and PySide holds only a weak reference.
+    app = Application(  # noqa: F841
+        [],
+        sound_player=FakeSoundPlayer(),
+        overlay_window=FakeOverlayWindow(),
+        hotkey_manager=FakeHotkeyManager(),
+        voice_commands_config=VoiceCommandsConfig(enabled=True),
+        voice_command_service=service,
+        tab_picker=picker,
+    )
+    assert service.picker is picker
+
+    picker.chosen.emit(2)
+    assert service.resolved == [2]
+
+    picker.dismissed.emit()
+    assert service.cleared == 1
 
 
 def test_open_configurator_survives_garbage_collection(qt_app, monkeypatch) -> None:

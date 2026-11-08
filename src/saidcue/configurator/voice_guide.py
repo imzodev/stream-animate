@@ -110,6 +110,17 @@ def build_guide_html(query: str = "") -> str:
         )
 
         parts.append(
+            "<h2>Picking between tabs</h2>"
+            "<p>When several tabs match what you said — four YouTube tabs, "
+            "say — Saidcue does not guess. A small list appears on screen "
+            "with the matching tabs, numbered.</p>"
+            "<p>Say the number to pick one "
+            f'(<code {_CODE}>computer, two</code>), or click it with the '
+            "mouse. The list never takes the keyboard focus away from the "
+            "window you were in, it closes itself after a few seconds, and "
+            "saying any other command dismisses it.</p>"
+        )
+        parts.append(
             "<h2>When nothing matches</h2>"
             "<p>If “Ask the AI…” is on, a wake-word phrase that matches no "
             "command above goes to your configured LLM instead. It can only "

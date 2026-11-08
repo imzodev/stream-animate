@@ -317,6 +317,24 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 - "**computer, ask how tall is Everest**" / "**explain …**" / "**what is …**" / "**who is …**" / "**why …**" / "**how …**" → asks the AI Assistant and shows the answer in its panel. "**computer, ask a question**" (or just "**computer, assistant**") starts listening, then you say the question. Needs the AI Assistant set up (see below)
 - "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
 
+### Picking Between Tabs
+When a tab command matches **more than one tab**, Saidcue does not guess. A small
+numbered list appears on screen with the matching tabs and waits for you:
+
+1. You have three YouTube tabs open and say "**computer, tab youtube**".
+2. The list shows "1. YouTube", "2. Never Gonna Give You Up — YouTube", …
+3. Say "**computer, two**" to switch to the second one — or click it with the mouse.
+
+It works the same for every window of the app (browsers and Windows Terminal), and
+the list never takes the keyboard focus away from the window you were in. It closes
+itself after ~20 seconds and disappears as soon as you say something else.
+
+When several tabs share a name — four "Windows PowerShell" tabs — the list shows
+their position ("tab 2/4"), because the name alone cannot tell them apart.
+
+When several tabs share a name — four "Windows PowerShell" tabs — the list shows
+their position ("tab 2/4"), because the name alone cannot tell them apart.
+
 Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by voice. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
 
 The commands are a built-in English set; the settings window's **Voice Commands** tab lists every one with a checkbox to turn it off. The on-screen pill confirms each command (✓ / ✗, or "Thinking…" while the AI works). A command is never typed into the focused window.
@@ -338,7 +356,7 @@ The commands are a built-in English set; the settings window's **Voice Commands*
 ```
 - `disabled_commands` takes command ids (`save`, `next_track`, `browser_tab`, …); the settings tab writes it for you.
 - Commands are spoken in English. If Speech-to-Text `language` is set to another language, Whisper may spell English command words differently; `auto` or `en` works best.
-- Tip: Windows Terminal tabs are all called "Windows PowerShell" by default. Rename them (right-click a tab → Rename) so you can say their names, or use numbers ("computer, terminal two").
+- Tip: Windows Terminal tabs are all called "Windows PowerShell" by default. Rename them (right-click a tab → Rename) so you can say their names, or use numbers ("computer, terminal two"). If several of them match, the picker lists them with their position ("tab 2/4") so you can still tell them apart.
 
 ## AI Assistant (Fact-Checker)
 Press a global hotkey, speak a question, and an LLM streams a short answer into a small always-on-top panel. The fact-checker runs on a **separate microphone handle and separate Whisper instance** from the STT engine, so voice triggers and dictation keep working while the answer renders.

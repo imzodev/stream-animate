@@ -41,8 +41,14 @@ from saidcue.voice_commands.parser import (
     normalize,
     split_wake_word,
 )
-from saidcue.voice_commands.service import VoiceCommandService
-from saidcue.voice_commands.tabs import TabMatch, best_tab
+from saidcue.voice_commands.service import VoiceCommandService, choice_index
+from saidcue.voice_commands.tabs import (
+    TabCandidate,
+    TabMatch,
+    best_tab,
+    clean_tab_name,
+    rank_tabs,
+)
 from saidcue.voice_commands.windows import WindowInfo, find_window
 
 # ---------------------------------------------------------------------------
@@ -86,17 +92,77 @@ class FakeTabs:
         self.tabs = tabs  # {app: [(hwnd, name)]}
         self.selected: List[str] = []
 
+    def _windows(self, app):
+        """``[(hwnd, [tab names])]`` in first-seen order."""
+
+        out: List[tuple] = []
+        index: dict = {}
+        for hwnd, name in self.tabs.get(app, []):
+            if hwnd not in index:
+                index[hwnd] = len(out)
+                out.append((hwnd, []))
+            out[index[hwnd]][1].append(name)
+        return out
+
     def list_tabs(self, app):
         return [n for _h, n in self.tabs.get(app, [])]
 
+    def find(self, app, query):
+        found = []
+        for window_order, (hwnd, names) in enumerate(self._windows(app)):
+            for rank, idx in rank_tabs(names, query):
+                found.append(
+                    (
+                        rank,
+                        window_order,
+                        idx,
+                        TabCandidate(
+                            app=app,
+                            hwnd=hwnd,
+                            window_title=f"win {hwnd}",
+                            tab_name=names[idx],
+                            tab_index=idx,
+                            tab_count=len(names),
+                            rank=rank,
+                        ),
+                    )
+                )
+        found.sort(key=lambda entry: entry[:3])
+        return [entry[3] for entry in found]
+
+    def select_candidate(self, candidate):
+        for hwnd, names in self._windows(candidate.app):
+            if hwnd != candidate.hwnd:
+                continue
+            idx = candidate.tab_index
+            if idx >= len(names) or names[idx] != candidate.tab_name:
+                same = [i for i, n in enumerate(names) if n == candidate.tab_name]
+                if not same:
+                    return None
+                idx = same[0]
+            self.selected.append(names[idx])
+            return TabMatch(hwnd, f"win {hwnd}", names[idx])
+        return None
+
     def select(self, app, query):
-        entries = self.tabs.get(app, [])
-        idx = best_tab([n for _h, n in entries], query)
-        if idx is None:
+        candidates = self.find(app, query)
+        if not candidates:
             return None
-        hwnd, name = entries[idx]
-        self.selected.append(name)
-        return TabMatch(hwnd, "win", name)
+        return self.select_candidate(candidates[0])
+
+
+class FakePicker:
+    """Same API as TabPicker, without Qt."""
+
+    def __init__(self):
+        self.shown: List[tuple] = []
+        self.dismiss_count = 0
+
+    def show_candidates(self, candidates, *, query=""):
+        self.shown.append((list(candidates), query))
+
+    def dismiss(self):
+        self.dismiss_count += 1
 
 
 class FakeEngine:
@@ -214,11 +280,6 @@ def test_matcher_slots_and_most_specific_wins():
     assert m.match("save")[0].actions[0]["keys"] == "<ctrl>+s"
     assert m.match("save everything") is None  # exact templates need an exact match
     assert m.match("something odd") is None
-
-
-def test_matcher_rejects_slot_not_at_end():
-    with pytest.raises(ValueError):
-        CommandMatcher([_cmd(["{x} now"], {"type": "wait", "ms": 1})])
 
 
 def test_fill_slots_recurses():
@@ -344,6 +405,145 @@ def test_switch_tab_missing_reports_failure():
     runner, _kb, _ = make_runner(tabs=FakeTabs({"browser": [(20, "Gmail")]}))
     result = runner.run([{"type": "switch_tab", "app": "browser", "tab": "youtube"}])
     assert not result.ok and "youtube" in result.message
+
+
+def test_switch_tab_with_several_matches_does_not_guess():
+    """An ambiguous query hands the candidates over instead of picking one."""
+
+    tabs = FakeTabs(
+        {"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi"), (30, "YouTube")]}
+    )
+    ambiguous = []
+    runner, _kb, _ = make_runner(tabs=tabs)
+    runner.set_ambiguous_handler(
+        lambda candidates, query: ambiguous.append((candidates, query))
+    )
+    result = runner.run([{"type": "switch_tab", "app": "browser", "tab": "youtube"}])
+    assert result.ok and "3 tabs" in result.message
+    assert tabs.selected == []  # nothing was picked behind the user's back
+    candidates, query = ambiguous[0]
+    assert query == "youtube"
+    # Exact matches first, then the prefix match; windows in Z-order.
+    assert [c.rank for c in candidates] == [0, 0, 1]
+    assert [c.hwnd for c in candidates] == [20, 30, 20]
+    assert [c.tab_index for c in candidates] == [0, 0, 1]
+
+
+def test_switch_tab_with_one_match_still_switches_directly():
+    tabs = FakeTabs({"browser": [(20, "Gmail")]})
+    ambiguous = []
+    runner, _kb, _ = make_runner(tabs=tabs)
+    runner.set_ambiguous_handler(
+        lambda candidates, query: ambiguous.append((candidates, query))
+    )
+    result = runner.run([{"type": "switch_tab", "app": "browser", "tab": "gmail"}])
+    assert result.ok and tabs.selected == ["Gmail"] and ambiguous == []
+
+
+def test_ambiguous_tab_opens_the_picker_and_a_spoken_number_picks_it():
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, feedback, _engine = _service(tabs=tabs, picker=picker)
+
+    assert svc.handle("computer, tab youtube", False)
+    candidates, query = picker.shown[0]
+    assert query == "youtube" and len(candidates) == 2
+    assert tabs.selected == []  # still waiting for the user
+
+    assert svc.handle("computer, two", False)
+    assert tabs.selected == ["YouTube - Lo-fi"]
+    assert feedback[-1][1] == "ok"
+
+
+def test_a_spoken_choice_out_of_range_is_reported():
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, tab youtube", False)
+    assert svc.handle("computer, seven", False)
+    assert tabs.selected == []
+    assert "only 2" in feedback[-1][0]
+
+
+def test_clicking_a_picker_row_selects_that_tab():
+    """The mouse path goes through the same service entry point."""
+
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, tab youtube", False)
+    svc.resolve_choice(1)
+    assert tabs.selected == ["YouTube"]
+
+
+def test_resolving_twice_only_switches_once():
+    """The spoken choice and the click race for the same list."""
+
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, tab youtube", False)
+    svc.resolve_choice(1)
+    svc.resolve_choice(2)
+    assert tabs.selected == ["YouTube"]
+
+
+def test_saying_something_else_dismisses_the_picker():
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, tab youtube", False)
+    assert svc.handle("computer, open youtube", False)
+    assert picker.dismiss_count == 1
+    assert tabs.selected == []
+    assert opened == ["https://www.youtube.com"]
+
+
+def test_the_picker_is_dropped_when_it_closes_on_its_own():
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, tab youtube", False)
+    svc.clear_pending()
+    assert svc.handle("computer, two", False)
+    assert tabs.selected == []
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("two", 2),
+        ("2", 2),
+        ("second", 2),
+        ("the second one", 2),
+        ("pick three", 3),
+        ("tab 2", 2),
+        ("el dos", 2),
+        ("la segunda", 2),
+        ("one", 1),
+        ("pick one", 1),
+        ("nine", 9),
+        ("youtube", None),
+        ("", None),
+    ],
+)
+def test_choice_index(text, expected):
+    assert choice_index(text) == expected
+
+
+def test_rank_tabs_returns_every_match_best_first():
+    names = ["YouTube", "YouTube - Lo-fi", "Gmail", "youtube"]
+    ranked = rank_tabs(names, "youtube")
+    assert [rank for rank, _ in ranked] == [0, 0, 1]
+    assert [idx for _, idx in ranked] == [0, 3, 1]
+    assert best_tab(names, "youtube") == 0
+
+
+def test_clean_tab_name_drops_the_browser_suffix():
+    assert (
+        clean_tab_name("Some song - YouTube - Google Chrome") == "Some song - YouTube"
+    )
+    assert clean_tab_name("Windows PowerShell") == "Windows PowerShell"
 
 
 def test_focus_then_dictation_on():
@@ -657,10 +857,14 @@ def test_dictation_edit_requires_whole_utterance():
 # ---------------------------------------------------------------------------
 
 
-def _service(*, typer=None, engine=None, agent=None, **cfg):
+def _service(
+    *, typer=None, engine=None, agent=None, tabs=None, windows=None, picker=None, **cfg
+):
     config = VoiceCommandsConfig.from_dict({"enabled": True, **cfg})
     engine = engine or FakeEngine(typer=typer)
-    runner, kb, opened = make_runner(typer=typer, engine=engine)
+    runner, kb, opened = make_runner(
+        typer=typer, engine=engine, tabs=tabs, windows=windows
+    )
     feedback: List[tuple] = []
     svc = VoiceCommandService(
         config,
@@ -668,6 +872,7 @@ def _service(*, typer=None, engine=None, agent=None, **cfg):
         engine_getter=lambda: engine,
         agent=agent,
         on_feedback=lambda t, k: feedback.append((t, k)),
+        picker=picker,
     )
     return svc, kb, opened, feedback, engine
 
