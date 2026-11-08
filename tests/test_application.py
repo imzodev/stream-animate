@@ -520,8 +520,8 @@ class _FakeIndicator:
         self.attached = None
         self.detached = 0
 
-    def attach(self, engine, *, enabled=True, position=None) -> None:
-        self.attached = (engine, enabled, position)
+    def attach(self, engine, *, mode="always", position=None) -> None:
+        self.attached = (engine, mode, position)
 
     def detach(self) -> None:
         self.detached += 1
@@ -535,7 +535,7 @@ def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
     cfg = STTConfig(
         enabled=True,
         hotkey="<ctrl>+<alt>+t",
-        show_indicator=False,
+        indicator_mode="never",
         indicator_position="bottom-right",
     )
     app = Application(
@@ -549,7 +549,7 @@ def test_application_attaches_listening_indicator_to_stt(qt_app) -> None:
     )
     app.start()
     assert engine.started
-    assert indicator.attached == (engine, False, "bottom-right")
+    assert indicator.attached == (engine, "never", "bottom-right")
     app.stop()
     assert indicator.detached >= 1
 

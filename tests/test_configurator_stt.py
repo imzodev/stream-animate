@@ -81,15 +81,17 @@ def test_validate_rejects_out_of_range_phrase_settings(qapp):
 
 def test_indicator_settings_round_trip(qapp):
     section = STTSection()
-    section.populate(_cfg(show_indicator=False, indicator_position="bottom-left"))
+    section.populate(_cfg(indicator_mode="never", indicator_position="bottom-left"))
     assert not section._indicator_position_combo.isEnabled()
     out = section.read()
-    assert out.show_indicator is False
+    assert out.indicator_mode == "never"
     assert out.indicator_position == "bottom-left"
 
-    section._show_indicator.setChecked(True)
+    section._indicator_mode_combo.setCurrentIndex(
+        section._indicator_mode_combo.findData("always")
+    )
     assert section._indicator_position_combo.isEnabled()
-    assert section.read().show_indicator is True
+    assert section.read().indicator_mode == "always"
 
 
 def test_voice_section_wake_word_and_command_toggles(qapp):

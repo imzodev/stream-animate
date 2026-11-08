@@ -11,7 +11,14 @@ import jsonschema
 
 from .llm.config import LLMConfig
 from .llm.thinking import ThinkingStrategy
-from .models import ActivatorConfig, OverlayConfig, Shortcut, STTConfig
+from .models import (
+    DEFAULT_INDICATOR_MODE,
+    INDICATOR_MODES,
+    ActivatorConfig,
+    OverlayConfig,
+    Shortcut,
+    STTConfig,
+)
 from .paths import bundle_root, is_frozen, user_data_dir
 
 _LOGGER = logging.getLogger(__name__)
@@ -309,6 +316,23 @@ def load_voice_commands_config(
         raise ConfigError(f"Invalid voice_commands configuration: {exc}") from exc
 
 
+def _indicator_mode(raw: dict) -> str:
+    """Resolve the capsule mode, migrating the legacy boolean.
+
+    The old ``show_indicator`` flag could only say "yes/no". Turning it
+    off was an explicit choice, so it still means "never"; turning it on
+    was the default and now maps to "always" — the capsule doubles as
+    the "the app is running and listening" indicator.
+    """
+
+    mode = raw.get("indicator_mode")
+    if isinstance(mode, str) and mode in INDICATOR_MODES:
+        return mode
+    if "show_indicator" in raw and not raw.get("show_indicator", True):
+        return "never"
+    return DEFAULT_INDICATOR_MODE
+
+
 def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
     """Build an STTConfig from the raw 'stt' section, or None if missing."""
 
@@ -330,7 +354,7 @@ def _hydrate_stt_config(raw: Optional[dict]) -> Optional[STTConfig]:
             max_utterance_seconds=float(raw.get("max_utterance_seconds", 12.0)),
             typing_method=str(raw.get("typing_method", "paste")),
             key_delay_ms=int(raw.get("key_delay_ms", 15)),
-            show_indicator=bool(raw.get("show_indicator", True)),
+            indicator_mode=_indicator_mode(raw),
             indicator_position=str(raw.get("indicator_position", "top-center")),
             dedup_window=int(raw.get("dedup_window", 64)),
             trigger_cooldown_ms=int(raw.get("trigger_cooldown_ms", 1500)),
@@ -472,7 +496,7 @@ def _serialize(
             "max_utterance_seconds": stt.max_utterance_seconds,
             "typing_method": stt.typing_method,
             "key_delay_ms": stt.key_delay_ms,
-            "show_indicator": stt.show_indicator,
+            "indicator_mode": stt.indicator_mode,
             "indicator_position": stt.indicator_position,
             "dedup_window": stt.dedup_window,
             "trigger_cooldown_ms": stt.trigger_cooldown_ms,

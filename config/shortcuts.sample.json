@@ -24,7 +24,9 @@
     "dedup_window": 64,
     "trigger_cooldown_ms": 1500,
     "type_into_focused_window": true,
-    "voice_triggers_enabled": true
+    "voice_triggers_enabled": true,
+    "indicator_mode": "always",
+    "indicator_position": "top-center"
   },
   "llm": {
     "base_url": "https://api.openai.com/v1",

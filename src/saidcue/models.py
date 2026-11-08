@@ -13,11 +13,21 @@ from .llm.config import LLMConfig
 
 __all__ = [
     "ActivatorConfig",
+    "DEFAULT_INDICATOR_MODE",
+    "INDICATOR_MODES",
     "LLMConfig",
     "OverlayConfig",
     "Shortcut",
     "STTConfig",
 ]
+
+# How the on-screen "Listening" capsule behaves:
+#   "always"    - up whenever the speech engine is running, so the user
+#                 can see at a glance that the app is alive and listening
+#   "dictating" - up only while dictation typing is on
+#   "never"     - never shown
+INDICATOR_MODES = ("always", "dictating", "never")
+DEFAULT_INDICATOR_MODE = "always"
 
 
 @dataclass(frozen=True)
@@ -168,9 +178,12 @@ class STTConfig:
     typing_method: str = "paste"
     # Delay between keystrokes when typing_method="keys".
     key_delay_ms: int = 15
-    # Show the on-screen "Listening" pill while dictation typing is on.
-    show_indicator: bool = True
-    # Where the pill sits: top-/bottom- + left/center/right.
+    # How the on-screen "Listening" capsule behaves:
+    #   "always"    - up whenever the speech engine is running
+    #   "dictating" - up only while dictation typing is on
+    #   "never"     - never shown
+    indicator_mode: str = DEFAULT_INDICATOR_MODE
+    # Where the capsule sits: top-/bottom- + left/center/right.
     indicator_position: str = "top-center"
     # Maximum number of characters of recently-typed text kept for dedup tailing.
     dedup_window: int = 64

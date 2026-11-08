@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
 
 from ..models import OverlayConfig, STTConfig, Shortcut
 from .constants import (
+    INDICATOR_MODES,
     INDICATOR_POSITIONS,
     MAX_DURATION_MS,
     MAX_OVERLAY_SIZE,
@@ -118,7 +119,8 @@ class STTSection(QWidget):
         self._typing_method_combo.setCurrentIndex(max(0, method_idx))
         self._key_delay_input.setValue(int(cfg.key_delay_ms))
         self._dedup_input.setValue(int(cfg.dedup_window))
-        self._show_indicator.setChecked(bool(cfg.show_indicator))
+        mode_idx = self._indicator_mode_combo.findData(cfg.indicator_mode)
+        self._indicator_mode_combo.setCurrentIndex(max(0, mode_idx))
         pos_idx = self._indicator_position_combo.findData(cfg.indicator_position)
         self._indicator_position_combo.setCurrentIndex(max(0, pos_idx))
         # Keep the loaded config so fields without a widget (e.g.
@@ -159,7 +161,7 @@ class STTSection(QWidget):
             max_utterance_seconds=float(self._max_utterance_input.value()),
             typing_method=str(self._typing_method_combo.currentData() or "paste"),
             key_delay_ms=int(self._key_delay_input.value()),
-            show_indicator=self._show_indicator.isChecked(),
+            indicator_mode=str(self._indicator_mode_combo.currentData() or "always"),
             indicator_position=str(
                 self._indicator_position_combo.currentData() or "top-center"
             ),
@@ -179,6 +181,8 @@ class STTSection(QWidget):
             errors.append("STT: phrase-ending pause must be 100–3000 ms.")
         if not 2.0 <= stt.max_utterance_seconds <= 30.0:
             errors.append("STT: max phrase length must be 2–30 seconds.")
+        if stt.indicator_mode not in {c for c, _ in INDICATOR_MODES}:
+            errors.append("STT: unknown indicator mode.")
         if stt.indicator_position not in {c for c, _ in INDICATOR_POSITIONS}:
             errors.append("STT: unknown indicator position.")
         if stt.typing_method not in ("paste", "keys"):
@@ -386,20 +390,28 @@ class STTSection(QWidget):
         dedup_row.addStretch(1)
         typing_layout.addLayout(dedup_row)
         layout.addWidget(typing_group)
-
         indicator_group = QGroupBox("On-screen Indicator")
         indicator_layout = QVBoxLayout()
         indicator_group.setLayout(indicator_layout)
-        self._show_indicator = QCheckBox(
-            "Show a “Listening” pill on screen while dictation typing is on"
-        )
-        self._show_indicator.setChecked(True)
-        self._show_indicator.setToolTip(
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Show the “Listening” capsule:"))
+        self._indicator_mode_combo = QComboBox()
+        for code, label in INDICATOR_MODES:
+            self._indicator_mode_combo.addItem(label, userData=code)
+        self._indicator_mode_combo.setToolTip(
             "A small floating capsule with a live waveform. It never takes "
-            "focus or blocks clicks. Turn it off if it shows up on stream."
+            "focus or blocks clicks.\n\n"
+            "Always: up whenever the microphone is on, so you can see at a "
+            "glance that Saidcue is running and listening.\n"
+            "Only while dictating: up only while it types what you say.\n"
+            "Never: hidden (nothing pops up on stream)."
         )
-        self._show_indicator.toggled.connect(self._on_indicator_toggled)
-        indicator_layout.addWidget(self._show_indicator)
+        self._indicator_mode_combo.currentIndexChanged.connect(
+            self._on_indicator_mode_changed
+        )
+        mode_row.addWidget(self._indicator_mode_combo)
+        mode_row.addStretch(1)
+        indicator_layout.addLayout(mode_row)
         pos_row = QHBoxLayout()
         pos_row.addWidget(QLabel("Position:"))
         self._indicator_position_combo = QComboBox()
@@ -411,10 +423,12 @@ class STTSection(QWidget):
         layout.addWidget(indicator_group)
         layout.addStretch(1)
 
-    def _on_indicator_toggled(self, *_args) -> None:
-        """The position only matters when the indicator is shown."""
+    def _on_indicator_mode_changed(self, *_args) -> None:
+        """The position only matters when the capsule is shown at all."""
+
         self._indicator_position_combo.setEnabled(
-            self._enabled_checkbox.isChecked() and self._show_indicator.isChecked()
+            self._enabled_checkbox.isChecked()
+            and self._indicator_mode_combo.currentData() != "never"
         )
 
     def _on_typing_method_changed(self, *_args) -> None:
@@ -461,13 +475,13 @@ class STTSection(QWidget):
             self._append_space,
             self._typing_method_combo,
             self._dedup_input,
-            self._show_indicator,
+            self._indicator_mode_combo,
         ):
             w.setEnabled(enabled)
         self._key_delay_input.setEnabled(
             enabled and self._typing_method_combo.currentData() == "keys"
         )
-        self._on_indicator_toggled()
+        self._on_indicator_mode_changed()
         self._on_activation_toggled()
 
     def _on_activation_toggled(self) -> None:

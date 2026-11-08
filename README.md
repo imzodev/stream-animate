@@ -275,7 +275,7 @@ STT settings can also be edited directly in `config/shortcuts.json`:
     "max_utterance_seconds": 12.0,
     "typing_method": "paste",
     "key_delay_ms": 15,
-    "show_indicator": true,
+    "indicator_mode": "always",
     "indicator_position": "top-center",
     "dedup_window": 64
   }
@@ -293,7 +293,8 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 - `max_utterance_seconds` — continuous speech without a pause is split after this many seconds, at the quietest moment (default 12).
 - `typing_method` — how text reaches the focused window. `paste` (default) puts each phrase on the clipboard, presses Ctrl+V once and restores your previous clipboard text. `keys` sends one synthetic keystroke per character; use it only for apps that block paste. Fast keystrokes get dropped by some apps — Windows 11 Notepad turned "Una cocina pequeña" into "Una ina pequeéa".
 - `key_delay_ms` — pause between keystrokes when `typing_method` is `keys` (default 15).
-- `show_indicator` — show a floating "Listening" pill (live waveform; "Transcribing" while Whisper works) whenever dictation typing is on. It never takes focus or blocks clicks. Default `true`.
+- `indicator_mode` — when the floating "Listening" capsule is shown: `always` (default — up whenever the microphone is on, so you can see at a glance that Saidcue is running and listening), `dictating` (up only while it types what you say) or `never` (hidden; nothing pops up on stream, not even command feedback). It never takes focus or blocks clicks. The old `show_indicator` boolean is still accepted: `false` means `never`.
+  The capsule has two looks: a **small red mic** when the microphone is open but nothing is being typed (waiting for a voice command), and the **full yellow capsule** — mic, "Listening" label and a live waveform — while it is actually transcribing what you say. Command feedback (✓ / ✗) always uses the full capsule.
 - `indicator_position` — `top-center` (default), `top-left`, `top-right`, `bottom-center`, `bottom-left` or `bottom-right` on the primary screen.
 - `chunk_seconds` — legacy, ignored. Fixed-length slicing cut words in half and made Whisper invent text (e.g. "¡Gracias!") on the fragments.
 - `dedup_window` — number of recent characters used for tail-based dedup.

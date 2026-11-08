@@ -382,7 +382,7 @@ class Application:
         if self._listening_indicator is not None:
             self._listening_indicator.attach(
                 self._stt_engine,
-                enabled=self._stt_config.show_indicator,
+                mode=self._stt_config.indicator_mode,
                 position=self._stt_config.indicator_position,
             )
         if mode == "always":

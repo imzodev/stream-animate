@@ -109,7 +109,14 @@
                 "show_indicator": {
                     "type": "boolean",
                     "default": true,
-                    "description": "Show the on-screen 'Listening' pill while dictation typing is on"
+                    "deprecated": true,
+                    "description": "Legacy: replaced by indicator_mode. false still means 'never'"
+                },
+                "indicator_mode": {
+                    "type": "string",
+                    "enum": ["always", "dictating", "never"],
+                    "default": "always",
+                    "description": "When the on-screen 'Listening' capsule is shown: always (while the mic is on), dictating (only while typing) or never"
                 },
                 "indicator_position": {
                     "type": "string",

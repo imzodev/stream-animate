@@ -188,6 +188,10 @@ def _write_full_schema(path: Path) -> None:
                     "typing_method": {"type": "string"},
                     "key_delay_ms": {"type": "integer"},
                     "show_indicator": {"type": "boolean"},
+                    "indicator_mode": {
+                        "type": "string",
+                        "enum": ["always", "dictating", "never"],
+                    },
                     "indicator_position": {"type": "string"},
                     "dedup_window": {"type": "integer"},
                     "trigger_cooldown_ms": {"type": "integer"},
@@ -245,6 +249,7 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
     assert stt.chunk_seconds == 3.0
     assert stt.type_into_focused_window is False
     assert stt.voice_triggers_enabled is True
+    assert stt.indicator_mode == "always"
 
     # Save and reload
     save_config(
@@ -254,6 +259,37 @@ def test_stt_config_round_trip(tmp_path: Path) -> None:
         config_path, schema_path=schema_path, sample_path=sample_path
     )
     assert stt2 == stt
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # The new key wins.
+        ({"indicator_mode": "dictating"}, "dictating"),
+        ({"indicator_mode": "never"}, "never"),
+        # Legacy: turning the pill off was an explicit choice.
+        ({"show_indicator": False}, "never"),
+        ({"show_indicator": True}, "always"),
+        ({}, "always"),
+    ],
+)
+def test_indicator_mode_migrates_the_legacy_flag(
+    tmp_path: Path, raw: dict, expected: str
+) -> None:
+    config_path = tmp_path / "shortcuts.json"
+    schema_path = tmp_path / "schema.json"
+    sample_path = tmp_path / "shortcuts.sample.json"
+    _write_full_schema(schema_path)
+    config_path.write_text(
+        json.dumps({"shortcuts": [], "stt": {"enabled": True, **raw}}),
+        encoding="utf-8",
+    )
+
+    _, _, stt, _ = load_full_config(
+        config_path, schema_path=schema_path, sample_path=sample_path
+    )
+    assert stt is not None
+    assert stt.indicator_mode == expected
 
 
 def test_stt_omitted_returns_none(tmp_path: Path) -> None:

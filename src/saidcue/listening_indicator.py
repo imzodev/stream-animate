@@ -40,6 +40,8 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
+from .models import DEFAULT_INDICATOR_MODE, INDICATOR_MODES
+
 POSITIONS = (
     "top-center",
     "top-left",
@@ -51,6 +53,7 @@ POSITIONS = (
 DEFAULT_POSITION = "top-center"
 
 _PILL_W, _PILL_H = 172, 44
+_MINIMAL_PILL_W = 44  # just the mic badge: the mic is open, nothing is typed
 _MAX_PILL_W = 380  # pill grows up to this to fit command feedback text
 _SHADOW = 22  # transparent margin around the pill for the soft shadow
 _FLASH_SECONDS = 2.4
@@ -63,8 +66,10 @@ _IDLE_POLL_MS = 120
 _LEVEL_FULL_SCALE = 0.06
 
 _ORANGE = QColor(255, 159, 10)
+_ORANGE_LIGHT = QColor(255, 196, 82)
 _GREEN = QColor(48, 209, 88)
 _RED = QColor(255, 69, 58)
+_RED_LIGHT = QColor(255, 120, 108)
 _SIRI = (QColor(100, 210, 255), QColor(94, 92, 230), QColor(191, 90, 242))
 
 
@@ -122,13 +127,14 @@ class ListeningIndicator(QWidget):
         self._flash_until = 0.0
 
         self._engine = None
-        self._enabled = True
+        self._mode = DEFAULT_INDICATOR_MODE
         self._position = position if position in POSITIONS else DEFAULT_POSITION
         self._want_visible = False
 
         self._level = 0.0  # smoothed 0..1
         self._bars = [0.0] * _N_BARS
         self._transcribing = False
+        self._idle = False  # listening, but not dictating
         self._t0 = time.monotonic()
 
         # 0 = hidden, 1 = fully shown. Drives scale + opacity.
@@ -155,16 +161,28 @@ class ListeningIndicator(QWidget):
         return self._position
 
     @property
+    def mode(self) -> str:
+        """How the capsule decides to be visible."""
+
+        return self._mode
+
+    @property
     def is_shown(self) -> bool:
-        """``True`` when the indicator wants to be visible (typing active)."""
+        """``True`` when the indicator wants to be visible."""
 
         return self._want_visible
 
-    def attach(self, engine, *, enabled: bool = True, position: Optional[str] = None):
-        """Follow ``engine``'s typing state. ``enabled=False`` keeps it hidden."""
+    def attach(
+        self,
+        engine,
+        *,
+        mode: str = DEFAULT_INDICATOR_MODE,
+        position: Optional[str] = None,
+    ):
+        """Follow ``engine``'s state. ``mode`` decides when to be visible."""
 
         self._engine = engine
-        self._enabled = bool(enabled)
+        self.set_mode(mode)
         if position is not None:
             self.set_position(position)
         self._tick()
@@ -173,8 +191,10 @@ class ListeningIndicator(QWidget):
         self._engine = None
         self._set_visible(False)
 
-    def set_enabled(self, enabled: bool) -> None:
-        self._enabled = bool(enabled)
+    def set_mode(self, mode: str) -> None:
+        """Set the visibility mode: "always", "dictating" or "never"."""
+
+        self._mode = mode if mode in INDICATOR_MODES else DEFAULT_INDICATOR_MODE
         self._tick()
 
     def set_position(self, position: str) -> None:
@@ -185,8 +205,8 @@ class ListeningIndicator(QWidget):
         """Briefly show command feedback. ``kind``: ok / error / busy / info.
 
         ``busy`` stays up until the next flash (e.g. "Thinking…" while the AI
-        works). Respects the show/hide setting, so a hidden indicator stays
-        hidden on stream.
+        works). The "never" mode keeps the capsule hidden even for this,
+        so nothing pops up on stream.
         """
 
         self._flash_text = text
@@ -206,14 +226,34 @@ class ListeningIndicator(QWidget):
 
     def _tick(self) -> None:
         engine = self._engine
-        typing = bool(engine is not None and engine.is_running and engine.is_active)
+        running = bool(engine is not None and engine.is_running)
+        typing = bool(running and engine.is_active)
         flashing = self._flashing()
-        self._set_visible(self._enabled and (typing or flashing))
+        # "always" doubles as the "the app is running and listening"
+        # indicator; "dictating" only shows while it types; "never"
+        # hides the capsule completely, flashes included.
+        if self._mode == "always":
+            status = running
+        elif self._mode == "dictating":
+            status = typing
+        else:
+            status = False
+            flashing = False  # "never" hides the capsule, flashes included
+        # Listening but not dictating: shrink to the red mic alone.
+        self._idle = running and not typing
+        self._set_visible(status or flashing)
         if not self.isVisible():
             return
-        active = typing
+        # The waveform follows the microphone whenever it is open, so the
+        # capsule reacts to the voice even when nothing is being typed.
+        active = running
 
-        goal_w = self._content_width() if flashing else _PILL_W
+        if flashing:
+            goal_w = self._content_width()
+        elif self._idle:
+            goal_w = float(_MINIMAL_PILL_W)
+        else:
+            goal_w = float(_PILL_W)
         self._pill_w += (goal_w - self._pill_w) * 0.25
 
         raw = engine.input_level if (engine is not None and active) else 0.0
@@ -324,6 +364,10 @@ class ListeningIndicator(QWidget):
             self._paint_text(p, pill, self._flash_text, right)
             if kind == "busy":
                 self._paint_dots(p, pill)
+        elif self._idle:
+            # Listening but not dictating: just the red mic. The capsule
+            # says "the microphone is open" without claiming to type.
+            self._paint_mic(p, pill, color=_RED, centered=True, steady=True)
         else:
             self._paint_mic(p, pill)
             self._paint_label(p, pill)
@@ -401,22 +445,38 @@ class ListeningIndicator(QWidget):
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawRoundedRect(pill.adjusted(0.5, 0.5, -0.5, -0.5), radius, radius)
 
-    def _paint_mic(self, p: QPainter, pill: QRectF) -> None:
-        c = QPointF(pill.left() + 24, pill.center().y())
+    def _paint_mic(
+        self,
+        p: QPainter,
+        pill: QRectF,
+        color: QColor = _ORANGE,
+        *,
+        centered: bool = False,
+        steady: bool = False,
+    ) -> None:
+        """Draw the microphone badge.
+
+        ``centered`` puts the badge in the middle of the pill (the minimal
+        "the mic is open" capsule). ``steady`` keeps the glow calm
+        instead of breathing with the voice level.
+        """
+
+        x = pill.center().x() if centered else pill.left() + 24
+        c = QPointF(x, pill.center().y())
         # Glow that breathes with the voice level.
-        glow_r = 15 + 7 * self._level
+        glow_r = 15 + (0 if steady else 7 * self._level)
         glow = QRadialGradient(c, glow_r)
-        g = QColor(_ORANGE)
-        g.setAlpha(int(70 + 90 * self._level))
+        g = QColor(color)
+        g.setAlpha(int((70 if steady else 70 + 90 * self._level)))
         glow.setColorAt(0.0, g)
-        glow.setColorAt(1.0, QColor(255, 159, 10, 0))
+        glow.setColorAt(1.0, QColor(color.red(), color.green(), color.blue(), 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(glow)
         p.drawEllipse(c, glow_r, glow_r)
 
         dot = QRadialGradient(QPointF(c.x() - 3, c.y() - 4), 16)
-        dot.setColorAt(0.0, QColor(255, 196, 82))
-        dot.setColorAt(1.0, _ORANGE)
+        dot.setColorAt(0.0, _ORANGE_LIGHT if color == _ORANGE else _RED_LIGHT)
+        dot.setColorAt(1.0, color)
         p.setBrush(dot)
         p.drawEllipse(c, 12, 12)
 

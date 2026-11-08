@@ -70,10 +70,24 @@ def test_window_never_takes_focus_or_input(qapp):
     assert ind.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
 
-def test_shows_while_typing_active_and_hides_when_off(qapp):
+def test_always_mode_shows_while_the_engine_runs(qapp):
+    """The capsule doubles as "the app is running and listening"."""
+
+    ind = ListeningIndicator()
+    engine = FakeEngine(active=False)
+    ind.attach(engine, mode="always")
+    assert ind.is_shown and ind.isVisible()
+
+    # Typing is off, but the mic is open: still visible.
+    engine.is_active = False
+    ind._tick()
+    assert ind.is_shown
+
+
+def test_dictating_mode_shows_only_while_typing(qapp):
     ind = ListeningIndicator()
     engine = FakeEngine(active=True)
-    ind.attach(engine)
+    ind.attach(engine, mode="dictating")
     assert ind.is_shown and ind.isVisible()
 
     engine.is_active = False
@@ -81,19 +95,74 @@ def test_shows_while_typing_active_and_hides_when_off(qapp):
     assert not ind.is_shown
 
 
-def test_hidden_when_disabled_by_setting(qapp):
+def test_idle_capsule_shrinks_to_the_mic_alone(qapp):
+    """Listening without dictating: a small red mic, nothing else."""
+
     ind = ListeningIndicator()
-    ind.attach(FakeEngine(active=True), enabled=False)
+    engine = FakeEngine(active=False)
+    ind.attach(engine, mode="always")
+    assert ind.is_shown
+    assert ind._idle is True
+    # The pill animates towards the minimal width (just the badge).
+    for _ in range(40):
+        ind._tick()
+    assert ind._pill_w == pytest.approx(44, abs=1)
+
+
+def test_dictating_capsule_keeps_the_full_width(qapp):
+    ind = ListeningIndicator()
+    engine = FakeEngine(active=True)
+    ind.attach(engine, mode="always")
+    assert ind._idle is False
+    for _ in range(40):
+        ind._tick()
+    assert ind._pill_w == pytest.approx(172, abs=1)
+
+
+def test_the_capsule_grows_again_when_dictation_starts(qapp):
+    ind = ListeningIndicator()
+    engine = FakeEngine(active=False)
+    ind.attach(engine, mode="always")
+    for _ in range(40):
+        ind._tick()
+    assert ind._pill_w == pytest.approx(44, abs=1)
+
+    engine.is_active = True
+    for _ in range(40):
+        ind._tick()
+    assert ind._idle is False
+    assert ind._pill_w == pytest.approx(172, abs=1)
+
+
+def test_never_mode_hides_the_capsule_even_for_feedback(qapp):
+    ind = ListeningIndicator()
+    ind.attach(FakeEngine(active=True), mode="never")
     assert not ind.is_shown
-    ind.set_enabled(True)
+    ind.flash("Tab: servidor", "ok")
+    assert not ind.is_shown
+
+
+def test_unknown_mode_falls_back_to_always(qapp):
+    ind = ListeningIndicator()
+    ind.attach(FakeEngine(active=False), mode="nonsense")
+    assert ind.mode == "always"
+    assert ind.is_shown
+
+
+def test_set_mode_switches_the_behaviour_at_runtime(qapp):
+    ind = ListeningIndicator()
+    engine = FakeEngine(active=False)
+    ind.attach(engine, mode="dictating")
+    assert not ind.is_shown
+    ind.set_mode("always")
     assert ind.is_shown
 
 
 def test_hidden_when_engine_not_running_or_detached(qapp):
     ind = ListeningIndicator()
-    ind.attach(FakeEngine(active=True, running=False))
+    ind.attach(FakeEngine(active=True, running=False), mode="always")
     assert not ind.is_shown
-    ind.attach(FakeEngine(active=True))
+    ind.attach(FakeEngine(active=True), mode="always")
     assert ind.is_shown
     ind.detach()
     assert not ind.is_shown

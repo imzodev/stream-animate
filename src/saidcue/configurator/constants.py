@@ -20,6 +20,14 @@ INDICATOR_POSITIONS = [
     ("bottom-right", "Bottom right"),
 ]
 
+# When the on-screen "Listening" capsule is shown (code, label). Codes
+# match saidcue.models.INDICATOR_MODES.
+INDICATOR_MODES = [
+    ("always", "Always — while the mic is on"),
+    ("dictating", "Only while dictating"),
+    ("never", "Never"),
+]
+
 # Whisper supported languages (subset shown in the configurator; "auto" delegates
 # to Whisper's own language detection). Full list lives in whisper.tokenizer.
 WHISPER_LANGUAGES = [
