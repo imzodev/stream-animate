@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from typing import Any, Callable, List, Optional, Sequence
 
 from .actions import ActionRunner, tab_number
@@ -28,6 +29,11 @@ OK, ERROR, BUSY, INFO = "ok", "error", "busy", "info"
 
 Feedback = Callable[[str, str], None]
 
+# How long a bare wake word waits for the rest of the command. Whisper
+# splits "computer, youtube tab" into two utterances when there is a
+# pause after the wake word.
+WAKE_MERGE_SECONDS = 3.0
+
 # Words that can sit in front of a spoken choice: "pick two", "the
 # second one", "tab 2", "el dos".
 _CHOICE_PREFIXES = frozenset(
@@ -41,14 +47,20 @@ _CHOICE_PREFIXES = frozenset(
 _CHOICE_SUFFIXES = frozenset({"one", "uno", "una", "please", "por", "favor"})
 
 
-def choice_index(text: str) -> Optional[int]:
+def choice_index(text: str, app: str = "") -> Optional[int]:
     """The 1-based option the user picked, or ``None``.
 
     Understands "two", "2", "second", "the second one", "pick three",
     "tab 2" and the Spanish equivalents ("el dos", "la segunda").
+    ``app`` is the app the pending candidates belong to, so "terminal
+    two" counts as a choice when the terminal picker is the open one.
     """
 
     words = normalize(text).split()
+    if app == "terminal" and words and words[0] == "terminal":
+        words.pop(0)
+    elif app == "browser" and words and words[0] == "browser":
+        words.pop(0)
     while words and words[0] in _CHOICE_PREFIXES:
         words.pop(0)
     while len(words) > 1 and words[-1] in _CHOICE_SUFFIXES:
@@ -120,6 +132,7 @@ class VoiceCommandService:
         self._edits = build_lookup()
         self._picker = picker
         self._pending = _PendingTabs()
+        self._merge_at = 0.0
         self._runner.set_ambiguous_handler(self._on_ambiguous)
 
     @property
@@ -151,10 +164,19 @@ class VoiceCommandService:
 
         rest = split_wake_word(text, [self._config.wake_word])
         if rest is None:
+            # No wake word here. If the wake word was spoken a moment
+            # ago on its own ("computer" … "youtube tab"), join them.
+            merged = self._take_merged(text)
+            if merged is not None and self._is_actionable(merged):
+                _LOGGER.info("Joined the pending wake word with %r", text)
+                return self._run_command(merged)
             return False
         if not rest:
+            # A bare wake word: the command is probably coming next.
+            self._arm_merge()
             self._feedback("Yes? Say a command", INFO)
             return True
+        self._clear_merge()
         return self._run_command(rest)
 
     def _run_command(self, rest: str) -> bool:
@@ -165,7 +187,8 @@ class VoiceCommandService:
         # not "the second tab of the focused window".
         pending = self._pending.peek()
         if pending:
-            index = choice_index(rest)
+            app = getattr(pending[0], "app", "")
+            index = choice_index(rest, app)
             if index is not None:
                 self._resolve_choice(index)
                 return True
@@ -188,6 +211,46 @@ class VoiceCommandService:
             return True
         self._run_ai(rest)
         return True
+
+    def _is_actionable(self, rest: str) -> bool:
+        """Would ``rest`` do something on its own (a command or a choice)?
+
+        Used to decide whether a phrase that followed a bare wake word
+        belongs to that command or is just ordinary speech.
+        """
+
+        pending = self._pending.peek()
+        if pending:
+            app = getattr(pending[0], "app", "")
+            if choice_index(rest, app) is not None:
+                return True
+        return self._matcher.match(rest) is not None
+
+    # -- wake word merge -----------------------------------------------------
+
+    def _arm_merge(self) -> None:
+        """Remember a bare wake word: the command may be coming next."""
+
+        self._merge_at = time.monotonic()
+
+    def _clear_merge(self) -> None:
+        self._merge_at = 0.0
+
+    def _take_merged(self, text: str) -> Optional[str]:
+        """The phrase to run as the command, if a wake word is pending.
+
+        Whisper splits "computer, youtube tab" into two utterances when
+        there is a pause after the wake word. The bare wake word waits
+        a moment for the rest of the phrase.
+        """
+
+        if not self._merge_at:
+            return None
+        if time.monotonic() - self._merge_at > WAKE_MERGE_SECONDS:
+            self._clear_merge()
+            return None
+        self._clear_merge()
+        return text
 
     # -- tab picking ---------------------------------------------------------
 

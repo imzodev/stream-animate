@@ -83,13 +83,19 @@ COMMANDS: Tuple[CatalogCommand, ...] = (
     _cmd("terminal_tab", "Windows & tabs",
          "Switch to a Windows Terminal tab by name or number "
          "(shows a list when several match)",
-         ["terminal {name}", "go to terminal {name}"],
+         ["terminal {name}", "go to terminal {name}", "terminal with {name}",
+          "terminal {name} tab"],
          {"type": "switch_tab", "app": "terminal", "tab": "{name}"}),
+    # "tab ..." searches every app that has tabs (browsers and Windows
+    # Terminal). The name can come first or last: people say both
+    # "tab youtube" and "the youtube tab".
     _cmd("browser_tab", "Windows & tabs",
-         "Switch to a browser tab by name or number "
+         "Switch to a browser or terminal tab by name or number "
          "(shows a list when several match)",
-         ["tab {name}", "browser tab {name}", "go to tab {name}"],
-         {"type": "switch_tab", "app": "browser", "tab": "{name}"}),
+         ["tab {name}", "tab with {name}", "browser tab {name}", "go to tab {name}",
+          "{name} tab", "the {name} tab", "go to the {name} tab",
+          "switch to the {name} tab"],
+         {"type": "switch_tab", "app": "any", "tab": "{name}"}),
     _cmd("focus_window", "Windows & tabs", "Bring a window to the front by its title",
          ["go to {name}", "switch to {name}", "switch window to {name}"],
          {"type": "focus_window", "title": "{name}"}),

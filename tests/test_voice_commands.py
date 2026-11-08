@@ -93,15 +93,18 @@ class FakeTabs:
         self.selected: List[str] = []
 
     def _windows(self, app):
-        """``[(hwnd, [tab names])]`` in first-seen order."""
+        """``[(kind, hwnd, [tab names])]`` in first-seen order."""
 
+        kinds = ("browser", "terminal") if app == "any" else (app,)
         out: List[tuple] = []
         index: dict = {}
-        for hwnd, name in self.tabs.get(app, []):
-            if hwnd not in index:
-                index[hwnd] = len(out)
-                out.append((hwnd, []))
-            out[index[hwnd]][1].append(name)
+        for kind in kinds:
+            for hwnd, name in self.tabs.get(kind, []):
+                key = (kind, hwnd)
+                if key not in index:
+                    index[key] = len(out)
+                    out.append((kind, hwnd, []))
+                out[index[key]][2].append(name)
         return out
 
     def list_tabs(self, app):
@@ -109,7 +112,7 @@ class FakeTabs:
 
     def find(self, app, query):
         found = []
-        for window_order, (hwnd, names) in enumerate(self._windows(app)):
+        for window_order, (kind, hwnd, names) in enumerate(self._windows(app)):
             for rank, idx in rank_tabs(names, query):
                 found.append(
                     (
@@ -117,7 +120,7 @@ class FakeTabs:
                         window_order,
                         idx,
                         TabCandidate(
-                            app=app,
+                            app=kind,
                             hwnd=hwnd,
                             window_title=f"win {hwnd}",
                             tab_name=names[idx],
@@ -131,7 +134,7 @@ class FakeTabs:
         return [entry[3] for entry in found]
 
     def select_candidate(self, candidate):
-        for hwnd, names in self._windows(candidate.app):
+        for kind, hwnd, names in self._windows(candidate.app):
             if hwnd != candidate.hwnd:
                 continue
             idx = candidate.tab_index
@@ -280,6 +283,24 @@ def test_matcher_slots_and_most_specific_wins():
     assert m.match("save")[0].actions[0]["keys"] == "<ctrl>+s"
     assert m.match("save everything") is None  # exact templates need an exact match
     assert m.match("something odd") is None
+
+
+def test_matcher_accepts_a_slot_before_a_trailing_word():
+    """People say both "tab youtube" and "the youtube tab"."""
+
+    m = CommandMatcher(
+        [
+            _cmd(["tab {name}"], {"type": "switch_tab", "app": "any", "tab": "{name}"}),
+            _cmd(["the {name} tab"], {"type": "switch_tab", "app": "any", "tab": "{name}"}),
+        ]
+    )
+    assert m.match("tab youtube")[1] == {"name": "youtube"}
+    assert m.match("the youtube tab")[1] == {"name": "youtube"}
+    # The more specific template wins: "the … tab" over "tab …".
+    assert m.match("the youtube tab")[0].phrases == ("the {name} tab",)
+    # A slot with no words around it is meaningless.
+    with pytest.raises(ValueError):
+        CommandMatcher([_cmd(["{x}"], {"type": "wait", "ms": 1})])
 
 
 def test_fill_slots_recurses():
@@ -476,6 +497,18 @@ def test_clicking_a_picker_row_selects_that_tab():
     assert tabs.selected == ["YouTube"]
 
 
+def test_the_app_name_can_lead_the_choice():
+    """A terminal picker answers to "terminal two", a browser one to "browser two"."""
+
+    tabs = FakeTabs({"terminal": [(10, "PowerShell server"), (10, "PowerShell logs")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+    svc.handle("computer, terminal powershell", False)
+    assert len(picker.shown) == 1
+    svc.handle("computer, terminal two", False)
+    assert tabs.selected == ["PowerShell logs"]
+
+
 def test_resolving_twice_only_switches_once():
     """The spoken choice and the click race for the same list."""
 
@@ -486,6 +519,88 @@ def test_resolving_twice_only_switches_once():
     svc.resolve_choice(1)
     svc.resolve_choice(2)
     assert tabs.selected == ["YouTube"]
+
+
+@pytest.mark.parametrize(
+    "phrase, command_id, name",
+    [
+        ("tab youtube", "browser_tab", "youtube"),
+        ("tab with youtube", "browser_tab", "youtube"),
+        ("youtube tab", "browser_tab", "youtube"),
+        ("the youtube tab", "browser_tab", "youtube"),
+        ("go to tab youtube", "browser_tab", "youtube"),
+        ("browser tab gmail", "browser_tab", "gmail"),
+        ("terminal powershell", "terminal_tab", "powershell"),
+        ("terminal server", "terminal_tab", "server"),
+        # The generic "… tab" searches every app that has tabs.
+        ("powershell tab", "browser_tab", "powershell"),
+    ],
+)
+def test_the_tab_phrasings_people_actually_say(phrase, command_id, name):
+    cmd, slots = CommandMatcher(COMMANDS).match(phrase)
+    assert cmd.id == command_id
+    assert slots == {"name": name}
+
+
+def test_the_generic_tab_command_searches_every_app():
+    tabs = FakeTabs({"browser": [(20, "YouTube")], "terminal": [(10, "YouTube")]})
+    ambiguous = []
+    runner, _kb, _ = make_runner(tabs=tabs)
+    runner.set_ambiguous_handler(
+        lambda candidates, query: ambiguous.append((candidates, query))
+    )
+    result = runner.run([{"type": "switch_tab", "app": "any", "tab": "youtube"}])
+    assert result.ok
+    candidates = ambiguous[0][0]
+    assert [c.app for c in candidates] == ["browser", "terminal"]
+
+
+def test_a_bare_wake_word_waits_for_the_rest_of_the_command():
+    """Whisper splits "computer, youtube tab" into two utterances."""
+
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+
+    assert svc.handle("Computer", False)
+    assert svc.handle("youtube tab", False)
+    assert len(picker.shown) == 1
+    assert tabs.selected == []
+
+
+def test_a_bare_wake_word_then_a_number_picks_from_the_picker():
+    tabs = FakeTabs({"browser": [(20, "YouTube"), (20, "YouTube - Lo-fi")]})
+    picker = FakePicker()
+    svc, _kb, _opened, _feedback, _engine = _service(tabs=tabs, picker=picker)
+
+    svc.handle("computer, tab youtube", False)
+    svc.handle("Computer", False)
+    assert svc.handle("two", False)
+    assert tabs.selected == ["YouTube - Lo-fi"]
+
+
+def test_a_bare_wake_word_does_not_swallow_ordinary_speech():
+    svc, _kb, _opened, _feedback, _engine = _service()
+    assert svc.handle("Computer", False)
+    # "hello there" is not a command: it must be typed normally.
+    assert not svc.handle("hello there", False)
+
+
+def test_the_pending_wake_word_expires(monkeypatch):
+    import saidcue.voice_commands.service as service_mod
+
+    monkeypatch.setattr(service_mod, "WAKE_MERGE_SECONDS", 0.0)
+    svc, _kb, _opened, _feedback, _engine = _service()
+    assert svc.handle("Computer", False)
+    assert not svc.handle("save", False)
+
+
+def test_a_question_ending_in_tab_is_still_a_question():
+    """"ask what is a browser tab" must not be read as a tab command."""
+
+    cmd, slots = CommandMatcher(COMMANDS).match("ask what is a browser tab")
+    assert cmd.id == "ask"
+    assert slots == {"question": "what is a browser tab"}
 
 
 def test_saying_something_else_dismisses_the_picker():

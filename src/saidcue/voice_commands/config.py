@@ -39,7 +39,7 @@ ACTION_TYPES = (
     "ask_listen",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
-TAB_APPS = ("terminal", "browser")
+TAB_APPS = ("terminal", "browser", "any")
 DICTATION_STATES = ("on", "off", "toggle")
 SCROLL_DIRECTIONS = ("up", "down", "top", "bottom")
 SCROLL_AMOUNTS = ("small", "page", "large")

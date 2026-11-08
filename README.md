@@ -302,7 +302,7 @@ STT settings can also be edited directly in `config/shortcuts.json`:
 Control the PC by voice. Start a phrase with the **wake word**, then say a command. Normal talking on stream never triggers anything, because the phrase has to *start* with the wake word.
 
 - "**computer, terminal two**" / "**computer, terminal server**" → switches to that Windows Terminal tab (by number or name) and brings it to front
-- "**computer, tab gmail**" → switches the browser (Chrome, Edge or Firefox) to the Gmail tab
+- "**computer, tab gmail**" / "**computer, the gmail tab**" / "**computer, tab with gmail**" → switches to that tab. The name can come first or last, and the search covers the browsers *and* Windows Terminal
 - "**computer, go to spotify**" → brings the window whose title contains *spotify* to front
 - "**computer, dictate in notepad**" → focuses that window and turns dictation typing on
 - "**computer, next song**" / "**pause**" → media keys
@@ -321,16 +321,19 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 When a tab command matches **more than one tab**, Saidcue does not guess. A small
 numbered list appears on screen with the matching tabs and waits for you:
 
-1. You have three YouTube tabs open and say "**computer, tab youtube**".
+1. You have three YouTube tabs open and say "**computer, tab youtube**" (or
+   "**computer, the youtube tab**" — the name can come first or last).
 2. The list shows "1. YouTube", "2. Never Gonna Give You Up — YouTube", …
 3. Say "**computer, two**" to switch to the second one — or click it with the mouse.
 
-It works the same for every window of the app (browsers and Windows Terminal), and
-the list never takes the keyboard focus away from the window you were in. It closes
-itself after ~20 seconds and disappears as soon as you say something else.
+It works the same for every window of every app that has tabs (the browsers and
+Windows Terminal), and the list never takes the keyboard focus away from the window
+you were in. It closes itself after ~20 seconds and disappears as soon as you say
+something else.
 
-When several tabs share a name — four "Windows PowerShell" tabs — the list shows
-their position ("tab 2/4"), because the name alone cannot tell them apart.
+If Whisper splits your phrase in two ("computer" … "youtube tab"), the bare wake
+word waits a few seconds for the rest of the command, so you don't have to say it
+in one breath.
 
 When several tabs share a name — four "Windows PowerShell" tabs — the list shows
 their position ("tab 2/4"), because the name alone cannot tell them apart.

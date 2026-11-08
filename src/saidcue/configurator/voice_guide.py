@@ -119,6 +119,10 @@ def build_guide_html(query: str = "") -> str:
             "mouse. The list never takes the keyboard focus away from the "
             "window you were in, it closes itself after a few seconds, and "
             "saying any other command dismisses it.</p>"
+            "<p>The tab's name can come first or last — "
+            f'<code {_CODE}>tab youtube</code> and '
+            f'<code {_CODE}>the youtube tab</code> both work — and the search '
+            "covers the browsers and Windows Terminal alike.</p>"
         )
         parts.append(
             "<h2>When nothing matches</h2>"

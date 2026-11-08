@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 
 from .parser import normalize
 from .windows import BROWSER_CLASSES, TERMINAL_CLASSES
@@ -19,6 +19,19 @@ _LOGGER = logging.getLogger(__name__)
 
 _APP_CLASSES = {"terminal": TERMINAL_CLASSES, "browser": BROWSER_CLASSES}
 _MAX_DEPTH = 12
+
+
+def app_kinds(app: str) -> Tuple[str, ...]:
+    """The specific apps to search for ``app``.
+
+    ``"any"`` means every app that has tabs: the browsers and Windows
+    Terminal. The results keep the kind they came from, so a candidate
+    can be re-resolved later.
+    """
+
+    if app == "any":
+        return ("browser", "terminal")
+    return (app,)
 
 
 # Match ranks, best first.
@@ -125,15 +138,16 @@ class UiaTabs:
         walk(window, 0)
         return found
 
-    def _windows(self, app: str) -> list:
-        """Top-level windows of ``app``, front-most first."""
+    def _windows(self, app: str) -> List[Tuple[str, Any]]:
+        """``(kind, window)`` for every window of ``app``, front-most first."""
 
-        classes = _APP_CLASSES[app]
-        return [
-            window
-            for window in self._auto.GetRootControl().GetChildren()
-            if window.ClassName in classes
-        ]
+        pairs: List[Tuple[str, Any]] = []
+        for kind in app_kinds(app):
+            classes = _APP_CLASSES[kind]
+            for window in self._auto.GetRootControl().GetChildren():
+                if window.ClassName in classes:
+                    pairs.append((kind, window))
+        return pairs
 
     def list_tabs(self, app: str) -> List[str]:
         """Names of all tabs across every window of ``app``."""
@@ -143,7 +157,7 @@ class UiaTabs:
 
     def _list_tabs(self, app: str) -> List[str]:
         names: List[str] = []
-        for window in self._windows(app):
+        for _kind, window in self._windows(app):
             names.extend(i.Name or "" for i in self._tab_items(window))
         return names
 
@@ -159,7 +173,7 @@ class UiaTabs:
 
     def _find(self, app: str, query: str) -> List[TabCandidate]:
         found: List[Tuple[int, int, int, TabCandidate]] = []
-        for window_order, window in enumerate(self._windows(app)):
+        for window_order, (kind, window) in enumerate(self._windows(app)):
             items = self._tab_items(window)
             names = [i.Name or "" for i in items]
             hwnd = int(window.NativeWindowHandle)
@@ -171,7 +185,7 @@ class UiaTabs:
                         window_order,
                         idx,
                         TabCandidate(
-                            app=app,
+                            app=kind,
                             hwnd=hwnd,
                             window_title=title,
                             tab_name=names[idx],

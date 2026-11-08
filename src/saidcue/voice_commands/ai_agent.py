@@ -43,7 +43,7 @@ Reply with ONLY a JSON object, no prose, no code fences:
 Allowed actions (nothing else exists):
 - {{"type": "open", "target": "<URL, protocol like spotify:, or program like notepad / calc / mspaint>"}}
 - {{"type": "focus_window", "title": "<part of an open window's title>"}}
-- {{"type": "switch_tab", "app": "terminal"|"browser", "tab": "<part of tab name, or a number 1-9>"}}
+- {{"type": "switch_tab", "app": "terminal"|"browser"|"any", "tab": "<part of tab name, or a number 1-9>"}} ("any" searches every app that has tabs)
 - {{"type": "media", "key": one of {list(MEDIA_KEYS)}, "repeat": 1}} (each volume press is 2%)
 - {{"type": "keys", "keys": "<combo like <ctrl>+t or <alt>+<f4>>", "repeat": 1}}
 - {{"type": "type_text", "text": "<text to paste>"}}
@@ -57,6 +57,8 @@ Rules:
 - Never press Enter/Return. Never type into a terminal.
 - To search the web, open a search URL (e.g. https://www.google.com/search?q=...).
 - Use window titles / tab names from the context when they match.
+- If the request names a tab (or asks for "the X tab"), use switch_tab with
+  the matching tab name. Never use "open" for a tab that is already open.
 - If the request is impossible or unsafe, reply {{"actions": [], "say": "<why, briefly>"}}.
 """
 

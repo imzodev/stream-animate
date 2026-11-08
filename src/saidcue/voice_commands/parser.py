@@ -63,44 +63,64 @@ def _collapse_repeat(words: List[str], wake_tokens: List[str]) -> List[str]:
 class CommandMatcher:
     """Match a command string against phrase templates.
 
-    A template is plain words, optionally ending with one ``{slot}`` that
-    captures the rest of the phrase: ``"terminal {name}"`` matches
-    "terminal web server" with ``{"name": "web server"}``. The most
-    specific template (most literal words) wins. Commands are any objects
-    with ``phrases`` and ``actions``.
+    A template is plain words, optionally with one ``{slot}`` that
+    captures the words in between: ``"terminal {name}"`` matches
+    "terminal web server" with ``{"name": "web server"}``, and
+    ``"{name} tab"`` matches "youtube tab" with ``{"name": "youtube"}``.
+    The slot may sit anywhere, so a template can have literal words both
+    before and after it.
+
+    The most specific template (most literal words) wins. Commands are
+    any objects with ``phrases`` and ``actions``.
     """
 
     def __init__(self, commands: Sequence[Any]) -> None:
-        entries: List[Tuple[int, Tuple[str, ...], Optional[str], Any]] = []
+        entries: List[
+            Tuple[int, Tuple[str, ...], Tuple[str, ...], Optional[str], Any]
+        ] = []
         for command in commands:
             for phrase in command.phrases:
                 norm = normalize(phrase)
                 slot = None
+                prefix: Tuple[str, ...] = ()
+                suffix: Tuple[str, ...] = ()
                 m = _SLOT.search(norm)
                 if m:
-                    if not norm.endswith(m.group(0)):
-                        raise ValueError(
-                            f"slot must be at the end of the phrase: {phrase!r}"
-                        )
                     slot = m.group(1)
-                    norm = norm[: m.start()].strip()
-                literal = tuple(norm.split())
-                entries.append((len(literal), literal, slot, command))
-        # Most literal words first; exact templates before slot templates.
-        entries.sort(key=lambda e: (e[0], e[2] is None), reverse=True)
+                    prefix = tuple(norm[: m.start()].split())
+                    suffix = tuple(norm[m.end() :].split())
+                    if not prefix and not suffix:
+                        raise ValueError(f"slot needs words around it: {phrase!r}")
+                else:
+                    prefix = tuple(norm.split())
+                literal = len(prefix) + len(suffix)
+                entries.append((literal, prefix, suffix, slot, command))
+        # Most literal words first, then exact templates, then templates
+        # anchored at the front. The last key matters for phrases like
+        # "ask what is a browser tab": "ask {question}" has to win over
+        # "{name} tab", or the question would switch tabs instead.
+        entries.sort(
+            key=lambda e: (e[0], e[3] is None, bool(e[1])),
+            reverse=True,
+        )
         self._entries = entries
 
     def match(self, command_text: str) -> Optional[Tuple[Any, Dict[str, str]]]:
         words = normalize(command_text).split()
-        for _n, literal, slot, command in self._entries:
-            if words[: len(literal)] != list(literal):
+        for _n, prefix, suffix, slot, command in self._entries:
+            if prefix and tuple(words[: len(prefix)]) != prefix:
                 continue
-            rest = words[len(literal) :]
+            if suffix and tuple(words[len(words) - len(suffix) :]) != suffix:
+                continue
             if slot is None:
-                if not rest:
+                if len(words) == len(prefix):
                     return command, {}
-            elif rest:
-                return command, {slot: " ".join(rest)}
+                continue
+            start = len(prefix)
+            end = len(words) - len(suffix)
+            if end <= start:
+                continue
+            return command, {slot: " ".join(words[start:end])}
         return None
 
 

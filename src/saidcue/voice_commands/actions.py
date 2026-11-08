@@ -16,7 +16,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .config import validate_action
 from .parser import normalize
-from .windows import find_window
+from .windows import BROWSER_CLASSES, find_window
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -174,15 +174,25 @@ class ActionRunner:
         number = tab_number(a["tab"])
         windows = self._require_windows()
         if number is not None:
-            # Tab by position: focus the app's front window, then its shortcut.
-            classes = _app_classes(a["app"])
+            # Tab by position: focus the app's front window, then its
+            # shortcut. "any" is ambiguous here, so prefer the browser
+            # (the usual place for numbered tabs) and fall back to the
+            # terminal.
+            app = a["app"]
+            if app == "any":
+                app = (
+                    "browser"
+                    if self._front_window(windows, BROWSER_CLASSES)
+                    else "terminal"
+                )
+            classes = _app_classes(app)
             target = self._front_window(windows, classes)
             if target is None:
-                return ActionResult(False, f"No {a['app']} window is open")
+                return ActionResult(False, f"No {app} window is open")
             windows.focus(target.hwnd)
             combo = (
                 f"<ctrl>+<alt>+{number}"
-                if a["app"] == "terminal"
+                if app == "terminal"
                 else f"<ctrl>+{number}"
             )
             self.press(combo)
