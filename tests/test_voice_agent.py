@@ -45,6 +45,11 @@ class Elements:
         return "invoke"
 
 
+class NoApps:
+    def find(self, query):
+        return []
+
+
 def make(replies, *, background=False, **cfg):
     """A service whose AI answers with ``replies`` (JSON dicts) in order."""
 
@@ -57,6 +62,7 @@ def make(replies, *, background=False, **cfg):
         sleep=lambda _s: None,
         elements_factory=lambda: elements,
         mouse_factory=FakeMouse,
+        apps_factory=NoApps,
     )
     contexts: List[dict] = []
     replies = list(replies)
@@ -307,3 +313,123 @@ def test_ordinary_speech_does_not_stop_the_agent():
     assert mode.parse("I will stop by later") is None
     assert mode.parse("yes") is None  # nothing was asked
     assert mode.parse("stop") == "stop"
+
+
+# ---------------------------------------------------------------------------
+# Opt-in vision
+# ---------------------------------------------------------------------------
+
+
+def make_vision(replies, *, targets=(), vision=True):
+    from saidcue.voice_commands.screenshot import Shot
+
+    class Bare(Elements):
+        def list_targets(self, hwnd):
+            return list(targets)
+
+    elements = Bare()
+    mouse = FakeMouse()
+    windows = FakeWindows([NOTEPAD], foreground=NOTEPAD)
+    runner = ActionRunner(
+        keyboard_factory=FakeKeyboard,
+        windows=windows,
+        sleep=lambda _s: None,
+        elements_factory=lambda: elements,
+        mouse_factory=lambda: mouse,
+        apps_factory=NoApps,
+    )
+    calls: List[tuple] = []
+    replies = list(replies)
+
+    def complete(system, user, images=None):
+        calls.append((system, json.loads(user), images))
+        return json.dumps(replies.pop(0))
+
+    shots = []
+
+    def screenshot():
+        shots.append(1)
+        return Shot("SU1BR0U=", (100, 200, 1000, 500))
+
+    agent = AIAgent(
+        complete,
+        windows=windows,
+        elements=runner.label_targets,
+        allow_clicks=True,
+        screenshot=screenshot if vision else None,
+    )
+    feedback: List[tuple] = []
+    svc = VoiceCommandService(
+        VoiceCommandsConfig.from_dict({"enabled": True, "ai_fallback": True}),
+        runner=runner,
+        engine_getter=lambda: None,
+        agent=agent,
+        on_feedback=lambda t, k: feedback.append((t, k)),
+        sleep=lambda _s: None,
+    )
+    return svc, mouse, calls, shots, feedback
+
+
+def test_vision_attaches_a_screenshot_when_nothing_is_named_and_clicks_a_point():
+    svc, mouse, calls, shots, feedback = make_vision(
+        [
+            {
+                "actions": [
+                    {"type": "click_point", "x": 500, "y": 200, "target": "Play button"}
+                ],
+                "say": "Playing",
+            }
+        ]
+    )
+    svc.handle("computer, please start playing the game", False)
+    system, context, images = calls[0]
+    assert images == ["SU1BR0U="] and context["screenshot_attached"] is True
+    assert "click_point" in system
+    # 0-1000 on the image → physical pixels of the captured rectangle.
+    assert mouse.clicks == [(600, 300, "left")]
+    assert feedback[-1] == ("Playing", "ok")
+
+
+def test_vision_look_then_click_next_round():
+    svc, mouse, calls, shots, _fb = make_vision(
+        [
+            {"actions": [{"type": "look"}], "done": False},
+            {"actions": [{"type": "click_point", "x": 0, "y": 1000, "target": "icon"}]},
+        ],
+        targets=TARGETS,
+    )
+    svc.handle("computer, please open the gear icon menu", False)
+    assert calls[0][2] is None  # named elements exist: no screenshot at first
+    assert calls[1][2] == ["SU1BR0U="]  # asked to look
+    assert mouse.clicks == [(100, 700, "left")]
+
+
+def test_a_risky_point_click_still_needs_yes():
+    plan = check_plan(
+        {"actions": [{"type": "click_point", "x": 1, "y": 1, "target": "Delete all"}]},
+        foreground=NOTEPAD,
+        windows=[],
+        allow_clicks=True,
+        allow_points=True,
+        vision=True,
+    )
+    assert plan.risky == ["click “Delete all”"]
+
+
+def test_without_vision_there_are_no_screenshots():
+    svc, mouse, calls, shots, feedback = make_vision(
+        [{"actions": [{"type": "look"}], "done": False}], vision=False
+    )
+    svc.handle("computer, please look at my screen", False)
+    assert shots == [] and calls[0][2] is None
+    assert "click_point" not in calls[0][0]
+    assert "Blocked" in feedback[-1][0]
+
+
+def test_llm_client_sends_images_as_parts():
+    from saidcue.llm.client import _user_content
+
+    assert _user_content("hi", None) == "hi"
+    parts = _user_content("hi", ["QUJD"])
+    assert parts[0] == {"type": "text", "text": "hi"}
+    assert parts[1]["image_url"]["url"] == "data:image/jpeg;base64,QUJD"

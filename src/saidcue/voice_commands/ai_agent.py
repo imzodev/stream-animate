@@ -66,12 +66,22 @@ RISKY_WORDS = (
 _INTERACTIVE = ("labels", "grid", "list_windows", "ask_listen")
 
 
+@dataclass
+class RoundView:
+    """What the model was shown in one round: the window's elements
+    (``click_element`` ids are 1-based positions) and maybe a screenshot."""
+
+    hwnd: Optional[int] = None
+    targets: List[Any] = field(default_factory=list)
+    shot: Any = None
+
+
 def is_risky(label: str) -> bool:
     text = f" {normalize(label)} "
     return any(f" {w} " in text for w in RISKY_WORDS)
 
 
-def system_prompt(allow_clicks: bool = False) -> str:
+def system_prompt(allow_clicks: bool = False, vision: bool = False) -> str:
     click_actions = ""
     click_rules = "- You cannot click. Use keys, focus_window, open and scroll.\n"
     if allow_clicks:
@@ -87,6 +97,18 @@ def system_prompt(allow_clicks: bool = False) -> str:
             "  then type_text.\n"
             "- Clicks on anything that deletes, buys, sends or closes are confirmed by\n"
             "  the user before they run; still only do them when clearly asked.\n"
+        )
+    if allow_clicks and vision:
+        click_actions += (
+            '- {"type": "look"} (attach a screenshot of the window in front to your\n'
+            '  next round; set "done": false)\n'
+            '- {"type": "click_point", "x": <0-1000>, "y": <0-1000>, "target": "<what is '
+            'there>", "button": "left"|"right"|"double"} (only with a screenshot; x/y are '
+            "positions on the image: 0,0 top-left, 1000,1000 bottom-right)\n"
+        )
+        click_rules += (
+            "- Prefer click_element. Use look + click_point only for things that are\n"
+            '  not in "elements" (icons without names, games, canvases).\n'
         )
     return f"""You control a Windows PC for a live streamer by voice.
 Turn the user's spoken request (it comes from speech recognition, so expect
@@ -174,6 +196,7 @@ def check_plan(
     allow_clicks: bool = False,
     targets: Optional[Sequence[Any]] = None,
     allow_points: bool = False,
+    vision: bool = False,
 ) -> Plan:
     """Validate a parsed plan and enforce the safety rules.
 
@@ -198,6 +221,8 @@ def check_plan(
         kind = a["type"]
         if kind in _INTERACTIVE:
             raise PlanRejected(f"{kind} is not allowed for the AI")
+        if kind == "look" and not vision:
+            raise PlanRejected("looking at the screen needs AI vision")
         if kind == "switch_tab":
             target_is_terminal = a["app"] == "terminal"
         elif kind == "focus_window":
@@ -265,9 +290,6 @@ def check_plan(
     )
 
 
-Targets = Tuple[Optional[int], List[Any]]
-
-
 class AIAgent:
     """Ask the LLM for a plan. ``complete(system, user) -> str`` is injected.
 
@@ -282,9 +304,10 @@ class AIAgent:
         *,
         windows=None,
         tabs=None,
-        elements: Optional[Callable[[], Targets]] = None,
+        elements: Optional[Callable[[], Tuple[Optional[int], List[Any]]]] = None,
         allow_clicks: bool = False,
         max_rounds: int = 6,
+        screenshot: Optional[Callable[[], Any]] = None,
     ) -> None:
         self._complete = complete
         self._windows = windows
@@ -292,6 +315,8 @@ class AIAgent:
         self._elements = elements
         self.allow_clicks = allow_clicks and elements is not None
         self.max_rounds = max(1, int(max_rounds))
+        # Vision: only with clicks (what else would it look for?).
+        self._screenshot = screenshot if self.allow_clicks else None
 
     def plan(self, request: str, command_names: Sequence[str] = ()) -> Plan:
         """A single round with no history (kept for simple callers)."""
@@ -305,11 +330,11 @@ class AIAgent:
         command_names: Sequence[str],
         history: Sequence[Dict[str, Any]],
         round_no: int,
-    ) -> Tuple[Plan, Targets]:
+    ) -> Tuple[Plan, RoundView]:
         """One round: look at the screen, ask the model, check its plan.
 
-        Returns the plan and the ``(hwnd, targets)`` its ``click_element``
-        ids refer to.
+        Returns the plan and the :class:`RoundView` its ``click_element``
+        ids and ``click_point`` coordinates refer to.
         """
 
         foreground = self._windows.foreground() if self._windows else None
@@ -327,24 +352,49 @@ class AIAgent:
         else:
             context["round"] = round_no
             context["history"] = list(history)[-6:]
-        targets: Targets = (None, [])
+        view = RoundView()
         if self.allow_clicks:
-            targets = self._safe_elements()
-            context["elements"] = _describe(targets[1])
-        reply = self._complete(
-            system_prompt(self.allow_clicks), json.dumps(context, ensure_ascii=False)
-        )
+            view.hwnd, view.targets = self._safe_elements()
+            context["elements"] = _describe(view.targets)
+        if self._wants_screenshot(history, context.get("elements")):
+            view.shot = self._safe_screenshot()
+            context["screenshot_attached"] = view.shot is not None
+        system = system_prompt(self.allow_clicks, self._screenshot is not None)
+        user = json.dumps(context, ensure_ascii=False)
+        if view.shot is not None:
+            reply = self._complete(system, user, images=[view.shot.jpeg_b64])
+        else:
+            reply = self._complete(system, user)
         _LOGGER.info("Voice AI round %d for %r: %s", round_no, request, reply[:500])
         plan = check_plan(
             extract_json(reply),
             foreground=foreground,
             windows=windows,
             allow_clicks=self.allow_clicks,
-            targets=targets[1],
+            targets=view.targets,
+            allow_points=view.shot is not None,
+            vision=self._screenshot is not None,
         )
-        return plan, targets
+        return plan, view
 
-    def _safe_elements(self) -> Targets:
+    def _wants_screenshot(self, history, elements) -> bool:
+        """Attach a screenshot when the model asked to look last round, or
+        on the first round when the window has nothing named to click."""
+
+        if self._screenshot is None:
+            return False
+        if history:
+            return any(a.get("type") == "look" for a in history[-1]["actions"])
+        return not elements
+
+    def _safe_screenshot(self):
+        try:
+            return self._screenshot()
+        except Exception as exc:  # noqa: BLE001 - vision is best effort
+            _LOGGER.debug("Screenshot failed: %s", exc)
+            return None
+
+    def _safe_elements(self) -> Tuple[Optional[int], List[Any]]:
         try:
             hwnd, targets = self._elements()
             return hwnd, list(targets)

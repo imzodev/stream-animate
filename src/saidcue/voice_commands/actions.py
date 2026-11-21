@@ -78,7 +78,9 @@ class ActionRunner:
         on_ambiguous: Optional[Callable[[List[Any], str], None]] = None,
         mouse_factory: Optional[Callable[[], Any]] = None,
         apps_factory: Optional[Callable[[], Any]] = None,
+        screenshotter: Optional[Callable[[tuple], Any]] = None,
     ) -> None:
+        self._screenshotter = screenshotter
         self._apps_factory = apps_factory
         self._apps = None
         self._apps_lock = threading.Lock()
@@ -104,8 +106,10 @@ class ActionRunner:
         self._on_choice: Callable[..., None] = lambda *_a: None
         self._on_labels: Optional[Callable[..., None]] = None
         self._on_grid: Optional[Callable[..., None]] = None
-        # The elements the AI was shown this round (click_element ids).
+        # What the AI was shown this round: elements (click_element ids)
+        # and the screenshot (click_point coordinates).
         self._ai_targets: tuple = (None, [])
+        self._ai_shot: Any = None
 
     def set_choice_handler(self, handler: Callable[..., None]) -> None:
         """Called with ``(candidates, query, noun, resolve)`` when a name
@@ -250,10 +254,42 @@ class ActionRunner:
         self._on_grid(rect)
         return ActionResult(True, "Say a number to zoom in, then “click”")
 
-    def use_targets(self, hwnd: Optional[int], targets) -> None:
-        """Set the element list that ``click_element`` ids refer to."""
+    def use_targets(self, hwnd: Optional[int], targets, shot: Any = None) -> None:
+        """Set what this AI round's ids and points refer to: the element
+        list (``click_element``) and the screenshot (``click_point``)."""
 
         self._ai_targets = (hwnd, list(targets))
+        self._ai_shot = shot
+
+    def screenshot(self) -> Any:
+        """A :class:`~.screenshot.Shot` of the window in front, or ``None``."""
+
+        windows = self._require_windows()
+        fg = windows.foreground()
+        if fg is None:
+            return None
+        r = windows.rect(fg.hwnd)
+        if r is None:
+            return None
+        from .screenshot import capture, clip
+
+        rect = clip(
+            (r[0], r[1], r[2] - r[0], r[3] - r[1]), windows.monitor_rect(fg.hwnd)
+        )
+        return (self._screenshotter or capture)(rect)
+
+    def _do_look(self, a) -> ActionResult:
+        return ActionResult(True, "Looking…")
+
+    def _do_click_point(self, a) -> ActionResult:
+        shot = self._ai_shot
+        if shot is None:
+            return ActionResult(False, "There is no screenshot to click on")
+        x, y = shot.to_screen(a["x"], a["y"])
+        button = a.get("button", "left")
+        self.click_at(x, y, button)
+        what = f"“{a['target'][:40]}”" if a.get("target") else "there"
+        return ActionResult(True, f"{_CLICK_LABELS[button]} {what}")
 
     def _do_click_element(self, a) -> ActionResult:
         hwnd, targets = self._ai_targets

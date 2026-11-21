@@ -47,6 +47,7 @@ ACTION_TYPES = (
     "grid",
     "click_element",
     "click_point",
+    "look",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -195,6 +196,8 @@ def validate_action(action: Any) -> Dict[str, Any]:
         out["y"] = _int_in(action, "y", 0, 1000)
         out["target"] = str(action.get("target") or "").strip()
         out["button"] = _button(action, "click_point")
+    elif kind == "look":
+        pass  # AI vision: attach a screenshot to the next round
     elif kind == "grid":
         scope = action.get("scope", "screen")
         if scope not in GRID_SCOPES:
@@ -280,6 +283,8 @@ class VoiceCommandsConfig:
     overlay_without_wake_word: bool = True
     # The AI fallback may click (risky clicks are confirmed by voice).
     ai_clicks: bool = True
+    # The AI may look at screenshots (sent to the LLM provider). Opt-in.
+    ai_vision: bool = False
     # Most rounds (look → act) one AI request may take.
     max_agent_steps: int = 6
     # Global hotkey that stops a running AI request ("" = none).
@@ -318,6 +323,7 @@ class VoiceCommandsConfig:
             disabled_commands=tuple(dict.fromkeys(disabled)),
             overlay_without_wake_word=bool(raw.get("overlay_without_wake_word", True)),
             ai_clicks=bool(raw.get("ai_clicks", True)),
+            ai_vision=bool(raw.get("ai_vision", False)),
             max_agent_steps=_steps(raw.get("max_agent_steps", 6)),
             agent_stop_hotkey=str(
                 raw.get("agent_stop_hotkey", "ctrl+alt+backspace") or ""
@@ -333,6 +339,7 @@ class VoiceCommandsConfig:
             "disabled_commands": list(self.disabled_commands),
             "overlay_without_wake_word": self.overlay_without_wake_word,
             "ai_clicks": self.ai_clicks,
+            "ai_vision": self.ai_vision,
             "max_agent_steps": self.max_agent_steps,
             "agent_stop_hotkey": self.agent_stop_hotkey,
         }

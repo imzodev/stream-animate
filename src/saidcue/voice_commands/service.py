@@ -382,7 +382,7 @@ class VoiceCommandService:
                     if not mode.ask(question):
                         self._feedback("Cancelled: nothing was clicked", INFO)
                         return
-                self._runner.use_targets(*targets)
+                self._runner.use_targets(targets.hwnd, targets.targets, targets.shot)
                 result = self._runner.run(plan.actions)
                 history.append(
                     {"actions": plan.actions, "ok": result.ok, "result": result.message}

@@ -69,9 +69,9 @@ def build_service(
     if config.ai_fallback and llm_config is not None and llm_config.api_key():
         from ..llm.client import FactCheckerClient
 
-        def complete(system: str, user: str) -> str:
+        def complete(system: str, user: str, images=None) -> str:
             with FactCheckerClient(llm_config) as client:
-                return client.complete(system, user, max_tokens=4000)
+                return client.complete(system, user, max_tokens=4000, images=images)
 
         try:
             tabs = tabs_factory()
@@ -84,6 +84,8 @@ def build_service(
             elements=runner.label_targets if windows is not None else None,
             allow_clicks=config.ai_clicks,
             max_rounds=config.max_agent_steps,
+            # Opt-in: screenshots go to the LLM provider.
+            screenshot=runner.screenshot if config.ai_vision else None,
         )
 
     return VoiceCommandService(

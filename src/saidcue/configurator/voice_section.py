@@ -7,6 +7,7 @@ built-in English catalog; each one has a checkbox to turn it on or off.
 from __future__ import annotations
 
 import dataclasses
+import re
 from typing import List, Optional
 
 from PySide6.QtCore import Qt
@@ -30,8 +31,13 @@ from .voice_guide import VoiceGuideDialog
 _ID_ROLE = Qt.ItemDataRole.UserRole
 
 
+_SLOT = re.compile(r"\{\w+\}")
+
+
 def _say(phrase: str) -> str:
-    return f"“{phrase.replace('{name}', '…')}”"
+    """A phrase as shown in the list: any ``{slot}`` becomes “…”."""
+
+    return "“" + _SLOT.sub("…", phrase) + "”"
 
 
 class VoiceCommandsSection(QWidget):
@@ -50,6 +56,9 @@ class VoiceCommandsSection(QWidget):
         self._wake_word.setCurrentText(cfg.wake_word)
         self._dictation_editing.setChecked(cfg.dictation_editing)
         self._ai_fallback.setChecked(cfg.ai_fallback)
+        self._without_wake_word.setChecked(cfg.overlay_without_wake_word)
+        self._ai_clicks.setChecked(cfg.ai_clicks)
+        self._ai_vision.setChecked(cfg.ai_vision)
         off = set(cfg.disabled_commands)
         for item in self._command_items():
             checked = item.data(0, _ID_ROLE) not in off
@@ -76,6 +85,9 @@ class VoiceCommandsSection(QWidget):
             wake_word=self.wake_word() or self._config.wake_word,
             dictation_editing=self._dictation_editing.isChecked(),
             ai_fallback=self._ai_fallback.isChecked(),
+            overlay_without_wake_word=self._without_wake_word.isChecked(),
+            ai_clicks=self._ai_clicks.isChecked(),
+            ai_vision=self._ai_vision.isChecked(),
             disabled_commands=tuple(unknown + unchecked),
         )
         return cfg.to_dict()
@@ -128,15 +140,47 @@ class VoiceCommandsSection(QWidget):
         )
         layout.addWidget(self._dictation_editing)
 
+        self._without_wake_word = QCheckBox(
+            "Answer pickers, number labels and the mouse grid without the wake word"
+        )
+        self._without_wake_word.setToolTip(
+            "While a list, the number labels (“show numbers”) or the mouse grid is "
+            "on screen, just say “two”, “click 14” or “cancel”. Anything else you "
+            "say is typed as usual."
+        )
+        layout.addWidget(self._without_wake_word)
+
         self._ai_fallback = QCheckBox(
             "Ask the AI when a command isn't in the list (uses the AI Assistant's LLM)"
         )
         self._ai_fallback.setToolTip(
             "The AI can only use the same safe actions as the built-in "
             "commands. It never presses Enter and never types into a terminal. "
-            "It sees your open window titles and tab names to pick the right one."
+            "It sees your open window titles and tab names to pick the right one. "
+            "Say “stop” to interrupt it."
         )
+        self._ai_fallback.toggled.connect(self._on_enabled_toggled)
         layout.addWidget(self._ai_fallback)
+
+        self._ai_clicks = QCheckBox("Let the AI click buttons and menus in the window in front")
+        self._ai_clicks.setToolTip(
+            "The AI sees the names of the buttons, links and boxes in the window "
+            "in front and can click them, over several steps (“open settings and "
+            "turn on dark mode”). Clicks that delete, buy, send or close ask you "
+            "for a spoken “yes” first."
+        )
+        layout.addWidget(self._ai_clicks)
+
+        self._ai_vision = QCheckBox(
+            "Let the AI look at screenshots (needs a model that accepts images)"
+        )
+        self._ai_vision.setToolTip(
+            "For things without a name, like icons, games or canvases, the AI can "
+            "take a screenshot of the window in front and click a spot on it. "
+            "Screenshots are sent to your LLM provider, so leave this off if your "
+            "screen may show private things."
+        )
+        layout.addWidget(self._ai_vision)
 
         group = QGroupBox("Commands")
         group_layout = QVBoxLayout(group)
@@ -185,5 +229,14 @@ class VoiceCommandsSection(QWidget):
 
     def _on_enabled_toggled(self, *_args) -> None:
         on = self._enabled.isChecked()
-        for w in (self._wake_word, self._dictation_editing, self._ai_fallback, self._commands):
+        for w in (
+            self._wake_word,
+            self._dictation_editing,
+            self._without_wake_word,
+            self._ai_fallback,
+            self._commands,
+        ):
             w.setEnabled(on)
+        ai_on = on and self._ai_fallback.isChecked()
+        self._ai_clicks.setEnabled(ai_on)
+        self._ai_vision.setEnabled(ai_on)

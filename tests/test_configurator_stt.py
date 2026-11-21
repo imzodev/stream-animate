@@ -158,3 +158,35 @@ def test_voice_guide_dialog_search_updates_browser(qapp):
     filtered = dialog._browser.toPlainText()
     assert "set volume to" in filtered
     assert "How a command fires" not in filtered
+
+
+def test_voice_section_computer_control_options(qapp):
+    from saidcue.configurator.voice_section import VoiceCommandsSection
+    from saidcue.voice_commands import VoiceCommandsConfig
+
+    section = VoiceCommandsSection()
+    section.populate(VoiceCommandsConfig.from_dict({"enabled": True}))
+    # Defaults: answers without the wake word on, AI clicks on, vision off.
+    assert section._without_wake_word.isChecked()
+    assert section._ai_clicks.isChecked()
+    assert not section._ai_vision.isChecked()
+    # Clicking/vision only make sense with the AI fallback on.
+    assert not section._ai_clicks.isEnabled()
+    section._ai_fallback.setChecked(True)
+    assert section._ai_clicks.isEnabled() and section._ai_vision.isEnabled()
+
+    section._without_wake_word.setChecked(False)
+    section._ai_vision.setChecked(True)
+    out = section.read()
+    assert out["overlay_without_wake_word"] is False
+    assert out["ai_vision"] is True and out["ai_clicks"] is True
+    # Round-trips through the config (and its schema keys).
+    again = VoiceCommandsConfig.from_dict(out)
+    assert again.ai_vision and not again.overlay_without_wake_word
+
+
+def test_voice_section_shows_every_slot_as_an_ellipsis():
+    from saidcue.configurator.voice_section import _say
+
+    assert _say("press {key}") == "“press …”"
+    assert _say("mouse up {count}") == "“mouse up …”"

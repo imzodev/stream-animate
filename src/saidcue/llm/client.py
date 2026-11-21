@@ -30,7 +30,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlparse
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 import httpx
 
@@ -323,11 +323,15 @@ class FactCheckerClient:
         *,
         max_tokens: int = 1024,
         temperature: float = 0.0,
+        images: Optional[List[str]] = None,
     ) -> str:
         """One non-streaming chat completion; returns the answer text.
 
         Used by the voice-command AI agent, which needs a whole JSON plan
         rather than a token stream. Inline ``<thinking>`` blocks are removed.
+
+        ``images`` are base64 JPEGs sent with the user message as OpenAI
+        style ``image_url`` parts (the model must accept images).
         """
 
         api_key = self._config.api_key()
@@ -343,7 +347,7 @@ class FactCheckerClient:
             "max_tokens": max_tokens,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": user},
+                {"role": "user", "content": _user_content(user, images)},
             ],
         }
         self._apply_reasoning_effort(payload)
@@ -409,3 +413,16 @@ class FactCheckerClient:
         if base.endswith("/chat/completions"):
             return base
         return base + "/chat/completions"
+
+
+def _user_content(text: str, images: Optional[List[str]]):
+    """Plain text, or text plus ``image_url`` parts when there are images."""
+
+    if not images:
+        return text
+    parts: List[dict] = [{"type": "text", "text": text}]
+    for b64 in images:
+        parts.append(
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+        )
+    return parts

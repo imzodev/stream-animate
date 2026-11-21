@@ -161,12 +161,12 @@ class StartApps:
     def __init__(
         self,
         *,
-        reader: Callable[[], str] = _read_start_apps,
-        launcher: Callable[[str], None] = _default_launch,
+        reader: Optional[Callable[[], str]] = None,
+        launcher: Optional[Callable[[str], None]] = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self._reader = reader
-        self._launcher = launcher
+        self._reader = reader or (lambda: _read_start_apps())
+        self._launcher = launcher or (lambda app_id: _default_launch(app_id))
         self._clock = clock
         self._lock = threading.Lock()
         self._apps: Optional[List[AppEntry]] = None
