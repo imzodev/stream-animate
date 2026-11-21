@@ -46,6 +46,11 @@
     "wake_word": "computer",
     "dictation_editing": true,
     "ai_fallback": false,
+    "overlay_without_wake_word": true,
+    "ai_clicks": true,
+    "ai_vision": false,
+    "max_agent_steps": 6,
+    "agent_stop_hotkey": "ctrl+alt+backspace",
     "disabled_commands": []
   }
 }

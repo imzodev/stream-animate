@@ -318,6 +318,31 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 - "**computer, ask how tall is Everest**" / "**explain …**" / "**what is …**" / "**who is …**" / "**why …**" / "**how …**" → asks the AI Assistant and shows the answer in its panel. "**computer, ask a question**" (or just "**computer, assistant**") starts listening, then you say the question. Needs the AI Assistant set up (see below)
 - "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
 
+### Controlling the Whole Computer
+- **Apps:** "**computer, open OBS**" / "**launch spotify**" / "**start discord**" opens any app from the Start menu (desktop and Store apps). When several match ("open visual studio") you pick from a list. "**open github dot com**" opens the site. "**close spotify**" closes that app's window.
+- **Windows:** "**switch window**" (numbered list of open windows), "**minimize**", "**maximize**", "**restore window**", "**close window**", "**snap left**" / "**snap right**", "**next monitor**", "**previous window**" (Alt+Tab), "**show desktop**", "**task view**", "**start menu**", "**notifications**", "**full screen**". "**go to spotify**" also finds a window by its program name when the title is a song.
+- **Any key:** "**press escape**", "**press control shift t**", "**press tab 3 times**", or just "**computer, escape**" / "**backspace five times**" / "**alt f4**". "press …" with something that isn't a key clicks the button with that label.
+- **Text cursor:** "**end of line**" / "**start of line**", "**top of document**" / "**end of document**", "**next word**" / "**3 words left**", "**select word**", "**select line**", "**select 3 words**", "**delete word**" / "**delete 2 words**", "**delete line**", "**select all**", "**new line**", "**cut**", "**find**".
+- **Mouse at the cursor:** "**click**", "**right click**", "**double click**", "**middle click**", "**mouse up**" / "**mouse left 5**" (40 px steps), "**mark**" then "**drag here**". "**right click report.pdf**" / "**double click …**" work on a label.
+
+### Number Labels: Click Anything
+"**computer, show numbers**" puts a small number on every button, link, menu item, icon and text box in the window in front (and in an open right-click menu), even the ones without a name. Then just say the number:
+
+- "**12**" clicks it (or puts the cursor in it, for a text box). "**right click 12**", "**double click 12**" also work.
+- The numbers stay up and redraw after each click, so you can keep going: "show numbers", "4", "9", "2". They close when you say "**hide numbers**" or "**cancel**", when you focus a text box (so you can dictate), after 30 seconds of silence, or when you say any other wake-word command.
+- "**click reply**" when there's a *Reply* button under every comment doesn't guess: it numbers just those buttons and waits.
+
+### Mouse Grid: Point Anywhere
+For things UI Automation can't see (games, drawing apps, remote desktops, video players), "**computer, mouse grid**" lays a numbered 3×3 grid over the screen ("**window grid**" for just the window in front). Each number zooms into that cell and the mouse follows. A few numbers reach any pixel. Then:
+
+- "**click**", "**right click**", "**double click**", or "**move**" (leave the mouse there). "**click 7**" zooms and clicks in one go, and "**53**" zooms twice.
+- "**mark**", then pick the drop point on the new grid and say "**drag here**", to drag.
+- "**back**" undoes a zoom, and "**cancel**" closes the grid.
+
+While a list, the number labels or the grid is on screen, its answers ("two", "12", "click", "cancel") work **without the wake word** (`overlay_without_wake_word`, on by default). Anything else you say is typed as usual.
+
+**Limitation:** Windows does not let a normal app control windows that run as administrator (Task Manager, installers, some games' launchers). Voice commands can't click or type into those. Run Saidcue as administrator if you need to.
+
 ### Picking Between Tabs
 When a tab command matches **more than one tab**, Saidcue does not guess. A small
 numbered list appears on screen with the matching tabs and waits for you:
@@ -325,12 +350,12 @@ numbered list appears on screen with the matching tabs and waits for you:
 1. You have three YouTube tabs open and say "**computer, tab youtube**" (or
    "**computer, the youtube tab**" — the name can come first or last).
 2. The list shows "1. YouTube", "2. Never Gonna Give You Up — YouTube", …
-3. Say "**computer, two**" to switch to the second one — or click it with the mouse.
+3. Say "**two**" (or "**computer, two**") to switch to the second one, or click it with the mouse.
 
 It works the same for every window of every app that has tabs (the browsers and
 Windows Terminal), and the list never takes the keyboard focus away from the window
-you were in. It closes itself after ~20 seconds and disappears as soon as you say
-something else.
+you were in. It closes itself after ~20 seconds, when you say "cancel", or when you
+say another wake-word command.
 
 If Whisper splits your phrase in two ("computer" … "youtube tab"), the bare wake
 word waits a few seconds for the rest of the command, so you don't have to say it
@@ -339,7 +364,7 @@ in one breath.
 When several tabs share a name — four "Windows PowerShell" tabs — the list shows
 their position ("tab 2/4"), because the name alone cannot tell them apart.
 
-Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by voice. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
+Clicking and scrolling use Windows UI Automation, which sees web pages' buttons, links and text boxes by their labels, without moving the mouse. Exact labels win over partial ones ("click skip" picks *Skip*, not *Skip navigation*), and the browser's own Close/Minimize buttons and per-tab buttons are never clicked by voice. Buttons without a label can't be clicked by name; use "show numbers" for those. If a window doesn't support UI Automation scrolling (e.g. Firefox), the mouse wheel is used over the window's centre and the cursor is put back.
 
 The commands are a built-in English set; the settings window's **Voice Commands** tab lists every one with a checkbox to turn it off. The on-screen pill confirms each command (✓ / ✗, or "Thinking…" while the AI works). A command is never typed into the focused window.
 
@@ -347,7 +372,14 @@ The commands are a built-in English set; the settings window's **Voice Commands*
 
 **Dictation editing** works while typing mode is on, with no wake word, but only when the *whole* phrase is the command: "new line", "new paragraph", "scratch that" (erases the last phrase), "delete word", "select all", "stop typing". To submit what you typed, say "**press enter**", "**submit**" or "**send it**" (also "hit enter", "press return", "send message", "enter") after a short pause; it presses Enter, which sends a chat message or submits a form. "New line" only adds a line, in the same way.
 
-**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computer, open paint and search for taco recipes"). The AI can only use the same actions as the built-in commands: there is no way to run shell commands. You can say a command twice in one breath ("computer skip ad, computer skip ad") and it still matches. Its plan is checked before anything runs: it can never press Enter, never click anything, never type into a terminal, and is limited to 8 steps. To pick the right window or tab it is sent your open window titles and tab names, so turn it off if those may contain anything you don't want sent to your LLM provider.
+**AI fallback** (`ai_fallback: true`): a wake-word phrase that matches no command goes to the AI Assistant's LLM ("computer, open paint and search for taco recipes", "computer, in notepad turn on word wrap"). The AI can only use the same actions as the built-in commands: there is no way to run shell commands. You can say a command twice in one breath ("computer skip ad, computer skip ad") and it still matches.
+
+- **Several steps:** the AI looks at the window, acts, then looks again, until it's done (at most `max_agent_steps` rounds, default 6). The pill shows each step. It runs in the background, so you can say "**stop**" (no wake word needed) at any time, start another command, or press the stop hotkey (`agent_stop_hotkey`, default Ctrl+Alt+Backspace).
+- **Clicking** (`ai_clicks`, on by default): the AI is sent the *names* of the buttons, links and text boxes in the window in front and can click them. Before a click on anything that sounds destructive (delete, buy, send, post, close, …) it asks "Click “Delete”? Say yes or no". Nothing is clicked unless you say yes within 20 seconds.
+- **Vision** (`ai_vision`, **off** by default): the AI can take a screenshot of the window in front when the names aren't enough (icons, games, canvases) and click a spot on it. Screenshots are sent to your LLM provider, and the model must accept images.
+- **Always blocked:** pressing Enter, typing into a terminal, blind mouse clicks, and more than 8 actions per step.
+
+To pick the right window or tab, the AI is sent your open window titles and tab names. With clicking on, it also gets the window's button labels, and with vision on, screenshots. Turn these off if they may show anything you don't want sent to your LLM provider.
 
 ```json
 "voice_commands": {
@@ -355,6 +387,11 @@ The commands are a built-in English set; the settings window's **Voice Commands*
   "wake_word": "computer",
   "dictation_editing": true,
   "ai_fallback": false,
+  "overlay_without_wake_word": true,
+  "ai_clicks": true,
+  "ai_vision": false,
+  "max_agent_steps": 6,
+  "agent_stop_hotkey": "ctrl+alt+backspace",
   "disabled_commands": ["open_twitch"]
 }
 ```
