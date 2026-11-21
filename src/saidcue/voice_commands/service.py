@@ -12,10 +12,12 @@ before "dictate in notes" focused Notepad). Audio keeps buffering meanwhile.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Callable, Optional, Sequence
 
 from .actions import ActionRunner
+from .agent_run import AgentMode
 from .ai_agent import AIAgent, PlanRejected
 from .config import VoiceCommandsConfig
 from .dictation_edits import apply_edit, build_lookup, match_edit
@@ -36,6 +38,10 @@ Feedback = Callable[[str, str], None]
 # pause after the wake word.
 WAKE_MERGE_SECONDS = 3.0
 
+# Pause between AI rounds so the screen can settle (a menu opening, a
+# page loading) before the next look.
+AGENT_SETTLE_SECONDS = 0.6
+
 
 class VoiceCommandService:
     def __init__(
@@ -47,7 +53,13 @@ class VoiceCommandService:
         agent: Optional[AIAgent] = None,
         on_feedback: Optional[Feedback] = None,
         picker: Any = None,
+        background: bool = False,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        # ``background``: multi-step AI requests run on a worker thread so
+        # speech keeps flowing ("stop", "yes"). Off in tests: they run inline.
+        self._background = background
+        self._sleep = sleep
         self._config = config
         self._runner = runner
         self._engine_getter = engine_getter
@@ -292,7 +304,19 @@ class VoiceCommandService:
             ListMode(candidates, resolve, self._picker, noun=noun, query=query)
         )
 
+    def stop_agent(self) -> None:
+        """Stop a running AI request (the stop hotkey). Any thread."""
+
+        mode = self._modes.get()
+        if isinstance(mode, AgentMode):
+            mode.stop()
+            self._modes.clear_if(mode)
+            self._feedback("Stopping…", INFO)
+
     def _run_ai(self, request: str) -> None:
+        if hasattr(self._agent, "step"):
+            self._start_agent(request)
+            return
         self._feedback("Thinking…", BUSY)
         names = [c.phrases[0] for c in self._config.commands]
         try:
@@ -313,6 +337,79 @@ class VoiceCommandService:
             self._feedback(plan.say or result.message, OK)
         else:
             self._feedback(result.message, ERROR)
+
+    # -- multi-step AI -----------------------------------------------------------
+
+    def _start_agent(self, request: str) -> None:
+        mode = AgentMode()
+        self.open_mode(mode)
+        self._feedback("Thinking…", BUSY)
+        if self._background:
+            threading.Thread(
+                target=self._agent_loop,
+                args=(request, mode),
+                name="voice-ai",
+                daemon=True,
+            ).start()
+        else:
+            self._agent_loop(request, mode)
+
+    def _agent_loop(self, request: str, mode: AgentMode) -> None:
+        names = [c.phrases[0] for c in self._config.commands]
+        history: list = []
+        rounds = getattr(self._agent, "max_rounds", 1)
+        try:
+            for round_no in range(1, rounds + 1):
+                if mode.cancel.is_set():
+                    self._feedback("Stopped", INFO)
+                    return
+                plan, targets = self._agent.step(request, names, history, round_no)
+                if mode.cancel.is_set():
+                    self._feedback("Stopped", INFO)
+                    return
+                if not plan.actions:
+                    ok = bool(history) and history[-1]["ok"]
+                    self._feedback(
+                        plan.say or ("Done" if ok else "I can't do that"),
+                        OK if ok else ERROR,
+                    )
+                    return
+                if plan.risky:
+                    question = (
+                        f"{plan.risky[0][:1].upper()}{plan.risky[0][1:]}? Say yes or no"
+                    )
+                    self._feedback(question, INFO)
+                    if not mode.ask(question):
+                        self._feedback("Cancelled: nothing was clicked", INFO)
+                        return
+                self._runner.use_targets(*targets)
+                result = self._runner.run(plan.actions)
+                history.append(
+                    {"actions": plan.actions, "ok": result.ok, "result": result.message}
+                )
+                if plan.done and result.ok:
+                    self._feedback(plan.say or result.message, OK)
+                    return
+                if mode.cancel.is_set():
+                    self._feedback("Stopped", INFO)
+                    return
+                if round_no == rounds:
+                    break
+                step = result.message if result.ok else f"Retrying: {result.message}"
+                self._feedback(f"Step {round_no}: {step}", BUSY)
+                self._sleep(AGENT_SETTLE_SECONDS)
+            last = history[-1]["result"] if history else ""
+            self._feedback(f"Stopped after {rounds} steps. {last}".strip(), ERROR)
+        except PlanRejected as exc:
+            _LOGGER.warning("Voice AI plan rejected for %r: %s", request, exc)
+            self._feedback(f"Blocked: {exc}", ERROR)
+        except Exception as exc:  # noqa: BLE001 - network/LLM failures
+            _LOGGER.exception("Voice AI request failed for %r", request)
+            self._feedback(f"AI error: {exc}", ERROR)
+        finally:
+            self._runner.use_targets(None, [])
+            mode.finished = True
+            self._modes.clear_if(mode)
 
     def _feedback(self, text: str, kind: str) -> None:
         try:

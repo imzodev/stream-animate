@@ -261,6 +261,28 @@
                     "default": true,
                     "description": "While a picker, the number labels or the mouse grid is open, answer it without the wake word ('two', 'click 14')"
                 },
+                "ai_clicks": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Let the AI fallback click buttons in the window in front; clicks that delete, buy, send or close ask for a spoken yes first"
+                },
+                "ai_vision": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Let the AI fallback look at a screenshot of your screen when the window's elements aren't enough. Needs a model that accepts images; screenshots are sent to your LLM provider"
+                },
+                "max_agent_steps": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 20,
+                    "default": 6,
+                    "description": "Most look-then-act rounds one AI request may take"
+                },
+                "agent_stop_hotkey": {
+                    "type": "string",
+                    "default": "ctrl+alt+backspace",
+                    "description": "Global hotkey that stops a running AI request (empty for none)"
+                },
                 "disabled_commands": {
                     "type": "array",
                     "items": {"type": "string"},

@@ -45,6 +45,8 @@ ACTION_TYPES = (
     "list_windows",
     "labels",
     "grid",
+    "click_element",
+    "click_point",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -182,6 +184,17 @@ def validate_action(action: Any) -> Dict[str, Any]:
         pass  # pick from every open window
     elif kind == "labels":
         pass  # number every clickable in the window in front
+    elif kind == "click_element":
+        # An element from the numbered list the AI was shown.
+        out["id"] = _int_in(action, "id", 1, 999)
+        out["button"] = _button(action, "click_element")
+    elif kind == "click_point":
+        # A point on a screenshot, 0-1000 on each axis (AI vision), plus
+        # what the model says is there (checked for risky words).
+        out["x"] = _int_in(action, "x", 0, 1000)
+        out["y"] = _int_in(action, "y", 0, 1000)
+        out["target"] = str(action.get("target") or "").strip()
+        out["button"] = _button(action, "click_point")
     elif kind == "grid":
         scope = action.get("scope", "screen")
         if scope not in GRID_SCOPES:
@@ -229,11 +242,30 @@ def _repeat(action: Mapping[str, Any], kind: str, limit: int = 50) -> Any:
     return repeat
 
 
+def _int_in(action: Mapping[str, Any], key: str, low: int, high: int) -> int:
+    value = action.get(key)
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not low <= value <= high
+    ):
+        raise ActionError(
+            f"{action.get('type')} '{key}' must be an integer {low}-{high}"
+        )
+    return value
+
+
 def _button(action: Mapping[str, Any], kind: str) -> str:
     button = action.get("button", "left")
     if button not in CLICK_BUTTONS:
         raise ActionError(f"{kind} 'button' must be one of {CLICK_BUTTONS}")
     return button
+
+
+def _steps(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 20:
+        raise ActionError("max_agent_steps must be an integer 1-20")
+    return value
 
 
 @dataclass(frozen=True)
@@ -246,6 +278,12 @@ class VoiceCommandsConfig:
     # While a picker, the number labels or the mouse grid is open, its
     # answers ("two", "click 14") work without the wake word.
     overlay_without_wake_word: bool = True
+    # The AI fallback may click (risky clicks are confirmed by voice).
+    ai_clicks: bool = True
+    # Most rounds (look → act) one AI request may take.
+    max_agent_steps: int = 6
+    # Global hotkey that stops a running AI request ("" = none).
+    agent_stop_hotkey: str = "ctrl+alt+backspace"
 
     @property
     def commands(self) -> Tuple[Any, ...]:
@@ -279,6 +317,11 @@ class VoiceCommandsConfig:
             # harmlessly so saving doesn't silently re-enable anything.
             disabled_commands=tuple(dict.fromkeys(disabled)),
             overlay_without_wake_word=bool(raw.get("overlay_without_wake_word", True)),
+            ai_clicks=bool(raw.get("ai_clicks", True)),
+            max_agent_steps=_steps(raw.get("max_agent_steps", 6)),
+            agent_stop_hotkey=str(
+                raw.get("agent_stop_hotkey", "ctrl+alt+backspace") or ""
+            ),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -289,4 +332,7 @@ class VoiceCommandsConfig:
             "ai_fallback": self.ai_fallback,
             "disabled_commands": list(self.disabled_commands),
             "overlay_without_wake_word": self.overlay_without_wake_word,
+            "ai_clicks": self.ai_clicks,
+            "max_agent_steps": self.max_agent_steps,
+            "agent_stop_hotkey": self.agent_stop_hotkey,
         }

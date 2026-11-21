@@ -104,6 +104,8 @@ class ActionRunner:
         self._on_choice: Callable[..., None] = lambda *_a: None
         self._on_labels: Optional[Callable[..., None]] = None
         self._on_grid: Optional[Callable[..., None]] = None
+        # The elements the AI was shown this round (click_element ids).
+        self._ai_targets: tuple = (None, [])
 
     def set_choice_handler(self, handler: Callable[..., None]) -> None:
         """Called with ``(candidates, query, noun, resolve)`` when a name
@@ -247,6 +249,17 @@ class ActionRunner:
             rect = (x - 400, y - 300, 800, 600)
         self._on_grid(rect)
         return ActionResult(True, "Say a number to zoom in, then “click”")
+
+    def use_targets(self, hwnd: Optional[int], targets) -> None:
+        """Set the element list that ``click_element`` ids refer to."""
+
+        self._ai_targets = (hwnd, list(targets))
+
+    def _do_click_element(self, a) -> ActionResult:
+        hwnd, targets = self._ai_targets
+        if hwnd is None or not 1 <= a["id"] <= len(targets):
+            return ActionResult(False, f"There is no element {a['id']}")
+        return self.activate_target(hwnd, targets[a["id"] - 1], a.get("button", "left"))
 
     def _do_labels(self, a) -> ActionResult:
         if self._on_labels is None:

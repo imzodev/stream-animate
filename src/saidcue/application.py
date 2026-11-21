@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from PySide6.QtCore import Qt, QObject, Signal
@@ -646,6 +647,17 @@ class Application:
                 )
             except ValueError as exc:
                 self._logger.warning("Failed to register STT toggle hotkey: %s", exc)
+
+        # Stops a running multi-step AI voice request (Windows only: the
+        # default combo means something else to X11).
+        service = self._voice_service
+        stop_hk = getattr(getattr(service, "config", None), "agent_stop_hotkey", "")
+        if service is not None and stop_hk and sys.platform == "win32":
+            try:
+                self._hotkey_manager.register_hotkey(stop_hk, service.stop_agent)
+                self._logger.info("Voice AI stop hotkey registered: %s", stop_hk)
+            except ValueError as exc:
+                self._logger.warning("Failed to register voice AI stop hotkey: %s", exc)
 
         # Fact-checker toggle hotkey. Independent of the STT toggle.
         if self._fact_checker is not None and self._llm_config is not None:

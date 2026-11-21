@@ -77,7 +77,14 @@ def build_service(
             tabs = tabs_factory()
         except Exception:  # noqa: BLE001 - tab context is optional
             tabs = None
-        agent = AIAgent(complete, windows=windows, tabs=tabs)
+        agent = AIAgent(
+            complete,
+            windows=windows,
+            tabs=tabs,
+            elements=runner.label_targets if windows is not None else None,
+            allow_clicks=config.ai_clicks,
+            max_rounds=config.max_agent_steps,
+        )
 
     return VoiceCommandService(
         config,
@@ -85,4 +92,5 @@ def build_service(
         engine_getter=engine_getter,
         agent=agent,
         on_feedback=on_feedback,
+        background=True,
     )
