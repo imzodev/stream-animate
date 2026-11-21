@@ -26,7 +26,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from .config import MEDIA_KEYS, ActionError, validate_action
+from .config import MEDIA_KEYS, WINDOW_OPS, ActionError, validate_action
+from .spoken_keys import parse_key_press
 from .windows import TERMINAL_CLASSES, WindowInfo, find_window
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ Allowed actions (nothing else exists):
 - {{"type": "wait", "ms": <0-5000>}}
 - {{"type": "volume", "level": <0-100>}} or {{"type": "volume", "mute": true|false}}
 - {{"type": "scroll", "direction": "up"|"down"|"top"|"bottom", "amount": "small"|"page"|"large"}}
+- {{"type": "window", "op": one of {list(WINDOW_OPS)}}} (acts on the window in front)
 
 Rules:
 - At most {MAX_STEPS} actions. Prefer the fewest.
@@ -125,12 +127,21 @@ def check_plan(
             target_is_terminal = bool(match and match.class_name in TERMINAL_CLASSES)
         elif kind == "open":
             target_is_terminal = False
-        elif kind == "keys":
-            combo = a["keys"].lower()
+        elif kind in ("keys", "press"):
+            if kind == "press":
+                parsed = parse_key_press(a["target"])
+                if parsed is None:
+                    # Not a key: "press" would click a button by its label.
+                    raise PlanRejected("clicking is not allowed for the AI")
+                combo = parsed[0]
+            else:
+                combo = a["keys"].lower()
             if "enter" in combo or "return" in combo:
                 raise PlanRejected("pressing Enter is not allowed")
             if target_is_terminal:
                 raise PlanRejected("sending keys to a terminal is not allowed")
+        elif kind == "mouse" and a["op"] in ("click", "drag_end"):
+            raise PlanRejected("clicking is not allowed for the AI")
         elif kind == "click":
             # Clicking is for the user's own "click …" command only: the AI
             # can't see the page, and a click can submit, buy or delete.

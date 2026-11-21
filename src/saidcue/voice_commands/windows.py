@@ -12,7 +12,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .parser import normalize
 
@@ -27,6 +27,8 @@ class WindowInfo:
     hwnd: int
     title: str
     class_name: str
+    # Executable name without ".exe", lowercase ("spotify", "chrome").
+    process: str = ""
 
     @property
     def is_terminal(self) -> bool:
@@ -52,7 +54,28 @@ class Win32Windows:
         u.GetWindowTextW(hwnd, title, n + 1)
         cls = ctypes.create_unicode_buffer(256)
         u.GetClassNameW(hwnd, cls, 256)
-        return WindowInfo(int(hwnd or 0), title.value, cls.value)
+        return WindowInfo(int(hwnd or 0), title.value, cls.value, self._process(hwnd))
+
+    def _process(self, hwnd) -> str:
+        """Lowercase executable name of the window's process, or ``""``."""
+
+        pid = self._wt.DWORD()
+        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid.value)  # QUERY_LIMITED
+        if not handle:
+            return ""
+        try:
+            size = self._wt.DWORD(520)
+            buf = ctypes.create_unicode_buffer(size.value)
+            if not kernel32.QueryFullProcessImageNameW(
+                handle, 0, buf, ctypes.byref(size)
+            ):
+                return ""
+            name = buf.value.replace("/", "\\").rsplit("\\", 1)[-1].lower()
+            return name[:-4] if name.endswith(".exe") else name
+        finally:
+            kernel32.CloseHandle(handle)
 
     def list_windows(self) -> List[WindowInfo]:
         """Visible, titled, top-level windows in Z-order (front first)."""
@@ -90,6 +113,30 @@ class Win32Windows:
                 return True
         return u.GetForegroundWindow() == hwnd
 
+    # -- window state ---------------------------------------------------------
+
+    def minimize(self, hwnd: int) -> bool:
+        return bool(self._user32.ShowWindow(hwnd, 6)) or True  # SW_MINIMIZE
+
+    def maximize(self, hwnd: int) -> bool:
+        return bool(self._user32.ShowWindow(hwnd, 3)) or True  # SW_MAXIMIZE
+
+    def restore(self, hwnd: int) -> bool:
+        return bool(self._user32.ShowWindow(hwnd, 9)) or True  # SW_RESTORE
+
+    def close(self, hwnd: int) -> bool:
+        """Ask the window to close (WM_CLOSE): apps still prompt to save."""
+
+        return bool(self._user32.PostMessageW(hwnd, 0x0010, 0, 0))
+
+    def rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+        """``(left, top, right, bottom)`` in physical pixels."""
+
+        r = self._wt.RECT()
+        if not self._user32.GetWindowRect(hwnd, ctypes.byref(r)):
+            return None
+        return r.left, r.top, r.right, r.bottom
+
 
 def find_window(windows: List[WindowInfo], query: str) -> Optional[WindowInfo]:
     """Best window whose title contains ``query`` (accent/case-insensitive).
@@ -102,7 +149,12 @@ def find_window(windows: List[WindowInfo], query: str) -> Optional[WindowInfo]:
         return None
     matches = [w for w in windows if q in normalize(w.title)]
     if not matches:
-        return None
+        # "go to spotify" while Spotify's title is the song playing.
+        procs = [w for w in windows if w.process and normalize(w.process) == q]
+        procs = procs or [
+            w for w in windows if w.process and normalize(w.process).startswith(q)
+        ]
+        return procs[0] if procs else None
     for w in matches:
         if normalize(w.title).startswith(q):
             return w

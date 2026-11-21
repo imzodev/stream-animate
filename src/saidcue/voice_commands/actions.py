@@ -73,7 +73,11 @@ class ActionRunner:
         volume_factory: Optional[Callable[[], Any]] = None,
         assistant_getter: Optional[Callable[[], Any]] = None,
         on_ambiguous: Optional[Callable[[List[Any], str], None]] = None,
+        mouse_factory: Optional[Callable[[], Any]] = None,
     ) -> None:
+        self._mouse_factory = mouse_factory
+        self._mouse = None
+        self._drag_from: Optional[tuple] = None
         self._assistant_getter = assistant_getter or (lambda: None)
         self._elements_factory = elements_factory
         self._elements = None
@@ -122,7 +126,13 @@ class ActionRunner:
 
         from ..hotkeys import HotkeyManager
 
-        keys = HotKey.parse(HotkeyManager.canonicalize(combo))
+        try:
+            canonical = HotkeyManager.canonicalize(combo)
+        except ValueError:
+            # A lone modifier such as "<cmd>" (opens the Start menu) is a
+            # valid key press even though it is not a valid hotkey.
+            canonical = combo.strip().lower()
+        keys = HotKey.parse(canonical)
         kb = self._kb()
         for _ in range(repeat):
             for k in keys:
@@ -133,8 +143,75 @@ class ActionRunner:
     # -- executors ----------------------------------------------------------
 
     def _do_keys(self, a) -> ActionResult:
-        self.press(a["keys"], a.get("repeat", 1))
+        repeat = _count_of(a.get("repeat", 1))
+        if repeat is None:
+            return ActionResult(False, f"How many times is “{a['repeat']}”?")
+        self.press(a["keys"], repeat)
         return ActionResult(True, "")
+
+    def _do_press(self, a) -> ActionResult:
+        """Press a spoken key, or click the thing with that label."""
+
+        from .spoken_keys import parse_key_press
+
+        parsed = parse_key_press(a["target"])
+        if parsed is not None:
+            combo, count = parsed
+            self.press(combo, count)
+            label = combo.replace("<", "").replace(">", "").replace("cmd", "win")
+            return ActionResult(
+                True, f"Pressed {label}" + (f" ×{count}" if count > 1 else "")
+            )
+        return self._do_click({"type": "click", "target": a["target"], "exact": False})
+
+    def _do_mouse(self, a) -> ActionResult:
+        mouse = self._get_mouse()
+        op = a["op"]
+        x, y = mouse.position()
+        if op == "click":
+            button = a.get("button", "left")
+            mouse.click(x, y, button)
+            return ActionResult(True, _CLICK_LABELS[button])
+        if op == "nudge":
+            repeat = _count_of(a.get("repeat", 1))
+            if repeat is None:
+                return ActionResult(False, f"How far is “{a['repeat']}”?")
+            dx, dy = _NUDGE[a["direction"]]
+            mouse.move(x + dx * NUDGE_PIXELS * repeat, y + dy * NUDGE_PIXELS * repeat)
+            return ActionResult(True, f"Mouse {a['direction']}")
+        if op == "drag_start":
+            self._drag_from = (x, y)
+            return ActionResult(True, "Marked. Move there and say “drag here”")
+        if op == "drag_end":
+            if self._drag_from is None:
+                return ActionResult(False, "Say “mark” where the drag starts first")
+            start, self._drag_from = self._drag_from, None
+            mouse.drag(start, (x, y))
+            return ActionResult(True, "Dragged")
+        return ActionResult(True, "")  # "move": the cursor is already there
+
+    def click_at(self, x: int, y: int, button: str = "left") -> None:
+        """Click a physical screen point (number labels, the grid, the AI)."""
+
+        self._get_mouse().click(x, y, button)
+
+    def move_mouse(self, x: int, y: int) -> None:
+        self._get_mouse().move(x, y)
+
+    def mouse_position(self):
+        return self._get_mouse().position()
+
+    def _do_window(self, a) -> ActionResult:
+        op = a["op"]
+        if op in _WINDOW_KEYS:
+            self.press(_WINDOW_KEYS[op])
+            return ActionResult(True, _WINDOW_LABELS[op])
+        windows = self._require_windows()
+        fg = windows.foreground()
+        if fg is None:
+            return ActionResult(False, "No window is in front")
+        getattr(windows, op)(fg.hwnd)
+        return ActionResult(True, f"{_WINDOW_LABELS[op]}: {fg.title[:30]}")
 
     def _do_media(self, a) -> ActionResult:
         from pynput.keyboard import Key  # type: ignore[import-not-found]
@@ -191,9 +268,7 @@ class ActionRunner:
                 return ActionResult(False, f"No {app} window is open")
             windows.focus(target.hwnd)
             combo = (
-                f"<ctrl>+<alt>+{number}"
-                if app == "terminal"
-                else f"<ctrl>+{number}"
+                f"<ctrl>+<alt>+{number}" if app == "terminal" else f"<ctrl>+{number}"
             )
             self.press(combo)
             return ActionResult(True, f"Tab {number}")
@@ -248,7 +323,9 @@ class ActionRunner:
     def _do_ask(self, a) -> ActionResult:
         assistant = self._assistant_getter()
         if assistant is None:
-            return ActionResult(False, "The AI assistant isn't set up (see the AI Assistant tab)")
+            return ActionResult(
+                False, "The AI assistant isn't set up (see the AI Assistant tab)"
+            )
         if not assistant.ask(a["question"]):
             return ActionResult(False, "The assistant is busy, try again in a moment")
         return ActionResult(True, "Asking the assistant…")
@@ -256,7 +333,9 @@ class ActionRunner:
     def _do_ask_listen(self, a) -> ActionResult:
         assistant = self._assistant_getter()
         if assistant is None:
-            return ActionResult(False, "The AI assistant isn't set up (see the AI Assistant tab)")
+            return ActionResult(
+                False, "The AI assistant isn't set up (see the AI Assistant tab)"
+            )
         if not assistant.start_listening():
             return ActionResult(False, "The assistant is already listening or busy")
         return ActionResult(True, "Listening for your question…")
@@ -270,12 +349,19 @@ class ActionRunner:
         if fg is None:
             return ActionResult(False, "No window is in front")
         queries = a.get("any") or [a["target"]]
-        hit = self._get_elements().click(fg.hwnd, queries, a.get("exact", False))
+        button = a.get("button", "left")
+        hit = self._get_elements().click(
+            fg.hwnd, queries, a.get("exact", False), button=button
+        )
         if hit is None:
             return ActionResult(
                 False, a.get("missing") or f"Nothing called “{queries[0]}” here"
             )
-        verb = "Focused" if hit.kind == "input" else "Clicked"
+        verb = (
+            "Focused"
+            if hit.kind == "input" and button == "left"
+            else _CLICK_LABELS[button]
+        )
         return ActionResult(True, f"{verb} “{hit.name[:40]}”")
 
     def _do_volume(self, a) -> ActionResult:
@@ -346,6 +432,16 @@ class ActionRunner:
                 self._volume = SystemVolume()
         return self._volume
 
+    def _get_mouse(self):
+        if self._mouse is None:
+            if self._mouse_factory is not None:
+                self._mouse = self._mouse_factory()
+            else:
+                from .mouse import Win32Mouse
+
+                self._mouse = Win32Mouse()
+        return self._mouse
+
     def _get_elements(self):
         if self._elements is None:
             if self._elements_factory is not None:
@@ -355,6 +451,46 @@ class ActionRunner:
 
                 self._elements = UiaElements()
         return self._elements
+
+
+def _count_of(value: Any) -> Optional[int]:
+    """A repeat count from an int or spoken text; ``None`` if unreadable.
+
+    A placeholder left unfilled (the phrase had no ``{count}`` slot, as
+    in "mouse up" versus "mouse up 3") counts as once.
+    """
+
+    if isinstance(value, int):
+        return value
+    if value.startswith("{") and value.endswith("}"):
+        return 1
+    from .spoken_keys import parse_count
+
+    return parse_count(value)
+
+
+NUDGE_PIXELS = 40
+_NUDGE = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+_CLICK_LABELS = {
+    "left": "Clicked",
+    "right": "Right-clicked",
+    "middle": "Middle-clicked",
+    "double": "Double-clicked",
+}
+_WINDOW_KEYS = {
+    "snap_left": "<cmd>+<left>",
+    "snap_right": "<cmd>+<right>",
+    "next_monitor": "<cmd>+<shift>+<right>",
+}
+_WINDOW_LABELS = {
+    "minimize": "Minimized",
+    "maximize": "Maximized",
+    "restore": "Restored",
+    "close": "Closing",
+    "snap_left": "Snapped left",
+    "snap_right": "Snapped right",
+    "next_monitor": "Moved to the next monitor",
+}
 
 
 def _app_classes(app: str):

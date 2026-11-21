@@ -206,12 +206,14 @@ class FakeElements:
         self.scrolled: List[tuple] = []
         self.wheeled: List[tuple] = []
 
-    def click(self, hwnd, queries, exact=False):
+    def click(self, hwnd, queries, exact=False, button="left"):
         idx = best_element(self.candidates, queries, exact)
         if idx is None:
             return None
         c = self.candidates[idx]
-        self.clicked.append((hwnd, c.name))
+        self.clicked.append(
+            (hwnd, c.name) if button == "left" else (hwnd, c.name, button)
+        )
         return ElementHit(c.name, c.kind)
 
     def scroll(self, hwnd, direction, amount="small"):
@@ -291,7 +293,10 @@ def test_matcher_accepts_a_slot_before_a_trailing_word():
     m = CommandMatcher(
         [
             _cmd(["tab {name}"], {"type": "switch_tab", "app": "any", "tab": "{name}"}),
-            _cmd(["the {name} tab"], {"type": "switch_tab", "app": "any", "tab": "{name}"}),
+            _cmd(
+                ["the {name} tab"],
+                {"type": "switch_tab", "app": "any", "tab": "{name}"},
+            ),
         ]
     )
     assert m.match("tab youtube")[1] == {"name": "youtube"}
@@ -596,7 +601,7 @@ def test_the_pending_wake_word_expires(monkeypatch):
 
 
 def test_a_question_ending_in_tab_is_still_a_question():
-    """"ask what is a browser tab" must not be read as a tab command."""
+    """ "ask what is a browser tab" must not be read as a tab command."""
 
     cmd, slots = CommandMatcher(COMMANDS).match("ask what is a browser tab")
     assert cmd.id == "ask"
@@ -793,7 +798,9 @@ def test_scroll_uses_ui_automation_then_falls_back():
     windows = FakeWindows([CHROME], foreground=CHROME)
     elements = FakeElements()
     runner, kb, _ = make_runner(windows=windows, elements=elements)
-    assert runner.run([{"type": "scroll", "direction": "down"}]).message == "Scrolled down"
+    assert (
+        runner.run([{"type": "scroll", "direction": "down"}]).message == "Scrolled down"
+    )
     assert elements.scrolled == [(20, "down", "small")]
 
     no_uia = FakeElements(scrollable=False)  # e.g. Firefox
@@ -1235,7 +1242,9 @@ def test_enter_command_beats_the_click_command():
     for spoken in ("computer press enter", "computer submit", "computer enter"):
         matched = matcher.match(split_wake_word(spoken, ["computer"]))
         assert matched is not None and matched[0].id == "press_enter", spoken
-    assert matcher.match("press the save button")[0].id == "click"
+    # "press …" with a label that isn't a key still clicks (see the
+    # spoken-key tests in test_computer_control.py).
+    assert matcher.match("press the save button")[0].id == "press_key"
     enter = next(c for c in COMMANDS if c.id == "press_enter")
     assert enter.actions[0]["keys"] == "<enter>"
 
@@ -1277,12 +1286,24 @@ def _spoken(text):
         ("computer ask the assistant who won in 1998", "ask", "who won in 1998"),
         ("computer, explain quantum computing", "explain", "Explain quantum computing"),
         ("computer, what is a heron?", "what_is", "What is a heron"),
-        ("computer, what's the capital of France", "what_is", "What is the capital of france"),
+        (
+            "computer, what's the capital of France",
+            "what_is",
+            "What is the capital of france",
+        ),
         ("computer, what are black holes", "what_are", "What are black holes"),
         ("computer, who is Ada Lovelace", "who_is", "Who is ada lovelace"),
         ("computer, why is the sky blue", "why", "Why is the sky blue"),
-        ("computer, how many moons does Mars have", "how", "How many moons does mars have"),
-        ("computer, pregunta cuántos años tiene la luna", "ask", "cuantos anos tiene la luna"),
+        (
+            "computer, how many moons does Mars have",
+            "how",
+            "How many moons does mars have",
+        ),
+        (
+            "computer, pregunta cuántos años tiene la luna",
+            "ask",
+            "cuantos anos tiene la luna",
+        ),
     ],
 )
 def test_spoken_questions_become_ask_actions(spoken, command_id, question):
@@ -1294,8 +1315,14 @@ def test_spoken_questions_become_ask_actions(spoken, command_id, question):
 
 @pytest.mark.parametrize(
     "spoken",
-    ["computer, ask a question", "computer, I have a question", "computer, assistant",
-     "computer, ask the assistant", "computer, ask", "computer, pregunta"],
+    [
+        "computer, ask a question",
+        "computer, I have a question",
+        "computer, assistant",
+        "computer, ask the assistant",
+        "computer, ask",
+        "computer, pregunta",
+    ],
 )
 def test_bare_ask_phrases_start_listening(spoken):
     cid, actions = _spoken(spoken)

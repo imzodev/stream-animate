@@ -106,9 +106,17 @@ class UiaElements:
     # -- clicking -------------------------------------------------------------
 
     def click(
-        self, hwnd: int, queries: Sequence[str], exact: bool = False
+        self,
+        hwnd: int,
+        queries: Sequence[str],
+        exact: bool = False,
+        button: str = "left",
     ) -> Optional[ElementHit]:
-        """Press the best-matching button/link (or focus the input) in ``hwnd``."""
+        """Press the best-matching button/link (or focus the input) in ``hwnd``.
+
+        ``button`` "right", "middle" or "double" does a real mouse click on
+        the element's centre: UI Automation has no pattern for those.
+        """
 
         with self._auto.UIAutomationInitializerInThread():
             found = self._scan(hwnd)
@@ -123,7 +131,7 @@ class UiaElements:
                 return None
             cand, element = found[idx]
             control = self._auto.Control.CreateControlFromElement(element)
-            how = self._activate(control, cand.kind)
+            how = self._activate(control, cand.kind, button)
             _LOGGER.info("Voice click: %r (%s) via %s", cand.name, cand.kind, how)
             return ElementHit(cand.name, cand.kind)
 
@@ -167,7 +175,9 @@ class UiaElements:
 
         # Which candidates sit inside a document (the web page / editor area)?
         in_page = set()
-        docs = root.FindAll(_TREE_DESCENDANTS, self._type_condition(uia, {"DocumentControl"}))
+        docs = root.FindAll(
+            _TREE_DESCENDANTS, self._type_condition(uia, {"DocumentControl"})
+        )
         for i in range(docs.Length if docs else 0):
             sub = docs.GetElement(i).FindAll(_TREE_DESCENDANTS, cond)
             for j in range(sub.Length if sub else 0):
@@ -185,8 +195,17 @@ class UiaElements:
             out.append((Candidate(name, kind, page, bool(el.CachedIsOffscreen)), el))
         return out
 
-    def _activate(self, control, kind: str) -> str:
+    def _activate(self, control, kind: str, button: str = "left") -> str:
         auto = self._auto
+        if button != "left":
+            # The cursor stays there: a context menu opens next to it.
+            if button == "right":
+                control.RightClick(simulateMove=False, waitTime=0.05)
+            elif button == "middle":
+                control.MiddleClick(simulateMove=False, waitTime=0.05)
+            else:
+                control.DoubleClick(simulateMove=False, waitTime=0.05)
+            return f"{button} click"
         if kind == "input":
             control.SetFocus()
             return "focus"
@@ -275,7 +294,11 @@ class UiaElements:
         for i in range(found.Length if found else 0):
             control = auto.Control.CreateControlFromElement(found.GetElement(i))
             pattern = control.GetPattern(auto.PatternId.ScrollPattern)
-            if pattern is None or not pattern.VerticallyScrollable or control.IsOffscreen:
+            if (
+                pattern is None
+                or not pattern.VerticallyScrollable
+                or control.IsOffscreen
+            ):
                 continue
             rect = control.BoundingRectangle
             area = max(rect.width(), 0) * max(rect.height(), 0)
@@ -296,7 +319,9 @@ class UiaElements:
                 return False
             x, y = auto.GetCursorPos()
             try:
-                auto.SetCursorPos(rect.left + rect.width() // 2, rect.top + rect.height() // 2)
+                auto.SetCursorPos(
+                    rect.left + rect.width() // 2, rect.top + rect.height() // 2
+                )
                 notches = WHEEL_NOTCHES[amount]
                 if direction == "down":
                     auto.WheelDown(notches, interval=0.01, waitTime=0.05)

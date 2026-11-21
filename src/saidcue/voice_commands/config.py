@@ -37,6 +37,9 @@ ACTION_TYPES = (
     "volume",
     "ask",
     "ask_listen",
+    "press",
+    "mouse",
+    "window",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -44,6 +47,14 @@ DICTATION_STATES = ("on", "off", "toggle")
 SCROLL_DIRECTIONS = ("up", "down", "top", "bottom")
 SCROLL_AMOUNTS = ("small", "page", "large")
 MAX_WAIT_MS = 5000
+CLICK_BUTTONS = ("left", "right", "middle", "double")
+MOUSE_OPS = ("click", "move", "nudge", "drag_start", "drag_end")
+MOUSE_DIRECTIONS = ("up", "down", "left", "right")
+WINDOW_OPS = (
+    "minimize", "maximize", "restore", "close",
+    "snap_left", "snap_right", "next_monitor",
+)  # fmt: skip
+MAX_NUDGE = 50
 
 DEFAULT_WAKE_WORD = "computer"  # also the first preset in .catalog
 
@@ -70,10 +81,7 @@ def validate_action(action: Any) -> Dict[str, Any]:
     out: Dict[str, Any] = {"type": kind}
     if kind == "keys":
         out["keys"] = _require_str(action, "keys")
-        repeat = action.get("repeat", 1)
-        if not isinstance(repeat, int) or not 1 <= repeat <= 50:
-            raise ActionError("keys 'repeat' must be an integer 1-50")
-        out["repeat"] = repeat
+        out["repeat"] = _repeat(action, "keys")
     elif kind == "media":
         key = _require_str(action, "key")
         if key not in MEDIA_KEYS:
@@ -126,6 +134,7 @@ def validate_action(action: Any) -> Dict[str, Any]:
         if not isinstance(exact, bool):
             raise ActionError("click 'exact' must be true or false")
         out["exact"] = exact
+        out["button"] = _button(action, "click")
         if action.get("missing") is not None:  # feedback when nothing matches
             out["missing"] = _require_str(action, "missing")
     elif kind == "scroll":
@@ -142,6 +151,30 @@ def validate_action(action: Any) -> Dict[str, Any]:
         out["question"] = _require_str(action, "question")
     elif kind == "ask_listen":
         pass  # start listening for a spoken question; takes no arguments
+    elif kind == "press":
+        # A spoken key ("escape", "control shift t", "backspace 3 times")
+        # or, when it isn't one, the label of something to click.
+        out["target"] = _require_str(action, "target")
+    elif kind == "mouse":
+        op = _require_str(action, "op")
+        if op not in MOUSE_OPS:
+            raise ActionError(f"mouse 'op' must be one of {MOUSE_OPS}")
+        out["op"] = op
+        if op == "click":
+            out["button"] = _button(action, "mouse")
+        if op == "nudge":
+            direction = _require_str(action, "direction")
+            if direction not in MOUSE_DIRECTIONS:
+                raise ActionError(
+                    f"mouse 'direction' must be one of {MOUSE_DIRECTIONS}"
+                )
+            out["direction"] = direction
+            out["repeat"] = _repeat(action, "mouse", MAX_NUDGE)
+    elif kind == "window":
+        op = _require_str(action, "op")
+        if op not in WINDOW_OPS:
+            raise ActionError(f"window 'op' must be one of {WINDOW_OPS}")
+        out["op"] = op
     elif kind == "volume":
         # Exactly one of: ``level`` (0-100, or spoken text like "fifty" /
         # "{level}", parsed when it runs) or ``mute`` (true/false).
@@ -162,6 +195,28 @@ def validate_action(action: Any) -> Dict[str, Any]:
                 raise ActionError("volume 'level' must be 0-100")
             out["level"] = level
     return out
+
+
+def _repeat(action: Mapping[str, Any], kind: str, limit: int = 50) -> Any:
+    """A repeat count: an int, or spoken text (``"{count}"``) parsed at run time."""
+
+    repeat = action.get("repeat", 1)
+    if isinstance(repeat, str) and repeat.strip():
+        return repeat.strip()
+    if (
+        isinstance(repeat, bool)
+        or not isinstance(repeat, int)
+        or not 1 <= repeat <= limit
+    ):
+        raise ActionError(f"{kind} 'repeat' must be an integer 1-{limit}")
+    return repeat
+
+
+def _button(action: Mapping[str, Any], kind: str) -> str:
+    button = action.get("button", "left")
+    if button not in CLICK_BUTTONS:
+        raise ActionError(f"{kind} 'button' must be one of {CLICK_BUTTONS}")
+    return button
 
 
 @dataclass(frozen=True)

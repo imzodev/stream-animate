@@ -71,7 +71,11 @@ class CommandMatcher:
     before and after it.
 
     The most specific template (most literal words) wins. Commands are
-    any objects with ``phrases`` and ``actions``.
+    any objects with ``phrases`` and ``actions``. A command may also have
+    ``accepts(slots) -> bool``: a template only matches when it returns
+    true, which lets "{key}" match "escape" without swallowing every
+    other phrase. Only such commands may use a slot with no words around
+    it.
     """
 
     def __init__(self, commands: Sequence[Any]) -> None:
@@ -89,7 +93,7 @@ class CommandMatcher:
                     slot = m.group(1)
                     prefix = tuple(norm[: m.start()].split())
                     suffix = tuple(norm[m.end() :].split())
-                    if not prefix and not suffix:
+                    if not prefix and not suffix and _accepts(command) is None:
                         raise ValueError(f"slot needs words around it: {phrase!r}")
                 else:
                     prefix = tuple(norm.split())
@@ -120,8 +124,16 @@ class CommandMatcher:
             end = len(words) - len(suffix)
             if end <= start:
                 continue
-            return command, {slot: " ".join(words[start:end])}
+            slots = {slot: " ".join(words[start:end])}
+            accepts = _accepts(command)
+            if accepts is not None and not accepts(slots):
+                continue
+            return command, slots
         return None
+
+
+def _accepts(command: Any):
+    return getattr(command, "accepts", None)
 
 
 def fill_slots(value, slots: Dict[str, str]):
