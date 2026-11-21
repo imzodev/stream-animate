@@ -40,6 +40,9 @@ ACTION_TYPES = (
     "press",
     "mouse",
     "window",
+    "launch_app",
+    "close_app",
+    "list_windows",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -170,6 +173,10 @@ def validate_action(action: Any) -> Dict[str, Any]:
                 )
             out["direction"] = direction
             out["repeat"] = _repeat(action, "mouse", MAX_NUDGE)
+    elif kind in ("launch_app", "close_app"):
+        out["name"] = _require_str(action, "name")
+    elif kind == "list_windows":
+        pass  # pick from every open window
     elif kind == "window":
         op = _require_str(action, "op")
         if op not in WINDOW_OPS:
@@ -226,6 +233,9 @@ class VoiceCommandsConfig:
     dictation_editing: bool = True
     ai_fallback: bool = False
     disabled_commands: Tuple[str, ...] = field(default_factory=tuple)
+    # While a picker, the number labels or the mouse grid is open, its
+    # answers ("two", "click 14") work without the wake word.
+    overlay_without_wake_word: bool = True
 
     @property
     def commands(self) -> Tuple[Any, ...]:
@@ -258,6 +268,7 @@ class VoiceCommandsConfig:
             # Unknown ids (e.g. a command removed in a later version) are kept
             # harmlessly so saving doesn't silently re-enable anything.
             disabled_commands=tuple(dict.fromkeys(disabled)),
+            overlay_without_wake_word=bool(raw.get("overlay_without_wake_word", True)),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -267,4 +278,5 @@ class VoiceCommandsConfig:
             "dictation_editing": self.dictation_editing,
             "ai_fallback": self.ai_fallback,
             "disabled_commands": list(self.disabled_commands),
+            "overlay_without_wake_word": self.overlay_without_wake_word,
         }

@@ -56,6 +56,9 @@ def tab_number(text: str) -> Optional[int]:
 class ActionResult:
     ok: bool
     message: str
+    # Nothing matched what the user named (e.g. no app called that): the
+    # service may hand the phrase to the AI fallback instead.
+    unmatched: bool = False
 
 
 class ActionRunner:
@@ -74,7 +77,11 @@ class ActionRunner:
         assistant_getter: Optional[Callable[[], Any]] = None,
         on_ambiguous: Optional[Callable[[List[Any], str], None]] = None,
         mouse_factory: Optional[Callable[[], Any]] = None,
+        apps_factory: Optional[Callable[[], Any]] = None,
     ) -> None:
+        self._apps_factory = apps_factory
+        self._apps = None
+        self._apps_lock = threading.Lock()
         self._mouse_factory = mouse_factory
         self._mouse = None
         self._drag_from: Optional[tuple] = None
@@ -94,6 +101,13 @@ class ActionRunner:
         self._engine_getter = engine_getter or (lambda: None)
         self._sleep = sleep
         self._on_ambiguous = on_ambiguous or (lambda _candidates, _query: None)
+        self._on_choice: Callable[..., None] = lambda *_a: None
+
+    def set_choice_handler(self, handler: Callable[..., None]) -> None:
+        """Called with ``(candidates, query, noun, resolve)`` when a name
+        matches several apps or windows and the user has to pick one."""
+
+        self._on_choice = handler or (lambda *_a: None)
 
     def set_ambiguous_handler(self, handler: Callable[[List[Any], str], None]) -> None:
         """Called with the candidates when a query matches several tabs."""
@@ -200,6 +214,54 @@ class ActionRunner:
 
     def mouse_position(self):
         return self._get_mouse().position()
+
+    def _do_launch_app(self, a) -> ActionResult:
+        name = a["name"]
+        found = self._get_apps().find(name)
+        if len(found) == 1:
+            return self.launch_app_entry(found[0])
+        if found:
+            self._on_choice(found[:9], name, "app", self.launch_app_entry)
+            return ActionResult(True, f"{len(found)} apps match “{name}”")
+        site = _site_url(name)
+        if site is not None:
+            self._launcher(site)
+            return ActionResult(True, f"Opening {site}")
+        return ActionResult(False, f"No app called “{name}”", unmatched=True)
+
+    def launch_app_entry(self, app: Any) -> ActionResult:
+        """Launch one app from :class:`~.apps.StartApps` (also the picker's pick)."""
+
+        self._get_apps().launch(app)
+        return ActionResult(True, f"Opening {app.name}")
+
+    def _do_close_app(self, a) -> ActionResult:
+        windows = self._require_windows()
+        match = find_window(windows.list_windows(), a["name"])
+        if match is None:
+            return ActionResult(
+                False, f"No window matches “{a['name']}”", unmatched=True
+            )
+        windows.close(match.hwnd)
+        return ActionResult(True, f"Closing {match.title[:40]}")
+
+    def _do_list_windows(self, a) -> ActionResult:
+        from .modes import ListItem
+
+        items = [
+            ListItem(w.title, w.process, w.hwnd)
+            for w in self._require_windows().list_windows()
+            if w.title.strip()
+        ][:9]
+        if not items:
+            return ActionResult(False, "No windows are open")
+        self._on_choice(items, "", "window", self.focus_list_item)
+        return ActionResult(True, "Say a window's number")
+
+    def focus_list_item(self, item: Any) -> ActionResult:
+        if not self._require_windows().focus(item.value):
+            return ActionResult(False, f"Couldn't focus “{item.label[:40]}”")
+        return ActionResult(True, f"Focused {item.label[:40]}")
 
     def _do_window(self, a) -> ActionResult:
         op = a["op"]
@@ -432,6 +494,17 @@ class ActionRunner:
                 self._volume = SystemVolume()
         return self._volume
 
+    def _get_apps(self):
+        with self._apps_lock:  # the picker's mouse pick runs on the GUI thread
+            if self._apps is None:
+                if self._apps_factory is not None:
+                    self._apps = self._apps_factory()
+                else:
+                    from .apps import StartApps
+
+                    self._apps = StartApps()
+            return self._apps
+
     def _get_mouse(self):
         if self._mouse is None:
             if self._mouse_factory is not None:
@@ -467,6 +540,20 @@ def _count_of(value: Any) -> Optional[int]:
     from .spoken_keys import parse_count
 
     return parse_count(value)
+
+
+_SITE_ENDINGS = ("com", "org", "net", "io", "tv", "dev", "app", "ai", "gg", "co", "mx")
+
+
+def _site_url(name: str) -> Optional[str]:
+    """``"github com"`` / ``"github dot com"`` → ``"https://github.com"``."""
+
+    words = [w for w in normalize(name).split() if w != "dot"]
+    if len(words) < 2 or words[-1] not in _SITE_ENDINGS:
+        return None
+    if not all(w.isalnum() for w in words):
+        return None
+    return "https://" + "".join(words[:-1]) + "." + words[-1]
 
 
 NUDGE_PIXELS = 40

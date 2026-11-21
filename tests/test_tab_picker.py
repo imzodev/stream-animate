@@ -145,3 +145,16 @@ def test_show_candidates_from_another_thread_marshals_to_the_gui_thread(
 
     assert picker.is_open
     assert picker._header.text() == "1 tab match “youtube”"
+
+
+def test_picker_shows_generic_items_with_their_noun(picker: TabPicker):
+    from saidcue.voice_commands.modes import ListItem
+
+    picker.show_candidates(
+        [ListItem("notes.txt - Notepad", "notepad"), ListItem("Daft Punk", "spotify")],
+        noun="window",
+    )
+    assert picker._header.text() == "2 windows"
+    assert picker._hint.text() == "Say the number, or click a window"
+    assert picker._rows[0]._title_label.text() == "notes.txt - Notepad"
+    assert picker._rows[1]._window_label.text() == "spotify"

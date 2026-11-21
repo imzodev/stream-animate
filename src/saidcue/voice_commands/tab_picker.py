@@ -89,14 +89,18 @@ def _elide(text: str, limit: int) -> str:
 
 
 def _candidate_title(candidate: Any) -> str:
-    """The tab's title, without the browser's trailing app name."""
+    """The row's title: a generic item's label, or a tab's title without
+    the browser's trailing app name."""
 
+    label = getattr(candidate, "label", None)
+    if label is not None:
+        return label or "(untitled)"
     name = getattr(candidate, "tab_name", "") or ""
     return clean_tab_name(name) or "(untitled tab)"
 
 
-def _header_text(count: int, query: str) -> str:
-    label = "tab" if count == 1 else "tabs"
+def _header_text(count: int, query: str, noun: str = "tab") -> str:
+    label = noun if count == 1 else f"{noun}s"
     if query:
         return f"{count} {label} match “{query}”"
     return f"{count} {label}"
@@ -156,7 +160,7 @@ class _Row(QFrame):
 class _PickerBridge(QObject):
     """Marshals calls from the voice thread onto the GUI thread."""
 
-    show_requested = Signal(object, str)
+    show_requested = Signal(object, str, str)
     dismiss_requested = Signal()
 
 
@@ -232,10 +236,17 @@ class TabPicker(QWidget):
 
     # -- public API (thread-safe) -------------------------------------------
 
-    def show_candidates(self, candidates: Sequence[Any], *, query: str = "") -> None:
-        """Show the list of candidates. Safe to call from the voice thread."""
+    def show_candidates(
+        self, candidates: Sequence[Any], *, query: str = "", noun: str = "tab"
+    ) -> None:
+        """Show the list of candidates. Safe to call from the voice thread.
 
-        self._bridge.show_requested.emit(list(candidates), query)
+        Candidates are tab candidates, or any objects with ``label`` (and
+        optionally ``detail``): apps, windows. ``noun`` names them in the
+        header ("3 apps match …").
+        """
+
+        self._bridge.show_requested.emit(list(candidates), query, noun)
 
     def dismiss(self) -> None:
         """Hide the list. Safe to call from the voice thread."""
@@ -255,7 +266,9 @@ class TabPicker(QWidget):
 
     # -- GUI-thread slots ----------------------------------------------------
 
-    def _on_show(self, candidates: Sequence[Any], query: str) -> None:
+    def _on_show(
+        self, candidates: Sequence[Any], query: str, noun: str = "tab"
+    ) -> None:
         self._timer.stop()
         self._clear_rows()
 
@@ -275,15 +288,19 @@ class TabPicker(QWidget):
                 index = getattr(candidate, "tab_index", 0) + 1
                 count = getattr(candidate, "tab_count", 0)
                 title = f"{title}  (tab {index}/{count})" if count else title
-            window_title = (
-                getattr(candidate, "window_title", "") if multi_window else ""
-            )
+            if getattr(candidate, "label", None) is not None:
+                window_title = getattr(candidate, "detail", "") or ""
+            else:
+                window_title = (
+                    getattr(candidate, "window_title", "") if multi_window else ""
+                )
             row = _Row(i, title, window_title, self._card)
             row.clicked.connect(self._on_row_clicked)
             self._rows_box.addWidget(row)
             self._rows.append(row)
 
-        self._header.setText(_header_text(len(shown), query))
+        self._header.setText(_header_text(len(shown), query, noun))
+        self._hint.setText(f"Say the number, or click a {noun}")
         self._card.adjustSize()
         self.adjustSize()
         self._reposition()

@@ -49,12 +49,20 @@ def build_service(
                 raise RuntimeError("STT typer is not available")
             return t.type_text(text, append_space=append_space)
 
+    apps = None
+    if windows is not None:  # Windows: read the Start-menu app list now
+        from .apps import StartApps
+
+        apps = StartApps()
+        apps.preload()
+
     runner = ActionRunner(
         windows=windows,
         tabs_factory=tabs_factory,
         typer=_LazyTyper(),
         engine_getter=engine_getter,
         assistant_getter=assistant_getter,
+        apps_factory=(lambda: apps) if apps is not None else None,
     )
 
     agent = None

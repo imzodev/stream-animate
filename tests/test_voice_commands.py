@@ -154,6 +154,23 @@ class FakeTabs:
         return self.select_candidate(candidates[0])
 
 
+class FakeApps:
+    """Same API as StartApps, with a fixed list."""
+
+    def __init__(self, apps):
+        from saidcue.voice_commands.apps import best_apps
+
+        self._best = best_apps
+        self.list = list(apps)
+        self.launched: List[str] = []
+
+    def find(self, query):
+        return self._best(self.list, query)
+
+    def launch(self, app):
+        self.launched.append(app.name)
+
+
 class FakePicker:
     """Same API as TabPicker, without Qt."""
 
@@ -161,8 +178,9 @@ class FakePicker:
         self.shown: List[tuple] = []
         self.dismiss_count = 0
 
-    def show_candidates(self, candidates, *, query=""):
+    def show_candidates(self, candidates, *, query="", noun="tab"):
         self.shown.append((list(candidates), query))
+        self.noun = noun
 
     def dismiss(self):
         self.dismiss_count += 1
@@ -239,6 +257,8 @@ def make_runner(windows=None, tabs=None, typer=None, engine=None, elements=None)
         engine_getter=lambda: engine,
         sleep=lambda _s: None,
         elements_factory=lambda: elements or FakeElements(),
+        # Never read the real Start menu from a test.
+        apps_factory=lambda: FakeApps([]),
     )
     return runner, kb, opened
 
@@ -1013,7 +1033,7 @@ def test_service_runs_wake_word_command():
 
 def test_service_custom_wake_word_and_disabled_command():
     svc, _kb, opened, feedback, _ = _service(
-        wake_word="Hey Assistant", disabled_commands=["open_youtube"]
+        wake_word="Hey Assistant", disabled_commands=["open_youtube", "launch_app"]
     )
     assert svc.handle("computer, open youtube", typing_active=False) is False
     assert svc.handle("Hey assistant, open YouTube.", typing_active=False) is True

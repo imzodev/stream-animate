@@ -256,6 +256,11 @@
                     "default": false,
                     "description": "Send unrecognised wake-word commands to the configured LLM"
                 },
+                "overlay_without_wake_word": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "While a picker, the number labels or the mouse grid is open, answer it without the wake word ('two', 'click 14')"
+                },
                 "disabled_commands": {
                     "type": "array",
                     "items": {"type": "string"},

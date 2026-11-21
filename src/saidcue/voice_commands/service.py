@@ -12,15 +12,17 @@ before "dictate in notes" focused Notepad). Audio keeps buffering meanwhile.
 from __future__ import annotations
 
 import logging
-import threading
 import time
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence
 
-from .actions import ActionRunner, tab_number
+from .actions import ActionRunner
 from .ai_agent import AIAgent, PlanRejected
 from .config import VoiceCommandsConfig
 from .dictation_edits import apply_edit, build_lookup, match_edit
-from .parser import CommandMatcher, fill_slots, normalize, split_wake_word
+from .modes import ListMode, Mode, ModeSlot, choice_index
+from .parser import CommandMatcher, fill_slots, split_wake_word
+
+__all__ = ["VoiceCommandService", "choice_index"]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -33,83 +35,6 @@ Feedback = Callable[[str, str], None]
 # splits "computer, youtube tab" into two utterances when there is a
 # pause after the wake word.
 WAKE_MERGE_SECONDS = 3.0
-
-# Words that can sit in front of a spoken choice: "pick two", "the
-# second one", "tab 2", "el dos".
-_CHOICE_PREFIXES = frozenset(
-    {
-        "tab", "tabs", "pick", "picks", "number", "option", "choose",
-        "select", "go", "the", "a", "el", "la", "los", "las", "por",
-        "con", "usa", "use", "elige", "escoge",
-    }
-)  # fmt: skip
-# …and after it: "the second one", "pick three please".
-_CHOICE_SUFFIXES = frozenset({"one", "uno", "una", "please", "por", "favor"})
-
-
-def choice_index(text: str, app: str = "") -> Optional[int]:
-    """The 1-based option the user picked, or ``None``.
-
-    Understands "two", "2", "second", "the second one", "pick three",
-    "tab 2" and the Spanish equivalents ("el dos", "la segunda").
-    ``app`` is the app the pending candidates belong to, so "terminal
-    two" counts as a choice when the terminal picker is the open one.
-    """
-
-    words = normalize(text).split()
-    if app == "terminal" and words and words[0] == "terminal":
-        words.pop(0)
-    elif app == "browser" and words and words[0] == "browser":
-        words.pop(0)
-    while words and words[0] in _CHOICE_PREFIXES:
-        words.pop(0)
-    while len(words) > 1 and words[-1] in _CHOICE_SUFFIXES:
-        words.pop()
-    if not words:
-        return None
-    number = tab_number(" ".join(words))
-    if number is None:
-        return None
-    return number
-
-
-class _PendingTabs:
-    """Thread-safe holder for the candidates of an open tab picker.
-
-    The list is written by the voice thread (when a command turns out
-    to be ambiguous) and read from both the voice thread (a spoken
-    choice) and the GUI thread (a click on the picker).
-    """
-
-    def __init__(self) -> None:
-        self._lock = threading.Lock()
-        self._candidates: List[Any] = []
-
-    def set(self, candidates: Sequence[Any]) -> None:
-        with self._lock:
-            self._candidates = list(candidates)
-
-    def peek(self) -> List[Any]:
-        with self._lock:
-            return list(self._candidates)
-
-    def take(self) -> Optional[List[Any]]:
-        """Return the candidates and clear them, or ``None`` if already gone.
-
-        Atomic: the spoken choice and the mouse click race for the same
-        list, and only one of them may win.
-        """
-
-        with self._lock:
-            if not self._candidates:
-                return None
-            candidates = self._candidates
-            self._candidates = []
-            return candidates
-
-    def clear(self) -> None:
-        with self._lock:
-            self._candidates = []
 
 
 class VoiceCommandService:
@@ -131,9 +56,10 @@ class VoiceCommandService:
         self._matcher = CommandMatcher(config.commands)
         self._edits = build_lookup()
         self._picker = picker
-        self._pending = _PendingTabs()
+        self._modes = ModeSlot()
         self._merge_at = 0.0
         self._runner.set_ambiguous_handler(self._on_ambiguous)
+        self._runner.set_choice_handler(self._on_choice)
 
     @property
     def config(self) -> VoiceCommandsConfig:
@@ -163,6 +89,12 @@ class VoiceCommandService:
                 return True
 
         rest = split_wake_word(text, [self._config.wake_word])
+        if rest is None and self._config.overlay_without_wake_word:
+            # While a picker / labels / the grid is open, its answers
+            # ("two", "click 14") need no wake word. Anything else is
+            # ordinary speech and is typed as usual.
+            if self._answer_mode(text):
+                return True
         if rest is None:
             # No wake word here. If the wake word was spoken a moment
             # ago on its own ("computer" … "youtube tab"), join them.
@@ -182,19 +114,14 @@ class VoiceCommandService:
     def _run_command(self, rest: str) -> bool:
         """Match and run a command phrase. Returns ``True`` if consumed."""
 
-        # A pending tab choice wins over the command table: while the
-        # picker is open, "computer, two" means "the second candidate",
-        # not "the second tab of the focused window".
-        pending = self._pending.peek()
-        if pending:
-            app = getattr(pending[0], "app", "")
-            index = choice_index(rest, app)
-            if index is not None:
-                self._resolve_choice(index)
-                return True
-            # Not a choice — the user wants something else. Drop the
-            # picker and carry on with the normal command table.
-            self._dismiss_pending()
+        # An open mode wins over the command table: while the picker is
+        # open, "computer, two" means "the second candidate", not "the
+        # second tab of the focused window".
+        if self._answer_mode(rest):
+            return True
+        # Not an answer — the user wants something else. Close whatever
+        # is open and carry on with the normal command table.
+        self.close_mode()
 
         matched = self._matcher.match(rest)
         if matched is not None:
@@ -202,6 +129,11 @@ class VoiceCommandService:
             actions = [fill_slots(a, slots) for a in command.actions]
             _LOGGER.info("Voice command %r → %s", rest, actions)
             result = self._runner.run(actions)
+            if result.unmatched and self._agent is not None:
+                # e.g. "open the weather" with no app by that name: the
+                # AI may still know what to do.
+                self._run_ai(rest)
+                return True
             self._feedback(result.message, OK if result.ok else ERROR)
             return True
 
@@ -219,11 +151,9 @@ class VoiceCommandService:
         belongs to that command or is just ordinary speech.
         """
 
-        pending = self._pending.peek()
-        if pending:
-            app = getattr(pending[0], "app", "")
-            if choice_index(rest, app) is not None:
-                return True
+        mode = self._modes.get()
+        if mode is not None and mode.parse(rest) is not None:
+            return True
         return self._matcher.match(rest) is not None
 
     # -- wake word merge -----------------------------------------------------
@@ -252,55 +182,96 @@ class VoiceCommandService:
         self._clear_merge()
         return text
 
-    # -- tab picking ---------------------------------------------------------
+    # -- modes: pickers, labels, grid ------------------------------------------
+
+    @property
+    def mode(self) -> Optional[Mode]:
+        """The open mode, if any (for tests and the UI)."""
+
+        return self._modes.get()
+
+    def open_mode(self, mode: Mode) -> None:
+        """Close whatever is open and show ``mode``."""
+
+        old = self._modes.replace(mode)
+        if old is not None and old is not mode:
+            old.close()
+        mode.open()
+
+    def close_mode(self) -> None:
+        mode = self._modes.replace(None)
+        if mode is not None:
+            mode.close()
+
+    def _answer_mode(self, text: str) -> bool:
+        """Offer ``text`` to the open mode. ``True`` if it was an answer."""
+
+        mode = self._modes.get()
+        if mode is None:
+            return False
+        parsed = mode.parse(text)
+        if parsed is None:
+            return False
+        result = mode.apply(parsed)
+        if mode.finished:
+            self._modes.clear_if(mode)
+        if result is not None:
+            self._feedback(result.message, OK if result.ok else ERROR)
+        return True
 
     def resolve_choice(self, index: int) -> None:
         """Pick a candidate by mouse. Safe to call from the GUI thread."""
 
-        self._resolve_choice(index)
+        mode = self._modes.get()
+        if mode is None:
+            return
+        result = mode.pick(index)
+        if mode.finished:
+            self._modes.clear_if(mode)
+        if result is not None:
+            self._feedback(result.message, OK if result.ok else ERROR)
 
     def clear_pending(self) -> None:
-        """Forget the pending candidates (the picker closed on its own)."""
+        """The picker closed on its own (timeout): forget its candidates."""
 
-        self._pending.clear()
+        mode = self._modes.get()
+        if isinstance(mode, ListMode):
+            mode.finished = True
+            self._modes.clear_if(mode)
 
     def _on_ambiguous(self, candidates: Sequence[Any], query: str) -> None:
         """Several tabs matched: open the picker instead of guessing."""
 
-        self._pending.set(candidates)
         app = getattr(candidates[0], "app", "") if candidates else ""
         _LOGGER.info(
-            "%d %s tabs match %r — showing the picker",
-            len(candidates),
-            app,
-            query,
+            "%d %s tabs match %r — showing the picker", len(candidates), app, query
         )
-        if self._picker is not None:
-            self._picker.show_candidates(candidates, query=query)
+        self.open_mode(
+            ListMode(
+                candidates,
+                self._runner.select_tab_candidate,
+                self._picker,
+                noun="tab",
+                query=query,
+                app=app,
+            )
+        )
 
-    def _resolve_choice(self, index: int) -> None:
-        candidates = self._pending.peek()
-        if not candidates:
-            return
-        if not 1 <= index <= len(candidates):
-            self._feedback(f"There are only {len(candidates)} tabs", ERROR)
-            return
-        # Take the list atomically: the spoken choice and the mouse click
-        # race for it, and only one of them may win.
-        candidates = self._pending.take()
-        if candidates is None:
-            return
-        self._dismiss_picker()
-        result = self._runner.select_tab_candidate(candidates[index - 1])
-        self._feedback(result.message, OK if result.ok else ERROR)
+    def _on_choice(
+        self,
+        candidates: Sequence[Any],
+        query: str,
+        noun: str,
+        resolve: Callable[[Any], Any],
+    ) -> None:
+        """Several apps / windows matched: let the user pick one."""
 
-    def _dismiss_pending(self) -> None:
-        self._pending.clear()
-        self._dismiss_picker()
-
-    def _dismiss_picker(self) -> None:
-        if self._picker is not None:
-            self._picker.dismiss()
+        _LOGGER.info(
+            "%d %ss match %r — showing the picker", len(candidates), noun, query
+        )
+        self.open_mode(
+            ListMode(candidates, resolve, self._picker, noun=noun, query=query)
+        )
 
     def _run_ai(self, request: str) -> None:
         self._feedback("Thinking…", BUSY)
