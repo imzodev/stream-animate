@@ -54,6 +54,7 @@ class Application:
         answer_panel: Optional[AnswerPanel] = None,
         listening_indicator=None,
         tab_picker=None,
+        screen_overlay=None,
         voice_commands_config=None,
         voice_command_service=None,
         logger: Optional[logging.Logger] = None,
@@ -65,6 +66,8 @@ class Application:
         # Floating list of matching tabs, shown when a voice command
         # matches more than one tab. Same deal: optional, injected.
         self._tab_picker = tab_picker
+        # Click-through number labels / mouse grid (a ScreenOverlay).
+        self._screen_overlay = screen_overlay
         self._sound_player = sound_player or SoundPlayer()
         self._overlay_window = overlay_window or OverlayWindow()
         self._hotkey_manager = hotkey_manager or HotkeyManager()
@@ -168,6 +171,8 @@ class Application:
         if self._voice_service is not None:
             self._voice_service.set_feedback(self._signals.voice_feedback.emit)
             self._attach_tab_picker()
+            if self._screen_overlay is not None:
+                self._voice_service.set_screen_overlay(self._screen_overlay)
             if self._stt_engine is not None:
                 self._stt_engine.set_command_handler(self._voice_service.handle)
             self._logger.info(
@@ -819,10 +824,13 @@ def run_application(
     # The tab picker only exists when voice commands are on: it is the
     # list shown when a command matches more than one tab.
     tab_picker = None
+    screen_overlay = None
     if voice_commands_config is not None and voice_commands_config.enabled:
+        from .voice_commands.screen_overlay import ScreenOverlay
         from .voice_commands.tab_picker import TabPicker
 
         tab_picker = TabPicker()
+        screen_overlay = ScreenOverlay()
 
     application = Application(
         shortcuts,
@@ -831,6 +839,7 @@ def run_application(
         answer_panel=answer_panel,
         listening_indicator=listening_indicator,
         tab_picker=tab_picker,
+        screen_overlay=screen_overlay,
         voice_commands_config=voice_commands_config,
     )
     application.start()
@@ -897,6 +906,8 @@ def run_application(
             listening_indicator.close()
         if tab_picker is not None:
             tab_picker.close()
+        if screen_overlay is not None:
+            screen_overlay.close()
         tray.hide()
 
 

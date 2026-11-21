@@ -102,12 +102,18 @@ class ActionRunner:
         self._sleep = sleep
         self._on_ambiguous = on_ambiguous or (lambda _candidates, _query: None)
         self._on_choice: Callable[..., None] = lambda *_a: None
+        self._on_labels: Optional[Callable[..., None]] = None
 
     def set_choice_handler(self, handler: Callable[..., None]) -> None:
         """Called with ``(candidates, query, noun, resolve)`` when a name
         matches several apps or windows and the user has to pick one."""
 
         self._on_choice = handler or (lambda *_a: None)
+
+    def set_labels_handler(self, handler: Optional[Callable[..., None]]) -> None:
+        """Called with ``(hwnd, targets, sticky)`` to show number labels."""
+
+        self._on_labels = handler
 
     def set_ambiguous_handler(self, handler: Callable[[List[Any], str], None]) -> None:
         """Called with the candidates when a query matches several tabs."""
@@ -214,6 +220,37 @@ class ActionRunner:
 
     def mouse_position(self):
         return self._get_mouse().position()
+
+    def _do_labels(self, a) -> ActionResult:
+        if self._on_labels is None:
+            return ActionResult(False, "Number labels aren't available")
+        hwnd, targets = self.label_targets()
+        if hwnd is None:
+            return ActionResult(False, "No window is in front")
+        if not targets:
+            return ActionResult(False, "Nothing to click in this window")
+        self._on_labels(hwnd, targets, True)
+        return ActionResult(True, f"{len(targets)} labels: say a number")
+
+    def label_targets(self):
+        """``(hwnd, targets)`` for the window in front (``(None, [])`` if none)."""
+
+        fg = self._require_windows().foreground()
+        if fg is None:
+            return None, []
+        return fg.hwnd, self._get_elements().list_targets(fg.hwnd)
+
+    def activate_target(
+        self, hwnd: int, target: Any, button: str = "left"
+    ) -> ActionResult:
+        """Click one labelled target (or focus it, for a text box)."""
+
+        how = self._get_elements().activate_target(hwnd, target, button)
+        _LOGGER.info("Label click: %r (%s) via %s", target.name, target.kind, how)
+        name = f"“{target.name[:40]}”" if target.name else "it"
+        if target.kind == "input" and button == "left":
+            return ActionResult(True, f"Focused {name}")
+        return ActionResult(True, f"{_CLICK_LABELS[button]} {name}")
 
     def _do_launch_app(self, a) -> ActionResult:
         name = a["name"]
@@ -413,11 +450,22 @@ class ActionRunner:
         queries = a.get("any") or [a["target"]]
         button = a.get("button", "left")
         hit = self._get_elements().click(
-            fg.hwnd, queries, a.get("exact", False), button=button
+            fg.hwnd,
+            queries,
+            a.get("exact", False),
+            button=button,
+            # Same-named buttons ("Reply" under every comment) get labels
+            # to pick from, unless this is a fixed-label command (skip ad).
+            allow_ties=self._on_labels is not None and "any" not in a,
         )
         if hit is None:
             return ActionResult(
                 False, a.get("missing") or f"Nothing called “{queries[0]}” here"
+            )
+        if hit.ties:
+            self._on_labels(fg.hwnd, list(hit.ties), False)
+            return ActionResult(
+                True, f"{len(hit.ties)} × “{hit.name[:30]}”: say a number"
             )
         verb = (
             "Focused"

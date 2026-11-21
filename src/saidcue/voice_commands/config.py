@@ -43,6 +43,7 @@ ACTION_TYPES = (
     "launch_app",
     "close_app",
     "list_windows",
+    "labels",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -177,6 +178,8 @@ def validate_action(action: Any) -> Dict[str, Any]:
         out["name"] = _require_str(action, "name")
     elif kind == "list_windows":
         pass  # pick from every open window
+    elif kind == "labels":
+        pass  # number every clickable in the window in front
     elif kind == "window":
         op = _require_str(action, "op")
         if op not in WINDOW_OPS:

@@ -231,3 +231,141 @@ class ModeSlot:
         with self._lock:
             if self._mode is mode:
                 self._mode = None
+
+
+# Words before a label number: "click 12", "press 12", "number 12".
+_LABEL_VERBS = {
+    ("right", "click"): "right",
+    ("double", "click"): "double",
+    ("middle", "click"): "middle",
+    ("click",): "left",
+    ("press",): "left",
+    ("tap",): "left",
+    ("pick",): "left",
+    ("choose",): "left",
+    ("select",): "left",
+    ("focus",): "left",
+    ("go", "to"): "left",
+    ("number",): "left",
+    ("label",): "left",
+}
+_REFRESH_PHRASES = frozenset(
+    {"refresh", "refresh numbers", "show numbers", "numbers", "update numbers", "again"}
+)
+
+
+def parse_label_choice(text: str, count: int):
+    """``"click 12"`` → ``("left", 12)``; ``"right click 3"`` → ``("right", 3)``."""
+
+    from .spoken_keys import parse_number
+
+    words = normalize(text).split()
+    button = "left"
+    for verb, b in sorted(_LABEL_VERBS.items(), key=lambda kv: -len(kv[0])):
+        if tuple(words[: len(verb)]) == verb:
+            button, words = b, words[len(verb) :]
+            break
+    while words and words[0] in ("number", "on", "the"):
+        words = words[1:]
+    n = parse_number(" ".join(words), limit=max(count, 1))
+    return (button, n) if n is not None else None
+
+
+class LabelsMode(Mode):
+    """Numbers drawn on every clickable in the window: say one to click it.
+
+    ``sticky`` labels stay up after a click and are redrawn for whatever
+    the window shows next, until "cancel" or :data:`TIMEOUT_SECONDS` of
+    silence. Non-sticky labels (a choice between same-named buttons)
+    close after one pick.
+    """
+
+    kind = "labels"
+    TIMEOUT_SECONDS = 30.0
+    REFRESH_DELAY = 0.4
+
+    def __init__(
+        self,
+        runner: Any,
+        overlay: Any,
+        hwnd: int,
+        targets: Sequence[Any],
+        *,
+        sticky: bool = True,
+        clock: Optional[Callable[[], float]] = None,
+        sleep: Optional[Callable[[float], None]] = None,
+    ) -> None:
+        import time
+
+        super().__init__()
+        self._runner = runner
+        self._overlay = overlay
+        self.hwnd = hwnd
+        self.targets: List[Any] = list(targets)
+        self.sticky = sticky
+        self._clock = clock or time.monotonic
+        self._sleep = sleep or time.sleep
+        self._deadline = self._clock() + self.TIMEOUT_SECONDS
+
+    def open(self) -> None:
+        self._draw()
+
+    def close(self) -> None:
+        if self._overlay is not None:
+            self._overlay.hide()
+
+    def _draw(self) -> None:
+        if self._overlay is not None:
+            self._overlay.show_labels(
+                [(str(i), t.rect) for i, t in enumerate(self.targets, start=1)]
+            )
+
+    def parse(self, text: str):
+        if self._clock() > self._deadline:
+            self.finished = True
+            self.close()
+            return None
+        norm = normalize(text)
+        if is_cancel(norm):
+            return "cancel"
+        if self.sticky and norm in _REFRESH_PHRASES:
+            return "refresh"
+        return parse_label_choice(norm, len(self.targets))
+
+    def apply(self, parsed):
+        from .actions import ActionResult
+
+        if parsed == "cancel":
+            self.finished = True
+            self.close()
+            return ActionResult(True, "Labels hidden")
+        if parsed == "refresh":
+            return self.refresh()
+        button, n = parsed
+        if not 1 <= n <= len(self.targets):
+            return ActionResult(False, f"There are only {len(self.targets)} labels")
+        target = self.targets[n - 1]
+        result = self._runner.activate_target(self.hwnd, target, button)
+        # Typing comes next after focusing a text box: get out of the way.
+        if not self.sticky or (target.kind == "input" and button == "left"):
+            self.finished = True
+            self.close()
+            return result
+        self._sleep(self.REFRESH_DELAY)  # let the click take effect
+        self.refresh()
+        return result
+
+    def refresh(self):
+        """Re-scan whatever window is in front now and redraw the labels."""
+
+        from .actions import ActionResult
+
+        self._deadline = self._clock() + self.TIMEOUT_SECONDS
+        hwnd, targets = self._runner.label_targets()
+        if not targets:
+            self.finished = True
+            self.close()
+            return ActionResult(False, "Nothing to label here")
+        self.hwnd, self.targets = hwnd, list(targets)
+        self._draw()
+        return ActionResult(True, f"{len(self.targets)} labels")

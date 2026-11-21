@@ -19,7 +19,7 @@ from .actions import ActionRunner
 from .ai_agent import AIAgent, PlanRejected
 from .config import VoiceCommandsConfig
 from .dictation_edits import apply_edit, build_lookup, match_edit
-from .modes import ListMode, Mode, ModeSlot, choice_index
+from .modes import LabelsMode, ListMode, Mode, ModeSlot, choice_index
 from .parser import CommandMatcher, fill_slots, split_wake_word
 
 __all__ = ["VoiceCommandService", "choice_index"]
@@ -60,6 +60,8 @@ class VoiceCommandService:
         self._merge_at = 0.0
         self._runner.set_ambiguous_handler(self._on_ambiguous)
         self._runner.set_choice_handler(self._on_choice)
+        self._runner.set_labels_handler(self._on_labels)
+        self._overlay: Any = None
 
     @property
     def config(self) -> VoiceCommandsConfig:
@@ -67,6 +69,11 @@ class VoiceCommandService:
 
     def set_feedback(self, on_feedback: Optional[Feedback]) -> None:
         self._on_feedback = on_feedback or (lambda _t, _k: None)
+
+    def set_screen_overlay(self, overlay: Any) -> None:
+        """Attach the click-through overlay that draws labels and the grid."""
+
+        self._overlay = overlay
 
     def set_picker(self, picker: Any) -> None:
         """Attach the tab picker (any object with the picker's API)."""
@@ -255,6 +262,12 @@ class VoiceCommandService:
                 query=query,
                 app=app,
             )
+        )
+
+    def _on_labels(self, hwnd: int, targets: Sequence[Any], sticky: bool) -> None:
+        _LOGGER.info("Showing %d number labels", len(targets))
+        self.open_mode(
+            LabelsMode(self._runner, self._overlay, hwnd, targets, sticky=sticky)
         )
 
     def _on_choice(

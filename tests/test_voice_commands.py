@@ -224,7 +224,7 @@ class FakeElements:
         self.scrolled: List[tuple] = []
         self.wheeled: List[tuple] = []
 
-    def click(self, hwnd, queries, exact=False, button="left"):
+    def click(self, hwnd, queries, exact=False, button="left", allow_ties=False):
         idx = best_element(self.candidates, queries, exact)
         if idx is None:
             return None

@@ -169,3 +169,56 @@ def parse_key_press(text: str) -> Optional[Tuple[str, int]]:
     if combo is None:
         return None
     return combo, count
+
+
+_UNITS = {
+    "zero": 0, "one": 1, "two": 2, "to": 2, "too": 2, "three": 3, "four": 4,
+    "for": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "ate": 8, "nine": 9,
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "uno": 1, "una": 1, "dos": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6,
+    "siete": 7, "ocho": 8, "nueve": 9, "diez": 10, "once": 11, "doce": 12,
+    "trece": 13, "catorce": 14, "quince": 15, "dieciseis": 16, "diecisiete": 17,
+    "dieciocho": 18, "diecinueve": 19, "veinte": 20,
+}  # fmt: skip
+_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90,
+    "treinta": 30, "cuarenta": 40, "cincuenta": 50, "sesenta": 60,
+    "setenta": 70, "ochenta": 80, "noventa": 90,
+}  # fmt: skip
+
+
+def parse_number(text: str, limit: int = 999) -> Optional[int]:
+    """A spoken whole number 1..``limit``: "14", "fourteen", "forty two",
+    "one hundred five", "treinta y dos". ``None`` otherwise."""
+
+    words = [
+        w for w in normalize(text.replace("-", " ")).split() if w not in ("and", "y")
+    ]
+    if not words:
+        return None
+    if len(words) == 1 and words[0].isdigit():
+        n = int(words[0])
+        return n if 1 <= n <= limit else None
+    total = 0
+    current = 0
+    for word in words:
+        if word in _UNITS:
+            if current % 10 or (current and current < 20):
+                return None  # "five six" is not a number
+            current += _UNITS[word]
+        elif word in _TENS:
+            if current % 100:
+                return None
+            current += _TENS[word]
+        elif word in ("hundred", "cien", "ciento"):
+            current = (current or 1) * 100
+            total += current
+            current = 0
+        elif word.isdigit() and current == 0 and total == 0 and len(words) == 1:
+            current = int(word)
+        else:
+            return None
+    n = total + current
+    return n if 1 <= n <= limit else None

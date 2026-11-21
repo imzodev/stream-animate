@@ -50,9 +50,38 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class Target:
+    """An element on screen that the number labels can point at.
+
+    ``rect`` is ``(left, top, width, height)`` in physical pixels.
+    ``runtime_id`` finds the same element again in a later scan (COM
+    elements are not kept across scans).
+    """
+
+    name: str
+    kind: str  # "button" or "input"
+    rect: Tuple[int, int, int, int]
+    runtime_id: Tuple[int, ...] = ()
+    in_page: bool = False
+
+    @property
+    def center(self) -> Tuple[int, int]:
+        left, top, w, h = self.rect
+        return left + w // 2, top + h // 2
+
+
+@dataclass(frozen=True)
 class ElementHit:
     name: str
     kind: str  # "button" or "input"
+    # Several on-screen elements matched equally well ("click reply" with
+    # a Reply button under every comment): nothing was clicked, and these
+    # are the ones to choose from.
+    ties: Tuple[Target, ...] = ()
+
+
+# Labels further than this outside the window are dropped (stale rects).
+MAX_TARGETS = 300
 
 
 def best_element(
@@ -69,6 +98,29 @@ def best_element(
     page over browser UI, then document order.
     """
 
+    scored = _score(candidates, queries, exact)
+    return min(scored)[3] if scored else None
+
+
+def tied_elements(
+    candidates: Sequence[Candidate], queries: Sequence[str], exact: bool = False
+) -> List[int]:
+    """Indexes of every candidate tied with the best match, in document order.
+
+    A tie means the same match rank, on screen, and the same place (page
+    or browser UI) — e.g. the "Reply" button under every comment.
+    """
+
+    scored = _score(candidates, queries, exact)
+    if not scored:
+        return []
+    best = min(scored)[:3]
+    return [i for *key, i in sorted(scored, key=lambda e: e[3]) if tuple(key) == best]
+
+
+def _score(
+    candidates: Sequence[Candidate], queries: Sequence[str], exact: bool
+) -> List[Tuple[int, bool, bool, int]]:
     qs = [q for q in (normalize(q) for q in queries) if q]
     scored: List[Tuple[int, bool, bool, int]] = []
     for i, c in enumerate(candidates):
@@ -92,7 +144,7 @@ def best_element(
             rank = r if rank is None else min(rank, r)
         if rank is not None:
             scored.append((rank, c.offscreen, not c.in_page, i))
-    return min(scored)[3] if scored else None
+    return scored
 
 
 class UiaElements:
@@ -111,16 +163,33 @@ class UiaElements:
         queries: Sequence[str],
         exact: bool = False,
         button: str = "left",
+        allow_ties: bool = False,
     ) -> Optional[ElementHit]:
         """Press the best-matching button/link (or focus the input) in ``hwnd``.
 
         ``button`` "right", "middle" or "double" does a real mouse click on
         the element's centre: UI Automation has no pattern for those.
+
+        With ``allow_ties``, several equally good on-screen matches are not
+        clicked: the hit carries them in ``ties`` so the user can pick.
         """
 
         with self._auto.UIAutomationInitializerInThread():
             found = self._scan(hwnd)
-            idx = best_element([c for c, _ in found], queries, exact)
+            cands = [c for c, _ in found]
+            if allow_ties:
+                tied = tied_elements(cands, queries, exact)
+                if len(tied) > 1 and not cands[tied[0]].offscreen:
+                    targets = tuple(
+                        t
+                        for t in (self._target(cands[i], found[i][1]) for i in tied)
+                        if t is not None
+                    )
+                    if len(targets) > 1:
+                        return ElementHit(
+                            cands[tied[0]].name, cands[tied[0]].kind, targets
+                        )
+            idx = best_element(cands, queries, exact)
             if idx is None:
                 _LOGGER.info(
                     "No element matches %s (%d candidates, e.g. %s)",
@@ -150,8 +219,95 @@ class UiaElements:
             cond = c if cond is None else uia.CreateOrCondition(cond, c)
         return cond
 
-    def _scan(self, hwnd: int) -> List[Tuple[Candidate, object]]:
-        """Named, enabled clickables and inputs in document order.
+    # -- number labels ----------------------------------------------------------
+
+    def list_targets(self, hwnd: int) -> List[Target]:
+        """Every visible clickable and input in ``hwnd`` (and any open popup
+        menu), named or not, for the number labels. Document order."""
+
+        with self._auto.UIAutomationInitializerInThread():
+            found = self._scan(hwnd, named_only=False)
+            out: List[Target] = []
+            seen = set()
+            for cand, element in found:
+                if cand.offscreen:
+                    continue
+                target = self._target(cand, element)
+                if target is None or target.rect in seen:
+                    continue
+                seen.add(target.rect)  # nested wrappers share one rectangle
+                out.append(target)
+                if len(out) >= MAX_TARGETS:
+                    break
+            return out
+
+    def activate_target(self, hwnd: int, target: Target, button: str = "left") -> str:
+        """Click (or focus) a target from :meth:`list_targets`.
+
+        The element is found again by its runtime id, so a page that
+        changed since the labels were drawn doesn't get a stale object.
+        If it is gone, the click lands on the centre of where it was.
+        """
+
+        auto = self._auto
+        with auto.UIAutomationInitializerInThread():
+            for cand, element in self._scan(hwnd, named_only=False):
+                if target.runtime_id and self._runtime_id(element) == target.runtime_id:
+                    control = auto.Control.CreateControlFromElement(element)
+                    return self._activate(control, cand.kind, button)
+            x, y = target.center
+            click = {
+                "left": auto.Click,
+                "right": auto.RightClick,
+                "middle": auto.MiddleClick,
+            }.get(button)
+            if click is None:  # double
+                auto.Click(x, y, waitTime=0.02)
+                auto.Click(x, y, waitTime=0.05)
+            else:
+                click(x, y, waitTime=0.05)
+            return "mouse click at its last position"
+
+    def _runtime_id(self, element) -> Tuple[int, ...]:
+        try:
+            return tuple(element.GetRuntimeId())
+        except Exception:  # noqa: BLE001 - element went away
+            return ()
+
+    def _target(self, cand: Candidate, element) -> Optional[Target]:
+        try:
+            r = element.CachedBoundingRectangle
+            rect = (
+                int(r.left),
+                int(r.top),
+                int(r.right - r.left),
+                int(r.bottom - r.top),
+            )
+        except Exception:  # noqa: BLE001 - no cached rectangle
+            return None
+        if rect[2] <= 1 or rect[3] <= 1:
+            return None
+        return Target(
+            cand.name, cand.kind, rect, self._runtime_id(element), cand.in_page
+        )
+
+    def _popup_roots(self, uia):
+        """Open popup menus (context menus live in their own top-level window)."""
+
+        auto = self._auto
+        desktop = uia.GetRootElement()
+        cond = uia.CreateOrCondition(
+            self._type_condition(uia, {"MenuControl"}),
+            uia.CreatePropertyCondition(auto.PropertyId.ClassNameProperty, "#32768"),
+        )
+        found = desktop.FindAll(2, cond)  # TreeScope_Children
+        return [found.GetElement(i) for i in range(found.Length if found else 0)]
+
+    def _scan(
+        self, hwnd: int, named_only: bool = True
+    ) -> List[Tuple[Candidate, object]]:
+        """Enabled clickables and inputs in document order (named ones
+        only, unless ``named_only`` is off), plus any open popup menu.
 
         One batched ``FindAll`` with cached properties: ~0.1 s for a YouTube
         page, versus seconds when walking the tree one call per element.
@@ -170,6 +326,7 @@ class UiaElements:
             auto.PropertyId.ControlTypeProperty,
             auto.PropertyId.IsEnabledProperty,
             auto.PropertyId.IsOffscreenProperty,
+            auto.PropertyId.BoundingRectangleProperty,
         ):
             cache.AddProperty(prop)
 
@@ -184,15 +341,27 @@ class UiaElements:
                 in_page.add(tuple(sub.GetElement(j).GetRuntimeId()))
 
         out: List[Tuple[Candidate, object]] = []
-        found = root.FindAllBuildCache(_TREE_DESCENDANTS, cond, cache)
-        for i in range(found.Length if found else 0):
-            el = found.GetElement(i)
-            name = (el.CachedName or "").strip()
-            if not name or not el.CachedIsEnabled:
-                continue
-            kind = "input" if ids.get(el.CachedControlType) in INPUT_TYPES else "button"
-            page = bool(in_page) and tuple(el.GetRuntimeId()) in in_page
-            out.append((Candidate(name, kind, page, bool(el.CachedIsOffscreen)), el))
+        roots = [root]
+        try:
+            roots += self._popup_roots(uia)
+        except Exception:  # noqa: BLE001 - popups are a bonus
+            _LOGGER.debug("Could not list popup menus", exc_info=True)
+        for scan_root in roots:
+            found = scan_root.FindAllBuildCache(_TREE_DESCENDANTS, cond, cache)
+            for i in range(found.Length if found else 0):
+                el = found.GetElement(i)
+                name = (el.CachedName or "").strip()
+                if (named_only and not name) or not el.CachedIsEnabled:
+                    continue
+                kind = (
+                    "input"
+                    if ids.get(el.CachedControlType) in INPUT_TYPES
+                    else "button"
+                )
+                page = bool(in_page) and self._runtime_id(el) in in_page
+                out.append(
+                    (Candidate(name, kind, page, bool(el.CachedIsOffscreen)), el)
+                )
         return out
 
     def _activate(self, control, kind: str, button: str = "left") -> str:
