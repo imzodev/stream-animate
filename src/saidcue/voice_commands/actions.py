@@ -103,6 +103,7 @@ class ActionRunner:
         self._on_ambiguous = on_ambiguous or (lambda _candidates, _query: None)
         self._on_choice: Callable[..., None] = lambda *_a: None
         self._on_labels: Optional[Callable[..., None]] = None
+        self._on_grid: Optional[Callable[..., None]] = None
 
     def set_choice_handler(self, handler: Callable[..., None]) -> None:
         """Called with ``(candidates, query, noun, resolve)`` when a name
@@ -114,6 +115,11 @@ class ActionRunner:
         """Called with ``(hwnd, targets, sticky)`` to show number labels."""
 
         self._on_labels = handler
+
+    def set_grid_handler(self, handler: Optional[Callable[..., None]]) -> None:
+        """Called with a physical ``(left, top, width, height)`` to show the grid."""
+
+        self._on_grid = handler
 
     def set_ambiguous_handler(self, handler: Callable[[List[Any], str], None]) -> None:
         """Called with the candidates when a query matches several tabs."""
@@ -218,8 +224,29 @@ class ActionRunner:
     def move_mouse(self, x: int, y: int) -> None:
         self._get_mouse().move(x, y)
 
+    def drag_mouse(self, start, end) -> None:
+        self._get_mouse().drag(tuple(start), tuple(end))
+
     def mouse_position(self):
         return self._get_mouse().position()
+
+    def _do_grid(self, a) -> ActionResult:
+        if self._on_grid is None:
+            return ActionResult(False, "The mouse grid isn't available")
+        windows = self._require_windows()
+        fg = windows.foreground()
+        rect = None
+        if fg is not None:
+            if a.get("scope") == "window":
+                r = windows.rect(fg.hwnd)
+                rect = (r[0], r[1], r[2] - r[0], r[3] - r[1]) if r else None
+            else:
+                rect = windows.monitor_rect(fg.hwnd)
+        if rect is None:
+            x, y = self._get_mouse().position()
+            rect = (x - 400, y - 300, 800, 600)
+        self._on_grid(rect)
+        return ActionResult(True, "Say a number to zoom in, then “click”")
 
     def _do_labels(self, a) -> ActionResult:
         if self._on_labels is None:

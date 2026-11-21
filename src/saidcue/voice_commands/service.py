@@ -61,6 +61,7 @@ class VoiceCommandService:
         self._runner.set_ambiguous_handler(self._on_ambiguous)
         self._runner.set_choice_handler(self._on_choice)
         self._runner.set_labels_handler(self._on_labels)
+        self._runner.set_grid_handler(self._on_grid)
         self._overlay: Any = None
 
     @property
@@ -269,6 +270,11 @@ class VoiceCommandService:
         self.open_mode(
             LabelsMode(self._runner, self._overlay, hwnd, targets, sticky=sticky)
         )
+
+    def _on_grid(self, rect) -> None:
+        from .mouse_grid import GridMode
+
+        self.open_mode(GridMode(self._runner, self._overlay, rect))
 
     def _on_choice(
         self,

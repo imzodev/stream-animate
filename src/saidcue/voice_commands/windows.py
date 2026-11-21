@@ -129,6 +129,27 @@ class Win32Windows:
 
         return bool(self._user32.PostMessageW(hwnd, 0x0010, 0, 0))
 
+    def monitor_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+        """``(left, top, width, height)`` of the monitor showing ``hwnd``."""
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", self._wt.DWORD),
+                ("rcMonitor", self._wt.RECT),
+                ("rcWork", self._wt.RECT),
+                ("dwFlags", self._wt.DWORD),
+            ]
+
+        u = self._user32
+        u.MonitorFromWindow.restype = self._wt.HMONITOR
+        hmon = u.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if not hmon or not u.GetMonitorInfoW(hmon, ctypes.byref(info)):
+            return None
+        r = info.rcMonitor
+        return r.left, r.top, r.right - r.left, r.bottom - r.top
+
     def rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
         """``(left, top, right, bottom)`` in physical pixels."""
 

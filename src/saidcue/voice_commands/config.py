@@ -44,6 +44,7 @@ ACTION_TYPES = (
     "close_app",
     "list_windows",
     "labels",
+    "grid",
 )
 MEDIA_KEYS = ("play_pause", "next", "previous", "volume_up", "volume_down", "mute")
 TAB_APPS = ("terminal", "browser", "any")
@@ -59,6 +60,7 @@ WINDOW_OPS = (
     "snap_left", "snap_right", "next_monitor",
 )  # fmt: skip
 MAX_NUDGE = 50
+GRID_SCOPES = ("screen", "window")
 
 DEFAULT_WAKE_WORD = "computer"  # also the first preset in .catalog
 
@@ -180,6 +182,11 @@ def validate_action(action: Any) -> Dict[str, Any]:
         pass  # pick from every open window
     elif kind == "labels":
         pass  # number every clickable in the window in front
+    elif kind == "grid":
+        scope = action.get("scope", "screen")
+        if scope not in GRID_SCOPES:
+            raise ActionError(f"grid 'scope' must be one of {GRID_SCOPES}")
+        out["scope"] = scope
     elif kind == "window":
         op = _require_str(action, "op")
         if op not in WINDOW_OPS:
