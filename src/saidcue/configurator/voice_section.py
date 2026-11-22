@@ -62,7 +62,9 @@ class VoiceCommandsSection(QWidget):
         off = set(cfg.disabled_commands)
         for item in self._command_items():
             checked = item.data(0, _ID_ROLE) not in off
-            item.setCheckState(0, Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+            item.setCheckState(
+                0, Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+            )
         self._on_enabled_toggled()
 
     def wake_word(self) -> str:
@@ -162,7 +164,9 @@ class VoiceCommandsSection(QWidget):
         self._ai_fallback.toggled.connect(self._on_enabled_toggled)
         layout.addWidget(self._ai_fallback)
 
-        self._ai_clicks = QCheckBox("Let the AI click buttons and menus in the window in front")
+        self._ai_clicks = QCheckBox(
+            "Let the AI click buttons and menus in the window in front"
+        )
         self._ai_clicks.setToolTip(
             "The AI sees the names of the buttons, links and boxes in the window "
             "in front and can click them, over several steps (“open settings and "

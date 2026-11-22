@@ -9,7 +9,7 @@
 ; Output lands in installer\windows\output\SaidcueSetup.exe.
 
 #define MyAppName "Saidcue"
-#define MyAppVersion "0.2.0"
+#define MyAppVersion "0.3.0"
 #define MyAppPublisher "Saidcue"
 #define MyAppURL "https://saidcue.com"
 #define MyAppExeName "Saidcue.exe"

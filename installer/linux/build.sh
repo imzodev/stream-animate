@@ -5,7 +5,7 @@
 # installer/linux/output/ there to get them out of the container).
 set -eu
 
-VERSION="0.2.0"
+VERSION="0.3.0"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DIST="$ROOT/dist/saidcue"
 OUT="${1:-/output}"

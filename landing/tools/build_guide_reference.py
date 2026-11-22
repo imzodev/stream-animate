@@ -27,8 +27,8 @@ from saidcue.voice_commands import COMMANDS  # noqa: E402
 START = re.compile(r"[ \t]*<!-- reference:start[^>]*-->\n")
 END = "<!-- reference:end -->"
 
-# Commands added after 0.2.0, flagged "New" on the page.
-NEW_SINCE_0_2 = frozenset(
+# Commands new in 0.3.0, flagged "New" on the page.
+NEW_IN_0_3 = frozenset(
     """
     list_windows minimize_window maximize_window restore_window close_window
     snap_left snap_right next_monitor switch_app show_desktop task_view
@@ -80,7 +80,7 @@ def build() -> str:
         )
         for c in commands:
             first, *rest = c.phrases
-            new = ' <span class="new">New</span>' if c.id in NEW_SINCE_0_2 else ""
+            new = ' <span class="new">New</span>' if c.id in NEW_IN_0_3 else ""
             alt = (
                 '<span class="alt">'
                 + ", ".join(phrase_html(p) for p in rest)

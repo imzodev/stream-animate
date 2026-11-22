@@ -35,4 +35,4 @@ def test_guide_lists_every_command_once():
 
 def test_new_flags_name_real_commands():
     ids = {c.id for c in COMMANDS}
-    assert _tool().NEW_SINCE_0_2 <= ids
+    assert _tool().NEW_IN_0_3 <= ids
