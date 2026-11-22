@@ -978,8 +978,16 @@ def test_catalog_click_and_scroll_phrases():
     assert cmd.id == "click" and slots == {"name": "subscribe"}
     assert m.match("scroll down")[0].id == "scroll_down"
     assert m.match("scroll down more")[0].id == "scroll_down_more"
+    assert m.match("scroll down a little")[0].id == "scroll_down_little"
     assert m.match("page up")[0].id == "page_up"
     assert m.match("scroll to the top")[0].id == "scroll_top"
+
+
+def test_scroll_down_moves_a_whole_screen():
+    by_id = {c.id: c for c in COMMANDS}
+    assert by_id["scroll_down"].actions[0]["amount"] == "page"
+    assert by_id["scroll_up"].actions[0]["amount"] == "page"
+    assert by_id["scroll_down_little"].actions[0]["amount"] == "small"
 
 
 # ---------------------------------------------------------------------------

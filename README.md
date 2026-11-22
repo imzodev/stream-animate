@@ -316,7 +316,7 @@ Control the PC by voice. Start a phrase with the **wake word**, then say a comma
 - "**computer, skip ad**" → clicks YouTube's *Skip* button (also when YouTube shows it in Spanish, Portuguese, French or German); says "No ad to skip" otherwise
 - "**computer, press enter**" / "**hit enter**" / "**submit**" / "**send it**" → presses Enter, to submit the form or message you just typed. Spanish "presiona enter" / "enviar" work too
 - "**computer, ask how tall is Everest**" / "**explain …**" / "**what is …**" / "**who is …**" / "**why …**" / "**how …**" → asks the AI Assistant and shows the answer in its panel. "**computer, ask a question**" (or just "**computer, assistant**") starts listening, then you say the question. Needs the AI Assistant set up (see below)
-- "**computer, scroll down**" / "**scroll up**" / "**scroll down more**" / "**page down**" / "**page up**" / "**scroll to top**" / "**scroll to bottom**"
+- "**computer, scroll down**" / "**scroll up**" → scrolls one screen, so you see the next part of the page. "**scroll down a little**" nudges it, "**scroll down more**" goes three screens, and "**scroll to top**" / "**scroll to bottom**" go all the way
 
 ### Controlling the Whole Computer
 - **Apps:** "**computer, open OBS**" / "**launch spotify**" / "**start discord**" opens any app from the Start menu (desktop and Store apps). When several match ("open visual studio") you pick from a list. "**open github dot com**" opens the site. "**close spotify**" closes that app's window.
