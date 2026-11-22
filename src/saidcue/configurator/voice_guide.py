@@ -31,7 +31,7 @@ def _phrase(text: str) -> str:
     """One phrase as a code chip, with ``{slot}`` italicised."""
 
     shown = escape(text).replace("{", "<i " + _SLOT + ">{").replace("}", "}</i>")
-    return f'<code {_CODE}>{shown}</code>'
+    return f"<code {_CODE}>{shown}</code>"
 
 
 def _phrases(phrases) -> str:
@@ -63,17 +63,21 @@ def build_guide_html(query: str = "") -> str:
         if _matches(command, q):
             groups.setdefault(command.group, []).append(command)
 
-    parts = ['<body style="font-family:-apple-system,Segoe UI,Arial,sans-serif; font-size:13px;">']
+    parts = [
+        '<body style="font-family:-apple-system,Segoe UI,Arial,sans-serif; font-size:13px;">'
+    ]
 
     if not q:
         parts.append(
             "<h2>How a command fires</h2>"
             "<p>Say your <b>wake word</b>, then the command, right after it — "
-            f'e.g. <code {_CODE}>computer, skip ad</code>. Normal talk never '
+            f"e.g. <code {_CODE}>computer, skip ad</code>. Normal talk never "
             "triggers anything, because the phrase has to start with the wake "
             "word.</p>"
             "<p>To ask the AI assistant something, say <b>ask</b> and then the "
-            "question, e.g. <code " + _CODE + ">computer, ask how tall is Everest</code>, "
+            "question, e.g. <code "
+            + _CODE
+            + ">computer, ask how tall is Everest</code>, "
             "or say <b>ask a question</b> and speak it after the panel opens.</p>"
             "<p>To submit what you typed, say <b>press enter</b> (or "
             "<b>submit</b>, <b>send it</b>). You can say a command twice in "
@@ -115,13 +119,13 @@ def build_guide_html(query: str = "") -> str:
             "say — Saidcue does not guess. A small list appears on screen "
             "with the matching tabs, numbered.</p>"
             "<p>Say the number to pick one "
-            f'(<code {_CODE}>computer, two</code>), or click it with the '
+            f"(<code {_CODE}>computer, two</code>), or click it with the "
             "mouse. The list never takes the keyboard focus away from the "
             "window you were in, it closes itself after a few seconds, and "
             "saying any other command dismisses it.</p>"
             "<p>The tab's name can come first or last — "
-            f'<code {_CODE}>tab youtube</code> and '
-            f'<code {_CODE}>the youtube tab</code> both work — and the search '
+            f"<code {_CODE}>tab youtube</code> and "
+            f"<code {_CODE}>the youtube tab</code> both work — and the search "
             "covers the browsers and Windows Terminal alike.</p>"
         )
         parts.append(
@@ -139,7 +143,9 @@ def build_guide_html(query: str = "") -> str:
             "open window titles and tab names are sent along for context.</p>"
         )
 
-        presets = ", ".join(f'<code {_CODE}>{escape(w)}</code>' for w in WAKE_WORD_PRESETS)
+        presets = ", ".join(
+            f"<code {_CODE}>{escape(w)}</code>" for w in WAKE_WORD_PRESETS
+        )
         parts.append(
             "<h2>Making it yours</h2>"
             f"<p><b>Wake word:</b> pick a preset or type your own — {presets}. "
@@ -174,7 +180,9 @@ class VoiceGuideDialog(QDialog):
         layout = QVBoxLayout(self)
 
         self._search = QLineEdit()
-        self._search.setPlaceholderText("Search a phrase or action, e.g. “scroll”, “tab”, “volume”…")
+        self._search.setPlaceholderText(
+            "Search a phrase or action, e.g. “scroll”, “tab”, “volume”…"
+        )
         self._search.textChanged.connect(self._refresh)
         layout.addWidget(self._search)
 

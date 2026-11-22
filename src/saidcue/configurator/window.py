@@ -199,7 +199,9 @@ class ConfiguratorWindow(QMainWindow):
         list_buttons.addWidget(self._delete_btn)
         list_layout.addLayout(list_buttons)
         list_card.setMinimumWidth(240)
-        list_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+        list_card.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding
+        )
 
         detail_card = QWidget()
         detail_card.setObjectName("card")

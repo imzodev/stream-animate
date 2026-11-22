@@ -319,9 +319,7 @@ def test_compose_tray_icon_paints_fact_check_dot(qt_app) -> None:
         stt_active=False,
         typing_active=False,
         enabled=True,
-        fact_check=FactCheckerIndicatorState(
-            configured=True, phase="listening"
-        ),
+        fact_check=FactCheckerIndicatorState(configured=True, phase="listening"),
     )
     icon = compose_tray_icon(state, size=64)
     pix = icon.pixmap(64, 64)
@@ -344,10 +342,7 @@ def test_compose_tray_icon_no_fact_check_dot_when_unconfigured(qt_app) -> None:
     image = pix.toImage().convertToFormat(QImage.Format.Format_ARGB32)
     # Top-left should still be the base icon background, not green.
     color = QColor(image.pixel(14, 8))
-    is_green = (
-        color.green() > color.red() + 30
-        and color.green() > color.blue() + 30
-    )
+    is_green = color.green() > color.red() + 30 and color.green() > color.blue() + 30
     assert not is_green
 
 
@@ -363,8 +358,5 @@ def test_compose_tray_icon_idle_fact_check_paints_no_dot(qt_app) -> None:
     pix = icon.pixmap(64, 64)
     image = pix.toImage().convertToFormat(QImage.Format.Format_ARGB32)
     color = QColor(image.pixel(14, 8))
-    is_green = (
-        color.green() > color.red() + 30
-        and color.green() > color.blue() + 30
-    )
+    is_green = color.green() > color.red() + 30 and color.green() > color.blue() + 30
     assert not is_green

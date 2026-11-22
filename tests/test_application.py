@@ -635,7 +635,9 @@ def test_open_configurator_survives_garbage_collection(qt_app, monkeypatch) -> N
     class FakeConfiguratorWindow(QWidget):
         pass
 
-    monkeypatch.setattr(configurator_module, "ConfiguratorWindow", FakeConfiguratorWindow)
+    monkeypatch.setattr(
+        configurator_module, "ConfiguratorWindow", FakeConfiguratorWindow
+    )
     application_module._open_configurator_windows.clear()
 
     application_module._open_configurator()

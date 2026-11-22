@@ -270,7 +270,9 @@ class FactCheckerEngine:
         _LOGGER.info("Fact-checker: asked by voice: %r", question)
         return True
 
-    def _begin_locked(self, preset: Optional[str]) -> List[Callable[[FactCheckerEvent], None]]:
+    def _begin_locked(
+        self, preset: Optional[str]
+    ) -> List[Callable[[FactCheckerEvent], None]]:
         """Start the worker thread. Caller holds ``self._lock``.
 
         With ``preset`` the question is already known, so the worker

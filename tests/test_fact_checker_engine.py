@@ -108,9 +108,7 @@ def _short_silence(monkeypatch) -> None:
     monkeypatch is only a belt-and-suspenders fallback for tests
     that hit the module-level default path.
     """
-    monkeypatch.setattr(
-        "saidcue.fact_checker.engine._SILENT_PHRASE_TIMEOUT", 0.05
-    )
+    monkeypatch.setattr("saidcue.fact_checker.engine._SILENT_PHRASE_TIMEOUT", 0.05)
 
 
 def _fast_config(**overrides) -> LLMConfig:
@@ -668,7 +666,9 @@ def test_ask_sends_the_question_without_listening(monkeypatch) -> None:
     phases = [e.phase for e in events]
     # "listening" is reported first so the panel opens, then the usual flow.
     assert phases[0] == "listening"
-    assert phases.index("listening") < phases.index("thinking") < phases.index("streaming")
+    assert (
+        phases.index("listening") < phases.index("thinking") < phases.index("streaming")
+    )
     assert phases[-1] == "done"
     assert client.streamed == ["how tall is Everest"]
     thinking = [e for e in events if e.phase == "thinking"][0]

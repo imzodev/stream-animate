@@ -99,7 +99,9 @@ def available_models() -> List[str]:
     try:
         names = _fw_available_models()
     except Exception as exc:  # noqa: BLE001 - faster-whisper may be absent
-        _LOGGER.debug("faster-whisper not available for model list (%s); using static list", exc)
+        _LOGGER.debug(
+            "faster-whisper not available for model list (%s); using static list", exc
+        )
         return list(_STATIC_MODELS)
     # Guarantee the friendly aliases the rest of the app advertises.
     for alias in ("turbo", "large"):

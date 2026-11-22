@@ -53,7 +53,9 @@ class _FakeHub:
         return f"/fake/hub/{model_name}"
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> "_FakeHub":
-        monkeypatch.setattr(model_downloader, "_fw_available_models", self.available_models)
+        monkeypatch.setattr(
+            model_downloader, "_fw_available_models", self.available_models
+        )
         monkeypatch.setattr(model_downloader, "_fw_download_model", self.download)
         return self
 
@@ -77,7 +79,9 @@ def test_available_models_lists_known_names(hub: _FakeHub):
     assert "large" in names
 
 
-def test_available_models_falls_back_when_backend_absent(monkeypatch: pytest.MonkeyPatch):
+def test_available_models_falls_back_when_backend_absent(
+    monkeypatch: pytest.MonkeyPatch,
+):
     def boom():
         raise ImportError("no faster_whisper")
 
