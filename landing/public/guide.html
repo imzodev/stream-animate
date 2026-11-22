@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice control guide | Saidcue</title>
+<meta name="description" content="Every way to control your Windows PC by voice with Saidcue: open apps, switch windows, press any key, click buttons by name or by number, point anywhere with the mouse grid, and let the AI do multi-step jobs.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Saidcue">
+<meta property="og:title" content="Saidcue voice control guide">
+<meta property="og:description" content="Open apps, switch windows, press keys, click anything and point anywhere, by voice.">
+<meta property="og:url" content="https://saidcue.com/guide">
+<meta property="og:image" content="https://saidcue.com/og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap">
+<meta name="theme-color" content="#ecece8">
+<script>try{var t=localStorage.getItem("saidcue-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}</script>
+<style>
+/* Same tokens as the landing page (index.html), in a calmer reading layout. */
+:root {
+  --page: #ecece8; --card: #f7f7f4; --fg: #0f1211; --muted: #5d6461; --line: rgba(15, 18, 17, 0.12);
+  --block: #0f1211; --block-fg: #f2f3f0; --block-muted: rgba(242, 243, 240, 0.62); --block-line: rgba(242, 243, 240, 0.16);
+  --btn: #0f1211; --btn-fg: #ffffff; --ink: #0f1211;
+  --mint: #b8f2de; --lilac: #cdbdff; --pink: #ffc3d6; --peach: #ffd8ac; --sky: #c0e4ff; --badge: #ffd400;
+  --font-display: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-body: "Instrument Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "DM Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --page: #0a0c0b; --card: #141817; --fg: #eff0ed; --muted: #98a09c; --line: rgba(239, 240, 237, 0.14);
+  --block: #181d1b; --block-fg: #eff0ed; --btn: #eff0ed; --btn-fg: #0a0c0b;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 96px; }
+body {
+  margin: 0; background: var(--page); color: var(--fg);
+  font-family: var(--font-body); font-size: 17px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; overflow-x: hidden;
+  padding: 0 max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px));
+}
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(2.8rem, 7vw, 6.2rem); line-height: 0.92; letter-spacing: -0.055em; font-stretch: 88%; }
+h2 { font-size: clamp(2rem, 4vw, 3.2rem); line-height: 0.98; letter-spacing: -0.045em; font-stretch: 90%; }
+h3 { font-size: 1.3rem; line-height: 1.15; letter-spacing: -0.025em; margin-top: 34px; }
+p { margin: 14px 0 0; }
+a { color: inherit; text-underline-offset: 3px; }
+code { font-family: var(--font-mono); font-size: 0.82em; background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: 6px; padding: 2px 7px; overflow-wrap: anywhere; }
+kbd { font-family: var(--font-mono); font-size: 0.78em; border-radius: 6px; padding: 2px 7px; background: var(--card); box-shadow: inset 0 0 0 1px var(--line), 0 1px 0 var(--line); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; border-radius: 6px; }
+button { font: inherit; cursor: pointer; }
+.label { font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: clamp(18px, 4vw, 48px); }
+
+/* pill buttons + nav (as on the landing page) */
+.pill-btn { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; border: 0; background: var(--btn); color: var(--btn-fg); padding: 11px 20px; border-radius: 99px; font-weight: 550; font-size: 0.93rem; letter-spacing: -0.01em; transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.pill-btn:hover { transform: translateY(-2px) scale(1.02); }
+.pill-btn svg { width: 14px; height: 14px; }
+.note-bar { margin: 10px 0 8px; text-align: center; background: var(--mint); color: var(--ink); border-radius: 99px; padding: 8px 16px; font-size: 0.9rem; font-weight: 500; }
+.note-bar a { margin-left: 6px; font-weight: 600; }
+.nav { position: sticky; z-index: 50; top: 14px; margin: 0 auto; width: min(1080px, 100%); display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 8px 8px 22px; background: color-mix(in srgb, var(--card) 80%, transparent); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); border-radius: 99px; box-shadow: 0 8px 30px -12px rgba(0, 0, 0, 0.25), inset 0 0 0 1px var(--line); }
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 650; font-size: 1.2rem; letter-spacing: -0.04em; text-decoration: none; }
+.brand .dot { width: 12px; height: 12px; border-radius: 50%; background: conic-gradient(from 0deg, var(--pink), var(--lilac), var(--mint), var(--peach), var(--pink)); animation: spin 8s linear infinite; }
+.brand small { font-family: var(--font-mono); font-weight: 400; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.nav-links { display: flex; align-items: center; gap: 4px; }
+.nav-links a { text-decoration: none; font-size: 0.93rem; font-weight: 500; padding: 9px 14px; border-radius: 99px; }
+.nav-links a:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.nav-right { display: flex; align-items: center; gap: 8px; }
+.theme-btn { width: 42px; height: 42px; display: inline-grid; place-items: center; border-radius: 50%; border: 0; background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); padding: 0; }
+.theme-btn svg { width: 18px; height: 18px; }
+.theme-btn .sun { display: none; }
+:root[data-theme="dark"] .theme-btn .sun { display: block; }
+:root[data-theme="dark"] .theme-btn .moon { display: none; }
+@media (max-width: 900px) { .nav-links { display: none; } }
+
+/* hero */
+.hero { position: relative; overflow: hidden; isolation: isolate; margin-top: 12px; border-radius: 34px; background: #f4f1ee; color: var(--ink); padding: clamp(56px, 9vw, 120px) clamp(22px, 5vw, 72px) clamp(40px, 6vw, 72px); }
+.hero .aura { position: absolute; inset: -20%; z-index: -1; }
+.hero .aura i { position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.9; }
+.hero .aura i:nth-child(1) { left: 0; top: 0; width: 45%; height: 70%; background: var(--pink); }
+.hero .aura i:nth-child(2) { right: 0; top: 5%; width: 40%; height: 65%; background: var(--lilac); }
+.hero .aura i:nth-child(3) { left: 30%; bottom: 0; width: 45%; height: 55%; background: var(--mint); }
+.hero .label { color: #4a514e; }
+.hero h1 { margin-top: 18px; max-width: 14ch; }
+.hero-sub { margin-top: 26px; font-size: clamp(1.05rem, 1.6vw, 1.3rem); line-height: 1.45; max-width: 40rem; color: #2c3331; letter-spacing: -0.015em; }
+.hero-sub b { color: var(--ink); }
+.ways { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 980px; }
+@media (max-width: 860px) { .ways { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) { .ways { grid-template-columns: 1fr; } }
+.way { display: grid; gap: 6px; align-content: start; text-decoration: none; background: rgba(255, 255, 255, 0.66); backdrop-filter: blur(10px); border-radius: 20px; padding: 18px 18px 20px; transition: transform 0.2s, background 0.2s; }
+.way:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.9); }
+.way b { font-size: 1.05rem; letter-spacing: -0.02em; }
+.way span { font-size: 0.9rem; color: #4a514e; line-height: 1.4; }
+.way code { background: rgba(15, 18, 17, 0.07); font-size: 0.74rem; justify-self: start; }
+
+/* doc layout: table of contents + article */
+.doc { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: clamp(24px, 4vw, 64px); margin-top: clamp(40px, 6vw, 80px); }
+.toc { position: sticky; top: 96px; align-self: start; max-height: calc(100vh - 110px); overflow: auto; font-size: 0.92rem; padding-bottom: 20px; }
+.toc ol { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 2px; }
+.toc a { display: block; text-decoration: none; padding: 6px 12px; border-radius: 10px; color: var(--muted); }
+.toc a:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, transparent); }
+.toc a.on { color: var(--fg); background: color-mix(in srgb, var(--fg) 9%, transparent); font-weight: 550; }
+@media (max-width: 960px) {
+  .doc { grid-template-columns: 1fr; }
+  .toc { position: static; max-height: none; }
+  .toc ol { display: flex; flex-wrap: wrap; gap: 6px; }
+  .toc a { background: color-mix(in srgb, var(--fg) 6%, transparent); border-radius: 99px; padding: 6px 13px; }
+}
+article { max-width: 50rem; min-width: 0; }
+article > section { padding-bottom: clamp(48px, 6vw, 80px); }
+article > section + section { border-top: 1px solid var(--line); padding-top: clamp(40px, 5vw, 64px); }
+.lead { font-size: 1.15rem; color: var(--muted); letter-spacing: -0.01em; max-width: 42rem; }
+article p, article li { color: color-mix(in srgb, var(--fg) 82%, var(--muted)); }
+article ul, article ol { padding-left: 1.25em; margin: 14px 0 0; }
+article li { margin-top: 7px; }
+article li::marker { color: var(--muted); }
+.new { display: inline-block; vertical-align: 0.2em; margin-left: 8px; font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; background: var(--mint); color: var(--ink); border-radius: 99px; padding: 3px 9px; }
+h2 .new { vertical-align: 0.55em; }
+
+/* spoken phrases */
+.say { font-family: var(--font-mono); font-size: 0.86em; background: var(--ink); color: #fff; border-radius: 99px; padding: 2px 11px 3px; white-space: nowrap; }
+.say::before { content: "\201C"; color: var(--mint); }
+.say::after { content: "\201D"; color: var(--mint); }
+:root[data-theme="dark"] .say { background: #25302c; }
+.say var, td var { font-style: italic; color: var(--mint); font-family: var(--font-body); }
+td var { color: var(--muted); }
+
+/* dialogue: what you say and what happens */
+.talk { list-style: none; padding: 0 !important; margin: 20px 0 0; display: grid; gap: 8px; }
+.talk li { margin: 0; display: grid; grid-template-columns: minmax(0, auto) 1fr; gap: 14px; align-items: baseline; background: var(--card); border-radius: 16px; padding: 12px 16px; box-shadow: inset 0 0 0 1px var(--line); }
+.talk li > .say { justify-self: start; white-space: normal; }
+.talk li > span:last-child { color: var(--muted); font-size: 0.95rem; }
+@media (max-width: 640px) { .talk li { grid-template-columns: 1fr; gap: 6px; } }
+
+/* command tables */
+.cmds { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.95rem; }
+.cmds th { text-align: left; font-family: var(--font-mono); font-weight: 400; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 8px 0; border-bottom: 1.5px solid var(--fg); }
+.cmds td { vertical-align: top; padding: 11px 12px 11px 0; border-bottom: 1px solid var(--line); }
+.cmds td:first-child { width: 48%; font-weight: 550; letter-spacing: -0.01em; }
+.cmds td:last-child { color: var(--muted); }
+.cmds td .alt { display: block; font-weight: 400; color: var(--muted); font-size: 0.88em; margin-top: 3px; }
+@media (max-width: 640px) { .cmds td:first-child { width: auto; } .cmds, .cmds tbody, .cmds tr, .cmds td { display: block; } .cmds thead { display: none; } .cmds td { border: 0; padding: 0; } .cmds tr { padding: 12px 0; border-bottom: 1px solid var(--line); } .cmds td:last-child { margin-top: 4px; } }
+
+/* callouts */
+.tip, .warn { margin-top: 22px; border-radius: 18px; padding: 16px 20px; color: var(--ink); }
+.tip { background: var(--mint); }
+.warn { background: var(--peach); }
+.tip p, .warn p, .tip li, .warn li { color: #2c3331; margin-top: 6px; }
+.tip > b, .warn > b { display: block; font-family: var(--font-mono); font-weight: 500; font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.tip code, .warn code { background: rgba(15, 18, 17, 0.08); }
+
+/* steps */
+.steps { counter-reset: s; list-style: none; padding: 0 !important; }
+.steps li { counter-increment: s; position: relative; padding-left: 46px; margin-top: 16px; }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: -2px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-mono); font-size: 0.85rem; background: var(--fg); color: var(--page); }
+
+/* key chips */
+.keys { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.keys kbd { font-size: 0.8rem; padding: 4px 9px; }
+
+/* mock-ups of the number labels and the mouse grid */
+.mock { margin-top: 24px; border-radius: 22px; overflow: hidden; background: #17264a; box-shadow: 0 24px 50px -28px rgba(20, 20, 50, 0.6); color: #e8edf5; font-size: 0.82rem; }
+.mock-bar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: rgba(12, 18, 30, 0.92); font-family: var(--font-mono); font-size: 0.72rem; color: #9aa7bd; }
+.mock-bar i { width: 9px; height: 9px; border-radius: 50%; background: #3a4560; }
+.mock-bar span { margin-left: 10px; }
+.mock-body { position: relative; padding: 18px; display: grid; gap: 14px; min-height: 220px; background: linear-gradient(140deg, #17264a, #3b1f4f); }
+.mock-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.mock-btn, .mock-ico, .mock-input { position: relative; background: rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 8px 14px; }
+.mock-ico { width: 36px; height: 36px; padding: 0; display: grid; place-items: center; }
+.mock-ico::after { content: ""; width: 14px; height: 14px; border-radius: 4px; border: 2px solid #9aa7bd; }
+.mock-input { flex: 1; min-width: 160px; color: #9aa7bd; }
+.mock-card { position: relative; background: rgba(255, 255, 255, 0.07); border-radius: 14px; padding: 12px 14px; display: grid; gap: 6px; }
+.mock-card b { font-weight: 600; } .mock-card > span:not(.badge) { color: #9aa7bd; }
+.badge { position: absolute; left: -6px; top: -8px; z-index: 2; min-width: 22px; height: 20px; padding: 0 5px; border-radius: 5px; display: grid; place-items: center; background: var(--badge); color: #111; font-family: var(--font-mono); font-weight: 500; font-size: 0.74rem; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35); }
+.mock-cap { position: absolute; right: 14px; bottom: 14px; font-family: var(--font-mono); background: rgba(12, 18, 30, 0.92); border-radius: 99px; padding: 7px 14px; }
+.mock-cap::before { content: "> "; color: var(--mint); }
+.grid-demo { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+@media (max-width: 640px) { .grid-demo { grid-template-columns: 1fr; } }
+.grid-demo figure { margin: 0; display: grid; gap: 8px; }
+.gd { border-radius: 16px; overflow: hidden; background: linear-gradient(140deg, #0f2f3b, #3b1f4f); aspect-ratio: 16 / 10; position: relative; }
+.gd .g3 { position: absolute; display: grid; grid-template: repeat(3, minmax(0, 1fr)) / repeat(3, minmax(0, 1fr)); border: 2px solid rgba(255, 212, 0, 0.9); }
+.gd .g3 span { min-height: 0; border: 1px solid rgba(255, 212, 0, 0.55); display: grid; place-items: center; font-family: var(--font-mono); font-size: 1.05rem; line-height: 1; color: #fff; text-shadow: 0 1px 4px #000; }
+.gd .g3.sm span { font-size: 0.62rem; }
+.gd .g3 span.hit { background: rgba(255, 212, 0, 0.3); }
+.gd .cursor { position: absolute; width: 14px; height: 18px; }
+.gd .cursor::before { content: ""; position: absolute; inset: 0; background: #fff; clip-path: polygon(0 0, 0 78%, 24% 60%, 42% 100%, 56% 94%, 38% 56%, 70% 56%); filter: drop-shadow(0 1px 1px #000); }
+.gd .ring { position: absolute; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 2px solid var(--badge); box-shadow: 0 0 0 6px rgba(255, 212, 0, 0.25); }
+.grid-demo figcaption { justify-self: start; font-family: var(--font-mono); font-size: 0.76rem; background: var(--ink); color: #fff; padding: 4px 12px; border-radius: 99px; }
+:root[data-theme="dark"] .grid-demo figcaption { background: #25302c; }
+.grid-demo figcaption::before { content: "> "; color: var(--mint); }
+
+/* recipes */
+.recipes { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; margin-top: 22px; }
+.recipe { background: var(--card); border-radius: 22px; padding: 20px 20px 22px; box-shadow: inset 0 0 0 1px var(--line); }
+.recipe h3 { margin: 0; font-size: 1.12rem; }
+.recipe ol { margin-top: 12px; padding-left: 1.15em; font-size: 0.94rem; }
+.recipe li { margin-top: 8px; }
+
+/* full reference */
+.ref-tools { position: sticky; top: 84px; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 22px; padding: 10px; border-radius: 18px; background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: inset 0 0 0 1px var(--line); }
+.ref-tools input { flex: 1; min-width: 200px; font: inherit; font-size: 1rem; color: var(--fg); background: var(--card); border: 0; border-radius: 12px; padding: 11px 14px; box-shadow: inset 0 0 0 1.5px var(--line); }
+.ref-tools input:focus { outline: none; box-shadow: inset 0 0 0 2px var(--fg); }
+.ref-tools span { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); padding-right: 6px; }
+.ref-group h3 { display: flex; align-items: baseline; gap: 10px; }
+.ref-group h3 small { font-family: var(--font-mono); font-weight: 400; font-size: 0.72rem; color: var(--muted); letter-spacing: 0.04em; }
+#ref-empty { display: none; margin-top: 24px; color: var(--muted); }
+
+/* settings */
+.cmds.settings td:first-child { width: 38%; }
+.cmds.settings code { font-size: 0.76em; }
+
+/* footer */
+footer { margin-top: 12px; background: var(--block); color: var(--block-fg); border-radius: 34px 34px 0 0; padding: clamp(40px, 6vw, 72px) 0 clamp(30px, 4vw, 48px); }
+.foot { display: flex; justify-content: space-between; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+.foot p { color: var(--block-muted); margin: 14px 0 0; max-width: 24rem; }
+.foot nav { display: flex; gap: 10px 22px; flex-wrap: wrap; } .foot a { text-decoration: none; } .foot nav a:hover { text-decoration: underline; }
+.foot-note { margin-top: 36px; color: var(--block-muted); font-size: 0.85rem; }
+
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .brand .dot { animation: none; } .pill-btn:hover, .way:hover { transform: none; } }
+@media print { .nav, .note-bar, .toc, .ref-tools, footer, .theme-btn { display: none !important; } .doc { display: block; } body { padding: 0; } }
+</style>
+</head>
+<body>
+
+<div class="note-bar">This guide covers the next Saidcue release. Commands marked <b>New</b> are not in 0.2.0 yet. <a href="/#get">Download</a></div>
+
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="/" aria-label="Saidcue home"><span class="dot" aria-hidden="true"></span>Saidcue <small>Guide</small></a>
+  <div class="nav-links">
+    <a href="#labels">Click anything</a>
+    <a href="#grid">Mouse grid</a>
+    <a href="#ai">AI agent</a>
+    <a href="#reference">All commands</a>
+  </div>
+  <div class="nav-right">
+    <button class="theme-btn" id="theme-btn" type="button" aria-label="Switch between light and dark theme">
+      <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+    </button>
+    <a class="pill-btn" href="/#get">Download <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 10 10 2M4 2h6v6"/></svg></a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="aura" aria-hidden="true"><i></i><i></i><i></i></div>
+  <span class="label">Voice control guide &middot; Windows</span>
+  <h1>Run your whole PC by voice.</h1>
+  <p class="hero-sub">Open apps, move between windows, press any key, click any button and point at any pixel, all without touching the mouse or keyboard. Every command starts with your wake word: <b>&ldquo;computer, open spotify&rdquo;</b>.</p>
+  <div class="ways">
+    <a class="way" href="#apps"><b>Apps and windows</b><span>Open any installed app, switch, snap, minimize, move to the other monitor.</span><code>open obs</code></a>
+    <a class="way" href="#keys"><b>Any key</b><span>Shortcuts, arrows, function keys, repeated presses.</span><code>press control shift t</code></a>
+    <a class="way" href="#click"><b>Click by name</b><span>Buttons, links, menus and text boxes, by the label you see.</span><code>click subscribe</code></a>
+    <a class="way" href="#labels"><b>Click by number</b><span>Numbers on everything clickable, even icons with no name.</span><code>show numbers</code></a>
+    <a class="way" href="#grid"><b>Point anywhere</b><span>A zooming 3&times;3 grid for games, canvases and remote desktops.</span><code>mouse grid</code></a>
+    <a class="way" href="#ai"><b>Just ask</b><span>The AI works through multi-step jobs and asks before risky clicks.</span><code>turn on word wrap</code></a>
+  </div>
+</header>
+
+<div class="wrap doc">
+  <aside class="toc" aria-label="On this page">
+    <span class="label">On this page</span>
+    <ol>
+      <li><a href="#start">Get started</a></li>
+      <li><a href="#apps">Apps</a></li>
+      <li><a href="#windows">Windows and tabs</a></li>
+      <li><a href="#keys">Keys and shortcuts</a></li>
+      <li><a href="#text">Text and dictation</a></li>
+      <li><a href="#click">Click by name</a></li>
+      <li><a href="#labels">Number labels</a></li>
+      <li><a href="#grid">Mouse grid</a></li>
+      <li><a href="#mouse">Mouse at the cursor</a></li>
+      <li><a href="#scroll">Scroll and media</a></li>
+      <li><a href="#ai">AI assistant and agent</a></li>
+      <li><a href="#nowake">No wake word needed</a></li>
+      <li><a href="#recipes">Recipes</a></li>
+      <li><a href="#reference">All commands</a></li>
+      <li><a href="#settings">Settings</a></li>
+      <li><a href="#trouble">Limits and fixes</a></li>
+    </ol>
+  </aside>
+
+  <article>
+
+    <section id="start">
+      <span class="label">01</span>
+      <h2>Get started</h2>
+      <p class="lead">Saidcue sits in your system tray and listens. A phrase only becomes a command when it <b>starts with the wake word</b>, so talking on a call or on stream never clicks anything.</p>
+      <ol class="steps">
+        <li><b>Turn it on.</b> Right-click the tray icon, open <b>Settings</b>, go to the <b>Voice Commands</b> tab and tick <b>Enable voice commands</b>.</li>
+        <li><b>Pick a wake word.</b> Choose <code>computer</code>, <code>hey computer</code>, <code>assistant</code>, <code>hey assistant</code> or <code>companion</code>, or type your own. Two-word wake words misfire less, because ordinary sentences rarely start with them.</li>
+        <li><b>Say a command.</b> Wake word first, then the command: <span class="say">computer, scroll down</span>. You can pause after the wake word; Saidcue waits a few seconds for the rest.</li>
+        <li><b>Watch the pill.</b> The small on-screen pill confirms every command with a check mark, says what went wrong with a cross, or shows &ldquo;Thinking&hellip;&rdquo; while the AI works.</li>
+      </ol>
+      <div class="tip"><b>Tip</b><p>Every command has a checkbox in the Voice Commands tab, so you can switch off any you don't want. The <b>Commands guide</b> button there opens a searchable list inside the app.</p></div>
+      <p>In the examples below, <span class="say">computer, &hellip;</span> stands for your wake word. Words in <i>italics</i> are things you fill in, like an app name or a number. Numbers can be spoken (&ldquo;twelve&rdquo;) or understood as digits (&ldquo;12&rdquo;), whichever your speech engine writes.</p>
+    </section>
+
+    <section id="apps">
+      <span class="label">02</span>
+      <h2>Open and close apps <span class="new">New</span></h2>
+      <p class="lead">Any app in your Start menu opens by name, both desktop programs and Store apps. Saidcue reads the Start menu list in the background, so new installs show up within a few minutes.</p>
+      <ul class="talk">
+        <li><span class="say">computer, open obs</span><span>Starts OBS Studio. &ldquo;launch&rdquo;, &ldquo;start&rdquo;, &ldquo;run&rdquo; and &ldquo;abre&rdquo; work too.</span></li>
+        <li><span class="say">computer, open visual studio</span><span>Several apps match, so a numbered list appears. Say <span class="say">two</span> to pick, or click one.</span></li>
+        <li><span class="say">computer, open github dot com</span><span>A name that ends in a web domain opens the site in your browser.</span></li>
+        <li><span class="say">computer, close spotify</span><span>Closes that app's window, found by its title or program name. Apps still ask to save your work.</span></li>
+        <li><span class="say">computer, open settings</span><span>Windows Settings. <span class="say">open file explorer</span> opens Explorer.</span></li>
+      </ul>
+      <p>The built-in shortcuts <span class="say">open youtube</span>, <span class="say">open twitch</span>, <span class="say">open notepad</span> and <span class="say">open calculator</span> still work as before. If nothing matches the name, the request goes to the AI fallback when you have it turned on.</p>
+    </section>
+
+    <section id="windows">
+      <span class="label">03</span>
+      <h2>Windows and tabs</h2>
+      <p class="lead">Move between programs and arrange them. Window commands act on the window in front.</p>
+      <table class="cmds">
+        <thead><tr><th>Say</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>go to <var>name</var><span class="alt">switch to <var>name</var></span></td><td>Brings a window to the front by its title, or by its program name when the title is a song or a document.</td></tr>
+          <tr><td>switch window <span class="new">New</span><span class="alt">list windows, pick a window</span></td><td>Shows a numbered list of open windows. Say the number.</td></tr>
+          <tr><td>previous window <span class="new">New</span><span class="alt">alt tab, last window</span></td><td>Jumps back to the window you were in before.</td></tr>
+          <tr><td>minimize / maximize <span class="new">New</span><span class="alt">restore window</span></td><td>Minimizes, maximizes, or returns the window to its normal size.</td></tr>
+          <tr><td>snap left / snap right <span class="new">New</span></td><td>Fills the left or right half of the screen.</td></tr>
+          <tr><td>next monitor <span class="new">New</span><span class="alt">other screen</span></td><td>Moves the window to your other display.</td></tr>
+          <tr><td>close window <span class="new">New</span></td><td>Closes the window in front. Apps still ask to save.</td></tr>
+          <tr><td>full screen <span class="new">New</span></td><td>Toggles full screen (F11).</td></tr>
+          <tr><td>show desktop, task view, start menu, notifications <span class="new">New</span></td><td>Hides all windows, shows all windows, opens Start or the notification panel.</td></tr>
+        </tbody>
+      </table>
+      <h3>Browser and terminal tabs</h3>
+      <ul class="talk">
+        <li><span class="say">computer, tab gmail</span><span>Switches to the browser tab named Gmail. &ldquo;the gmail tab&rdquo; and &ldquo;go to the gmail tab&rdquo; work too.</span></li>
+        <li><span class="say">computer, tab 3</span><span>Switches to the third tab.</span></li>
+        <li><span class="say">computer, terminal two</span><span>Switches Windows Terminal to its second tab, or to a tab by name.</span></li>
+        <li><span class="say">computer, new tab</span><span>Also <span class="say">close tab</span> and <span class="say">reopen tab</span>.</span></li>
+      </ul>
+      <p>When a name matches several tabs, Saidcue doesn't guess. A numbered list appears without taking focus from your window. Say the number, or click it. The list closes after about 20 seconds, when you say <span class="say">cancel</span>, or when you say another command.</p>
+    </section>
+
+    <section id="keys">
+      <span class="label">04</span>
+      <h2>Keys and shortcuts <span class="new">New</span></h2>
+      <p class="lead">Say any key or shortcut, with &ldquo;press&rdquo; or on its own. Add &ldquo;3 times&rdquo; or &ldquo;twice&rdquo; to repeat it.</p>
+      <ul class="talk">
+        <li><span class="say">computer, press control shift t</span><span>Presses Ctrl+Shift+T. &ldquo;hit&rdquo;, &ldquo;tap&rdquo; and &ldquo;key&rdquo; work in place of &ldquo;press&rdquo;.</span></li>
+        <li><span class="say">computer, escape</span><span>A key name on its own presses it.</span></li>
+        <li><span class="say">computer, backspace five times</span><span>Repeats the key, up to 50 times.</span></li>
+        <li><span class="say">computer, alt f4</span><span>Any combination of modifiers and a key.</span></li>
+        <li><span class="say">computer, press windows</span><span>The Windows key on its own.</span></li>
+        <li><span class="say">computer, press save</span><span>&ldquo;Save&rdquo; isn't a key name, so this clicks the button labelled Save instead.</span></li>
+      </ul>
+      <h3>Key names Saidcue knows</h3>
+      <p><b>Modifiers:</b></p>
+      <div class="keys"><kbd>control</kbd><kbd>shift</kbd><kbd>alt</kbd><kbd>windows</kbd></div>
+      <p><b>Keys:</b></p>
+      <div class="keys"><kbd>enter</kbd><kbd>escape</kbd><kbd>tab</kbd><kbd>backspace</kbd><kbd>delete</kbd><kbd>space</kbd><kbd>home</kbd><kbd>end</kbd><kbd>page up</kbd><kbd>page down</kbd><kbd>up</kbd><kbd>down</kbd><kbd>left</kbd><kbd>right</kbd><kbd>insert</kbd><kbd>print screen</kbd><kbd>menu</kbd><kbd>caps lock</kbd><kbd>f1 &hellip; f12</kbd><kbd>minus</kbd><kbd>comma</kbd><kbd>period</kbd><kbd>slash</kbd><kbd>backslash</kbd><kbd>semicolon</kbd><kbd>equals</kbd></div>
+      <p>Letters and digits count only after a modifier (<span class="say">control z</span>, <span class="say">alt 1</span>), so a stray &ldquo;a&rdquo; or &ldquo;you&rdquo; is never pressed. Speech engines mishear single letters, so the phonetic alphabet works as well: <span class="say">control charlie</span> is Ctrl+C. Some Spanish names work too: <i>borrar</i>, <i>espacio</i>, <i>intro</i>, <i>arriba</i>, <i>abajo</i>.</p>
+    </section>
+
+    <section id="text">
+      <span class="label">05</span>
+      <h2>Text, cursor and dictation</h2>
+      <p class="lead">Move the text cursor, select and delete without the arrow keys, then dictate.</p>
+      <table class="cmds">
+        <thead><tr><th>Say</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>end of line / start of line <span class="new">New</span></td><td>Moves to the end or start of the line.</td></tr>
+          <tr><td>top of document / end of document <span class="new">New</span></td><td>Moves to the very start or end.</td></tr>
+          <tr><td>next word / previous word <span class="new">New</span><span class="alt">3 words right, 2 words left</span></td><td>Moves word by word.</td></tr>
+          <tr><td>select word / select line <span class="new">New</span><span class="alt">select 3 words, select previous word</span></td><td>Selects text at the cursor.</td></tr>
+          <tr><td>delete word / delete line <span class="new">New</span><span class="alt">delete 2 words</span></td><td>Deletes the word before the cursor, or the whole line.</td></tr>
+          <tr><td>select all, copy, cut, paste, undo, redo, save, find</td><td>The usual Ctrl shortcuts.</td></tr>
+          <tr><td>new line</td><td>Starts a new line (Enter).</td></tr>
+          <tr><td>press enter<span class="alt">submit, send it, send message</span></td><td>Presses Enter to send a chat message or submit a form.</td></tr>
+        </tbody>
+      </table>
+      <h3>Dictation</h3>
+      <ul class="talk">
+        <li><span class="say">computer, dictate in notepad</span><span>Brings Notepad to the front and starts typing what you say.</span></li>
+        <li><span class="say">computer, start dictation</span><span>Types into whatever window is in front. <span class="say">stop dictation</span> ends it.</span></li>
+      </ul>
+      <p>With <b>Dictation editing</b> turned on, a few phrases work while you dictate <b>without the wake word</b>, but only when the whole phrase is the command, so a sentence that contains them is still typed: <span class="say">new line</span>, <span class="say">new paragraph</span>, <span class="say">scratch that</span> (erases the last phrase), <span class="say">delete word</span>, <span class="say">select all</span>, <span class="say">press enter</span> and <span class="say">stop typing</span>.</p>
+    </section>
+
+    <section id="click">
+      <span class="label">06</span>
+      <h2>Click by name</h2>
+      <p class="lead">Say the label you see on a button, link, menu item, checkbox or text box. Saidcue finds it through Windows UI Automation, which also sees web pages in your browser, and the mouse doesn't move.</p>
+      <ul class="talk">
+        <li><span class="say">computer, click subscribe</span><span>Presses the button or link labelled Subscribe.</span></li>
+        <li><span class="say">computer, click search</span><span>For a text box, puts the cursor in it so you can dictate.</span></li>
+        <li><span class="say">computer, right click report.pdf</span><span>Opens the right-click menu on it. <span class="new">New</span></span></li>
+        <li><span class="say">computer, double click my documents</span><span>Double-clicks it, to open a file or folder. <span class="new">New</span></span></li>
+        <li><span class="say">computer, skip ad</span><span>Clicks YouTube's Skip button, in English, Spanish, Portuguese, French or German.</span></li>
+      </ul>
+      <p>Exact labels win over partial ones, so <span class="say">click skip</span> picks <i>Skip</i>, not <i>Skip navigation</i>. If several buttons share the label, such as a <i>Reply</i> under every comment, Saidcue doesn't guess: it puts numbers on just those buttons and waits for you to say one. <span class="new">New</span></p>
+      <p>To stop a stray command from closing your browser, the browser's own Close and Minimize buttons and the buttons on each tab are never clicked by voice. Use <span class="say">close tab</span> or <span class="say">close window</span> for those.</p>
+    </section>
+
+    <section id="labels">
+      <span class="label">07</span>
+      <h2>Number labels: click anything <span class="new">New</span></h2>
+      <p class="lead">Some buttons have no name you can say: toolbar icons, unnamed links, list rows. <span class="say">show numbers</span> puts a small yellow number on everything clickable in the window in front. Say a number to click it.</p>
+      <div class="mock" aria-hidden="true">
+        <div class="mock-bar"><i></i><i></i><i></i><span>mail.example.com/inbox</span></div>
+        <div class="mock-body">
+          <div class="mock-row">
+            <div class="mock-ico"><span class="badge">1</span></div><div class="mock-ico"><span class="badge">2</span></div><div class="mock-ico"><span class="badge">3</span></div>
+            <div class="mock-input"><span class="badge">4</span>Search mail</div>
+            <div class="mock-btn"><span class="badge">5</span>Compose</div>
+          </div>
+          <div class="mock-card"><span class="badge">6</span><b>Standup moved to 10:30</b><span>Can everyone make the later slot?</span></div>
+          <div class="mock-row"><div class="mock-btn"><span class="badge">7</span>Reply</div><div class="mock-btn"><span class="badge">8</span>Forward</div><div class="mock-ico"><span class="badge">9</span></div></div>
+          <span class="mock-cap">computer, show numbers</span>
+        </div>
+      </div>
+      <ul class="talk">
+        <li><span class="say">computer, show numbers</span><span>Also <span class="say">numbers</span>, <span class="say">label everything</span> or <span class="say">show hints</span>.</span></li>
+        <li><span class="say">7</span><span>Clicks number 7. No wake word needed while the numbers are up. &ldquo;click 7&rdquo;, &ldquo;pick 7&rdquo; and &ldquo;number 7&rdquo; work too.</span></li>
+        <li><span class="say">right click 9</span><span>Also &ldquo;double click 9&rdquo; and &ldquo;middle click 9&rdquo;.</span></li>
+        <li><span class="say">4</span><span>For a text box, puts the cursor in it, then the numbers close so you can dictate.</span></li>
+        <li><span class="say">hide numbers</span><span>Or <span class="say">cancel</span>.</span></li>
+      </ul>
+      <p>The numbers <b>stay up and redraw after each click</b>, so you can keep going through a menu: &ldquo;show numbers&rdquo;, &ldquo;4&rdquo;, &ldquo;9&rdquo;, &ldquo;2&rdquo;. Open right-click menus get numbers too. They close when you focus a text box, say <span class="say">cancel</span>, say any other wake-word command, or stay quiet for 30 seconds.</p>
+    </section>
+
+    <section id="grid">
+      <span class="label">08</span>
+      <h2>Mouse grid: point anywhere <span class="new">New</span></h2>
+      <p class="lead">Games, drawing apps, video players and remote desktops don't tell Windows what's on screen, so there is nothing to name or number. The mouse grid works on any pixel.</p>
+      <div class="grid-demo" aria-hidden="true">
+        <figure>
+          <div class="gd"><div class="g3" style="inset:0"><span>1</span><span>2</span><span>3</span><span>4</span><span class="hit">5</span><span>6</span><span>7</span><span>8</span><span>9</span></div></div>
+          <figcaption>computer, mouse grid</figcaption>
+        </figure>
+        <figure>
+          <div class="gd"><div class="g3 sm" style="left:33.33%;top:33.33%;width:33.34%;height:33.34%"><span>1</span><span>2</span><span class="hit">3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span></div><i class="cursor" style="left:50%;top:50%"></i></div>
+          <figcaption>5</figcaption>
+        </figure>
+        <figure>
+          <div class="gd"><i class="ring" style="left:61.1%;top:38.9%"></i><i class="cursor" style="left:61.1%;top:38.9%"></i></div>
+          <figcaption>3, then click</figcaption>
+        </figure>
+      </div>
+      <ol class="steps">
+        <li>Say <span class="say">computer, mouse grid</span> for the whole screen, or <span class="say">computer, window grid</span> for just the window in front. A 3&times;3 grid appears.</li>
+        <li>Say the number of the cell that has your target. The grid zooms into that cell and the mouse follows its centre. Two or three numbers reach any spot. <span class="say">53</span> zooms twice in one go.</li>
+        <li>Say what to do there: <span class="say">click</span>, <span class="say">right click</span>, <span class="say">double click</span>, <span class="say">middle click</span>, or <span class="say">move</span> to just leave the mouse there. <span class="say">click 7</span> zooms into 7 and clicks.</li>
+      </ol>
+      <p><b>To drag</b>, zoom to the start point and say <span class="say">mark</span>. The grid goes back to full size; zoom to the drop point and say <span class="say">drag here</span>.</p>
+      <p><span class="say">back</span> or <span class="say">zoom out</span> undoes one zoom. <span class="say">cancel</span> closes the grid. While it's up, none of these need the wake word.</p>
+    </section>
+
+    <section id="mouse">
+      <span class="label">09</span>
+      <h2>Mouse at the cursor <span class="new">New</span></h2>
+      <p class="lead">Act wherever the mouse pointer already is, or nudge it.</p>
+      <table class="cmds">
+        <thead><tr><th>Say</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>click<span class="alt">left click, click here</span></td><td>Clicks at the pointer.</td></tr>
+          <tr><td>right click / double click / middle click</td><td>The other buttons, at the pointer.</td></tr>
+          <tr><td>mouse up / down / left / right<span class="alt">mouse left 5, move mouse down 3</span></td><td>Moves the pointer in 40-pixel steps. Add a number for more steps.</td></tr>
+          <tr><td>mark, then drag here</td><td>Drags from where you said &ldquo;mark&rdquo; to where the pointer is now.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="scroll">
+      <span class="label">10</span>
+      <h2>Scroll, volume and media</h2>
+      <table class="cmds">
+        <thead><tr><th>Say</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>scroll down / scroll up<span class="alt">scroll down more, page down, scroll to top, scroll to bottom</span></td><td>Scrolls the window in front a little, a lot, a screen, or all the way.</td></tr>
+          <tr><td>volume to 50<span class="alt">set volume to 30</span></td><td>Sets an exact level from 0 to 100.</td></tr>
+          <tr><td>volume up / louder<span class="alt">volume down, much quieter</span></td><td>Changes the volume by 10%, or 30% with &ldquo;more&rdquo; or &ldquo;a lot&rdquo;.</td></tr>
+          <tr><td>mute / unmute</td><td>Always mutes or unmutes; it never toggles the wrong way.</td></tr>
+          <tr><td>pause / play, next song, previous song</td><td>Media keys, for whatever player is active.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="ai">
+      <span class="label">11</span>
+      <h2>AI assistant and AI agent</h2>
+      <p class="lead">Two different things: ask the AI a question and read the answer, or hand it a job on your PC that no single command covers.</p>
+      <h3>Ask a question</h3>
+      <ul class="talk">
+        <li><span class="say">computer, ask how tall is everest</span><span>The answer streams into the AI panel. &ldquo;explain&hellip;&rdquo;, &ldquo;what is&hellip;&rdquo;, &ldquo;who is&hellip;&rdquo;, &ldquo;why&hellip;&rdquo; and &ldquo;how&hellip;&rdquo; work the same way.</span></li>
+        <li><span class="say">computer, ask a question</span><span>Starts listening; then say the question.</span></li>
+      </ul>
+      <h3>Let the AI do it <span class="new">New</span></h3>
+      <p>Turn on <b>Ask the AI when a command isn't in the list</b>. Then any wake-word phrase that isn't a command goes to the AI, which works through it step by step: it looks at the window, acts, looks again, and stops when the job is done.</p>
+      <ul class="talk">
+        <li><span class="say">computer, in notepad turn on word wrap</span><span>Goes to Notepad, opens the Format menu, clicks Word Wrap.</span></li>
+        <li><span class="say">computer, open paint and make the canvas bigger</span><span>Opens the app, then finds the right menu.</span></li>
+        <li><span class="say">stop</span><span>Stops the AI at any point, without the wake word. So does <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Backspace</kbd>.</span></li>
+      </ul>
+      <p>The pill shows each step as it happens (&ldquo;Step 2: clicked Format&rdquo;). The AI runs in the background, so you can keep talking and start other commands. It takes at most 6 steps per request unless you change that.</p>
+      <h3>What the AI can and can't do</h3>
+      <ul>
+        <li><b>It clicks by name.</b> It is told the names of the buttons, links and boxes in the window in front, and can click those. You can turn clicking off with <b>Let the AI click buttons and menus</b>.</li>
+        <li><b>It asks before risky clicks.</b> A click on anything that sounds like delete, buy, pay, send, post, publish, install, sign out, close or the like asks first: &ldquo;Click &lsquo;Delete&rsquo;? Say yes or no&rdquo;. Nothing happens unless you say <span class="say">yes</span> within 20 seconds. <span class="say">no</span>, or silence, skips it.</li>
+        <li><b>It never presses Enter</b>, never types into a terminal, never runs programs or shell commands, and can't click blindly at a spot it hasn't seen.</li>
+        <li><b>It can't open</b> the number labels, the mouse grid or the window list; those wait for you.</li>
+      </ul>
+      <h3>AI vision (optional, off by default) <span class="new">New</span></h3>
+      <p>For things without a name, like icons, games and canvases, turn on <b>Let the AI look at screenshots</b>. The AI can then take a screenshot of the window in front and click a spot it can see. It still prefers names when there are any, and risky clicks are still confirmed.</p>
+      <div class="warn"><b>What goes to your AI provider</b><p>Your request, the titles of your open windows and the names of browser tabs. With clicking on, also the names of the buttons and boxes in the window in front. With vision on, also screenshots of that window, so leave vision off if your screen may show private things. Vision needs a model that accepts images. Built-in commands never send anything.</p></div>
+    </section>
+
+    <section id="nowake">
+      <span class="label">12</span>
+      <h2>Answers that skip the wake word</h2>
+      <p class="lead">While Saidcue is waiting for your answer, you don't have to say the wake word again. Anything that isn't an answer is handled as usual (typed, if you're dictating).</p>
+      <table class="cmds">
+        <thead><tr><th>While this is on screen</th><th>Just say</th></tr></thead>
+        <tbody>
+          <tr><td>A list of tabs, windows or apps</td><td>&ldquo;two&rdquo;, &ldquo;pick two&rdquo;, &ldquo;number two&rdquo;, &ldquo;cancel&rdquo;</td></tr>
+          <tr><td>Number labels <span class="new">New</span></td><td>&ldquo;12&rdquo;, &ldquo;click 12&rdquo;, &ldquo;right click 12&rdquo;, &ldquo;double click 12&rdquo;, &ldquo;hide numbers&rdquo;</td></tr>
+          <tr><td>Mouse grid <span class="new">New</span></td><td>1 to 9, &ldquo;click&rdquo;, &ldquo;right click&rdquo;, &ldquo;move&rdquo;, &ldquo;mark&rdquo;, &ldquo;drag here&rdquo;, &ldquo;back&rdquo;, &ldquo;cancel&rdquo;</td></tr>
+          <tr><td>The AI working <span class="new">New</span></td><td>&ldquo;stop&rdquo;, and &ldquo;yes&rdquo; or &ldquo;no&rdquo; when it asks</td></tr>
+        </tbody>
+      </table>
+      <p>If you'd rather always say the wake word, untick <b>Answer pickers, number labels and the mouse grid without the wake word</b>. &ldquo;Stop&rdquo; for the AI always works.</p>
+    </section>
+
+    <section id="recipes">
+      <span class="label">13</span>
+      <h2>Recipes</h2>
+      <p class="lead">Everyday jobs, start to finish, hands-free.</p>
+      <div class="recipes">
+        <div class="recipe">
+          <h3>Reply to an email</h3>
+          <ol>
+            <li><span class="say">computer, tab gmail</span></li>
+            <li><span class="say">computer, click standup moved</span> to open the message</li>
+            <li><span class="say">computer, click reply</span>. If there are several, say the number.</li>
+            <li><span class="say">computer, start dictation</span>, then say your reply</li>
+            <li><span class="say">computer, press control enter</span> to send</li>
+          </ol>
+        </div>
+        <div class="recipe">
+          <h3>Set up two windows side by side</h3>
+          <ol>
+            <li><span class="say">computer, open spotify</span></li>
+            <li><span class="say">computer, snap right</span></li>
+            <li><span class="say">computer, go to chrome</span></li>
+            <li><span class="say">computer, snap left</span></li>
+          </ol>
+        </div>
+        <div class="recipe">
+          <h3>Click a toolbar icon with no name</h3>
+          <ol>
+            <li><span class="say">computer, show numbers</span></li>
+            <li><span class="say">14</span></li>
+            <li>The numbers redraw for the menu that opens: <span class="say">3</span></li>
+            <li><span class="say">hide numbers</span></li>
+          </ol>
+        </div>
+        <div class="recipe">
+          <h3>Rename a file in Explorer</h3>
+          <ol>
+            <li><span class="say">computer, open file explorer</span></li>
+            <li><span class="say">computer, right click report.pdf</span></li>
+            <li><span class="say">computer, show numbers</span>, then the number next to Rename</li>
+            <li>Dictate the new name, then <span class="say">computer, press enter</span></li>
+          </ol>
+        </div>
+        <div class="recipe">
+          <h3>Press Play in a game launcher</h3>
+          <ol>
+            <li><span class="say">computer, window grid</span></li>
+            <li><span class="say">9</span>, then <span class="say">5</span> to zoom onto the button</li>
+            <li><span class="say">click</span></li>
+          </ol>
+        </div>
+        <div class="recipe">
+          <h3>Drag a file into a folder</h3>
+          <ol>
+            <li><span class="say">computer, mouse grid</span></li>
+            <li>Zoom onto the file: <span class="say">4</span> <span class="say">2</span>, then <span class="say">mark</span></li>
+            <li>Zoom onto the folder: <span class="say">6</span> <span class="say">8</span></li>
+            <li><span class="say">drag here</span></li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section id="reference">
+      <span class="label">14</span>
+      <h2>All commands</h2>
+      <p class="lead">Every built-in command, with the other ways to say it. Say your wake word first.</p>
+      <div class="ref-tools">
+        <input id="ref-q" type="search" placeholder="Filter: try “window”, “mouse” or “volume”" aria-label="Filter commands" autocomplete="off">
+        <span id="ref-n"></span>
+      </div>
+      <!-- reference:start (generated by landing/tools/build_guide_reference.py) -->
+      <div class="ref-group" data-group="Windows &amp; tabs">
+        <h3>Windows &amp; tabs <small>21</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="terminal_tab"><td>terminal <var>name</var><span class="alt">go to terminal <var>name</var>, terminal with <var>name</var>, terminal <var>name</var> tab</span></td><td>Switch to a Windows Terminal tab by name or number (shows a list when several match)</td></tr>
+          <tr data-id="browser_tab"><td>tab <var>name</var><span class="alt">tab with <var>name</var>, browser tab <var>name</var>, go to tab <var>name</var>, <var>name</var> tab, the <var>name</var> tab, go to the <var>name</var> tab, switch to the <var>name</var> tab</span></td><td>Switch to a browser or terminal tab by name or number (shows a list when several match)</td></tr>
+          <tr data-id="focus_window"><td>go to <var>name</var><span class="alt">switch to <var>name</var>, switch window to <var>name</var></span></td><td>Bring a window to the front by its title</td></tr>
+          <tr data-id="new_tab"><td>new tab</td><td>Open a new tab (Ctrl+T)</td></tr>
+          <tr data-id="close_tab"><td>close tab</td><td>Close the current tab (Ctrl+W)</td></tr>
+          <tr data-id="press_enter"><td>press enter<span class="alt">hit enter, enter, press return, hit return, submit, submit it, send it, send message, send that, presiona enter, oprime enter, presiona intro, enviar</span></td><td>Press Enter (submit the form or message you just typed)</td></tr>
+          <tr data-id="reopen_tab"><td>reopen tab<span class="alt">restore tab</span></td><td>Reopen the last closed tab (Ctrl+Shift+T)</td></tr>
+          <tr data-id="list_windows"><td>switch window <span class="new">New</span><span class="alt">list windows, show windows, which windows, pick a window, choose window</span></td><td>List the open windows and pick one by number</td></tr>
+          <tr data-id="minimize_window"><td>minimize <span class="new">New</span><span class="alt">minimize window, minimize this, minimize this window</span></td><td>Minimize the window in front</td></tr>
+          <tr data-id="maximize_window"><td>maximize <span class="new">New</span><span class="alt">maximize window, maximize this, maximize this window</span></td><td>Maximize the window in front</td></tr>
+          <tr data-id="restore_window"><td>restore window <span class="new">New</span><span class="alt">unmaximize, restore this window</span></td><td>Restore the window in front to its normal size</td></tr>
+          <tr data-id="close_window"><td>close window <span class="new">New</span><span class="alt">close this window, close the window</span></td><td>Close the window in front (apps still ask to save)</td></tr>
+          <tr data-id="snap_left"><td>snap left <span class="new">New</span><span class="alt">snap window left, window left, snap to the left</span></td><td>Snap the window to the left half</td></tr>
+          <tr data-id="snap_right"><td>snap right <span class="new">New</span><span class="alt">snap window right, window right, snap to the right</span></td><td>Snap the window to the right half</td></tr>
+          <tr data-id="next_monitor"><td>next monitor <span class="new">New</span><span class="alt">move to next monitor, move window to next monitor, other monitor, move to other monitor, other screen, move to other screen</span></td><td>Move the window to the next monitor</td></tr>
+          <tr data-id="switch_app"><td>alt tab <span class="new">New</span><span class="alt">previous window, last window, switch app</span></td><td>Go back to the previous window (Alt+Tab)</td></tr>
+          <tr data-id="show_desktop"><td>show desktop <span class="new">New</span><span class="alt">go to desktop, hide all windows</span></td><td>Show the desktop (Win+D)</td></tr>
+          <tr data-id="task_view"><td>task view <span class="new">New</span><span class="alt">show all windows</span></td><td>Show every window (Task View)</td></tr>
+          <tr data-id="start_menu"><td>start menu <span class="new">New</span><span class="alt">open start, open start menu, windows menu</span></td><td>Open the Start menu</td></tr>
+          <tr data-id="notifications"><td>notifications <span class="new">New</span><span class="alt">show notifications, open notifications</span></td><td>Open the notifications panel</td></tr>
+          <tr data-id="full_screen"><td>full screen <span class="new">New</span><span class="alt">fullscreen, toggle full screen, exit full screen</span></td><td>Toggle full screen (F11)</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Click &amp; scroll">
+        <h3>Click &amp; scroll <small>13</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="click"><td>click <var>name</var><span class="alt">click on <var>name</var>, focus <var>name</var>, focus on <var>name</var>, focus the <var>name</var></span></td><td>Click a button or link, or focus a text box, by its label</td></tr>
+          <tr data-id="right_click_name"><td>right click <var>name</var> <span class="new">New</span><span class="alt">right click on <var>name</var></span></td><td>Right-click something by its label</td></tr>
+          <tr data-id="double_click_name"><td>double click <var>name</var> <span class="new">New</span><span class="alt">double click on <var>name</var></span></td><td>Double-click something by its label</td></tr>
+          <tr data-id="show_labels"><td>show numbers <span class="new">New</span><span class="alt">numbers, show labels, label everything, number everything, show hints, muestra numeros</span></td><td>Put a number on everything clickable; say the number (“12”, “right click 12”)</td></tr>
+          <tr data-id="skip_ad"><td>skip ad<span class="alt">skip ads, skip the ad, skip this ad, skip add, skip adds</span></td><td>Click YouTube&#x27;s “Skip” ad button</td></tr>
+          <tr data-id="scroll_down"><td>scroll down</td><td>Scroll down a little</td></tr>
+          <tr data-id="scroll_up"><td>scroll up</td><td>Scroll up a little</td></tr>
+          <tr data-id="scroll_down_more"><td>scroll down more<span class="alt">scroll down a lot</span></td><td>Scroll down a lot</td></tr>
+          <tr data-id="scroll_up_more"><td>scroll up more<span class="alt">scroll up a lot</span></td><td>Scroll up a lot</td></tr>
+          <tr data-id="page_down"><td>page down</td><td>Scroll down one screen</td></tr>
+          <tr data-id="page_up"><td>page up</td><td>Scroll up one screen</td></tr>
+          <tr data-id="scroll_top"><td>scroll to top<span class="alt">scroll to the top, back to top</span></td><td>Scroll to the top</td></tr>
+          <tr data-id="scroll_bottom"><td>scroll to bottom<span class="alt">scroll to the bottom</span></td><td>Scroll to the bottom</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Mouse">
+        <h3>Mouse <small>12</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="mouse_grid"><td>mouse grid <span class="new">New</span><span class="alt">grid, show grid, show the grid, screen grid, cuadricula</span></td><td>Show a 3×3 grid: say numbers to zoom in, then “click”, “right click” or “move”</td></tr>
+          <tr data-id="window_grid"><td>window grid <span class="new">New</span><span class="alt">grid window, grid this window</span></td><td>Show the mouse grid over just the window in front</td></tr>
+          <tr data-id="mouse_click"><td>click <span class="new">New</span><span class="alt">left click, mouse click, click here, click it</span></td><td>Click where the mouse is</td></tr>
+          <tr data-id="mouse_right_click"><td>right click <span class="new">New</span><span class="alt">right click here, mouse right click</span></td><td>Right-click where the mouse is</td></tr>
+          <tr data-id="mouse_double_click"><td>double click <span class="new">New</span><span class="alt">double click here</span></td><td>Double-click where the mouse is</td></tr>
+          <tr data-id="mouse_middle_click"><td>middle click <span class="new">New</span><span class="alt">middle click here</span></td><td>Middle-click where the mouse is</td></tr>
+          <tr data-id="mouse_up"><td>mouse up <span class="new">New</span><span class="alt">move mouse up, move the mouse up, mouse up <var>number</var>, move mouse up <var>number</var></span></td><td>Move the mouse up (add a number to go further)</td></tr>
+          <tr data-id="mouse_down"><td>mouse down <span class="new">New</span><span class="alt">move mouse down, move the mouse down, mouse down <var>number</var>, move mouse down <var>number</var></span></td><td>Move the mouse down (add a number to go further)</td></tr>
+          <tr data-id="mouse_left"><td>mouse left <span class="new">New</span><span class="alt">move mouse left, move the mouse left, mouse left <var>number</var>, move mouse left <var>number</var></span></td><td>Move the mouse left (add a number to go further)</td></tr>
+          <tr data-id="mouse_right"><td>mouse right <span class="new">New</span><span class="alt">move mouse right, move the mouse right, mouse right <var>number</var>, move mouse right <var>number</var></span></td><td>Move the mouse right (add a number to go further)</td></tr>
+          <tr data-id="drag_mark"><td>mark <span class="new">New</span><span class="alt">mark here, start drag, drag from here</span></td><td>Mark where a drag starts (then move and say “drag here”)</td></tr>
+          <tr data-id="drag_here"><td>drag here <span class="new">New</span><span class="alt">drop here, drag to here</span></td><td>Drag from the mark to where the mouse is</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Keyboard">
+        <h3>Keyboard <small>2</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="press_key"><td>press <var>key</var> <span class="new">New</span><span class="alt">hit <var>key</var>, tap <var>key</var>, key <var>key</var></span></td><td>Press a key or shortcut (“press escape”, “press control shift t”, “press tab 3 times”), or click a button by its label</td></tr>
+          <tr data-id="bare_key"><td><var>key</var> <span class="new">New</span></td><td>Say just the key (“escape”, “backspace 3 times”, “control z”)</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Text">
+        <h3>Text <small>14</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="select_all"><td>select all <span class="new">New</span><span class="alt">select everything</span></td><td>Select all (Ctrl+A)</td></tr>
+          <tr data-id="line_end"><td>end of line <span class="new">New</span><span class="alt">go to end of line, go to the end of the line, end of the line</span></td><td>Move to the end of the line</td></tr>
+          <tr data-id="line_start"><td>start of line <span class="new">New</span><span class="alt">beginning of line, go to start of line, go to the beginning of the line, go to the start of the line</span></td><td>Move to the start of the line</td></tr>
+          <tr data-id="doc_start"><td>top of document <span class="new">New</span><span class="alt">start of document, go to the start of the document</span></td><td>Move to the start of the document</td></tr>
+          <tr data-id="doc_end"><td>end of document <span class="new">New</span><span class="alt">bottom of document, go to the end of the document</span></td><td>Move to the end of the document</td></tr>
+          <tr data-id="word_right"><td>next word <span class="new">New</span><span class="alt">word right, <var>number</var> words right, <var>number</var> words forward</span></td><td>Move one word right (add a number for more)</td></tr>
+          <tr data-id="word_left"><td>previous word <span class="new">New</span><span class="alt">word left, <var>number</var> words left, <var>number</var> words back</span></td><td>Move one word left (add a number for more)</td></tr>
+          <tr data-id="select_word"><td>select word <span class="new">New</span><span class="alt">select this word, select the word</span></td><td>Select the word at the cursor</td></tr>
+          <tr data-id="select_next_word"><td>select next word <span class="new">New</span><span class="alt">select <var>number</var> words</span></td><td>Extend the selection one word right</td></tr>
+          <tr data-id="select_previous_word"><td>select previous word <span class="new">New</span><span class="alt">select last word</span></td><td>Extend the selection one word left</td></tr>
+          <tr data-id="select_line"><td>select line <span class="new">New</span><span class="alt">select this line, select the line</span></td><td>Select the current line</td></tr>
+          <tr data-id="delete_word"><td>delete word <span class="new">New</span><span class="alt">delete last word, delete <var>number</var> words</span></td><td>Delete the word before the cursor</td></tr>
+          <tr data-id="delete_line"><td>delete line <span class="new">New</span><span class="alt">delete this line, delete the line</span></td><td>Delete the current line</td></tr>
+          <tr data-id="new_line"><td>new line <span class="new">New</span><span class="alt">next line</span></td><td>Start a new line (Enter)</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Dictation">
+        <h3>Dictation <small>3</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="dictate_in"><td>dictate in <var>name</var><span class="alt">type in <var>name</var>, write in <var>name</var></span></td><td>Focus a window and start dictating into it</td></tr>
+          <tr data-id="start_dictation"><td>start dictation<span class="alt">start typing, dictate here</span></td><td>Start dictating into the focused window</td></tr>
+          <tr data-id="stop_dictation"><td>stop dictation<span class="alt">stop typing</span></td><td>Stop dictating</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Editing">
+        <h3>Editing <small>7</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="save"><td>save<span class="alt">save file</span></td><td>Save (Ctrl+S)</td></tr>
+          <tr data-id="copy"><td>copy<span class="alt">copy that</span></td><td>Copy (Ctrl+C)</td></tr>
+          <tr data-id="paste"><td>paste<span class="alt">paste that</span></td><td>Paste (Ctrl+V)</td></tr>
+          <tr data-id="undo"><td>undo</td><td>Undo (Ctrl+Z)</td></tr>
+          <tr data-id="redo"><td>redo</td><td>Redo (Ctrl+Y)</td></tr>
+          <tr data-id="cut"><td>cut <span class="new">New</span><span class="alt">cut that</span></td><td>Cut (Ctrl+X)</td></tr>
+          <tr data-id="find"><td>find <span class="new">New</span><span class="alt">find on page, search page</span></td><td>Find on the page (Ctrl+F)</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Media">
+        <h3>Media <small>10</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="play_pause"><td>pause<span class="alt">play, resume, pause music, play music</span></td><td>Play / pause</td></tr>
+          <tr data-id="next_track"><td>next song<span class="alt">next track, skip song, skip</span></td><td>Next track</td></tr>
+          <tr data-id="previous_track"><td>previous song<span class="alt">previous track, last song</span></td><td>Previous track</td></tr>
+          <tr data-id="volume_up"><td>volume up<span class="alt">louder, turn up the volume, turn the volume up, turn it up, raise the volume, increase the volume, increase volume</span></td><td>Volume up 10%</td></tr>
+          <tr data-id="volume_down"><td>volume down<span class="alt">quieter, turn down the volume, turn the volume down, turn it down, lower the volume, decrease the volume, decrease volume</span></td><td>Volume down 10%</td></tr>
+          <tr data-id="volume_up_more"><td>volume up more<span class="alt">volume up a lot, much louder</span></td><td>Volume up 30%</td></tr>
+          <tr data-id="volume_down_more"><td>volume down more<span class="alt">volume down a lot, much quieter</span></td><td>Volume down 30%</td></tr>
+          <tr data-id="set_volume"><td>set volume to <var>number</var><span class="alt">set the volume to <var>number</var>, volume to <var>number</var>, volume at <var>number</var>, set volume <var>number</var></span></td><td>Set the volume to an exact level (0-100)</td></tr>
+          <tr data-id="mute"><td>mute<span class="alt">volume off, sound off, turn off the volume, turn the volume off, turn off the sound, turn the sound off, silence</span></td><td>Mute the sound</td></tr>
+          <tr data-id="unmute"><td>unmute<span class="alt">volume on, sound on, turn on the volume, turn the volume on, turn on the sound, turn the sound on</span></td><td>Unmute the sound</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="AI assistant">
+        <h3>AI assistant <small>8</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="ask_listen"><td>ask a question<span class="alt">i have a question, question, ask the assistant, ask the ai, ask assistant, ask ai, ask, assistant, pregunta, tengo una pregunta, pregunta al asistente</span></td><td>Start listening for a question to the AI assistant</td></tr>
+          <tr data-id="ask"><td>ask <var>question</var><span class="alt">ask the assistant <var>question</var>, ask the ai <var>question</var>, ask assistant <var>question</var>, ask ai <var>question</var>, pregunta <var>question</var>, pregunta al asistente <var>question</var></span></td><td>Ask the AI assistant a question in one sentence</td></tr>
+          <tr data-id="explain"><td>explain <var>question</var><span class="alt">explica <var>question</var></span></td><td>Have the AI assistant explain something</td></tr>
+          <tr data-id="what_is"><td>what is <var>question</var><span class="alt">what s <var>question</var></span></td><td>Ask the AI assistant “what is …”</td></tr>
+          <tr data-id="what_are"><td>what are <var>question</var></td><td>Ask the AI assistant “what are …”</td></tr>
+          <tr data-id="who_is"><td>who is <var>question</var><span class="alt">who s <var>question</var></span></td><td>Ask the AI assistant “who is …”</td></tr>
+          <tr data-id="why"><td>why <var>question</var></td><td>Ask the AI assistant “why …”</td></tr>
+          <tr data-id="how"><td>how <var>question</var></td><td>Ask the AI assistant “how …”</td></tr>
+        </tbody></table>
+      </div>
+      <div class="ref-group" data-group="Apps &amp; sites">
+        <h3>Apps &amp; sites <small>8</small></h3>
+        <table class="cmds"><thead><tr><th>Say</th><th>What happens</th></tr></thead><tbody>
+          <tr data-id="open_youtube"><td>open youtube</td><td>Open YouTube</td></tr>
+          <tr data-id="open_twitch"><td>open twitch</td><td>Open Twitch</td></tr>
+          <tr data-id="open_notepad"><td>open notepad</td><td>Open Notepad</td></tr>
+          <tr data-id="open_calculator"><td>open calculator</td><td>Open Calculator</td></tr>
+          <tr data-id="launch_app"><td>open <var>name</var> <span class="new">New</span><span class="alt">launch <var>name</var>, start <var>name</var>, run <var>name</var>, abre <var>name</var></span></td><td>Open any installed app by name (shows a list when several match)</td></tr>
+          <tr data-id="close_app"><td>close <var>name</var> <span class="new">New</span><span class="alt">quit <var>name</var>, exit <var>name</var>, cierra <var>name</var></span></td><td>Close an app&#x27;s window by its name or title</td></tr>
+          <tr data-id="open_settings"><td>open settings <span class="new">New</span><span class="alt">windows settings, open windows settings</span></td><td>Open Windows Settings</td></tr>
+          <tr data-id="open_explorer"><td>open file explorer <span class="new">New</span><span class="alt">open explorer, open files, file explorer</span></td><td>Open File Explorer</td></tr>
+        </tbody></table>
+      </div>
+      <!-- reference:end -->
+      <p id="ref-empty">No command matches that. If you turn on the AI fallback, the AI can still try it.</p>
+    </section>
+
+    <section id="settings">
+      <span class="label">15</span>
+      <h2>Settings</h2>
+      <p class="lead">In the <b>Voice Commands</b> tab of the settings window. The last two are in the config file.</p>
+      <table class="cmds settings">
+        <thead><tr><th>Setting</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td>Enable voice commands<br><code>enabled</code></td><td>Turns voice commands on. Off by default.</td></tr>
+          <tr><td>Wake word<br><code>wake_word</code></td><td>The word every command starts with. Default &ldquo;computer&rdquo;.</td></tr>
+          <tr><td>Dictation editing<br><code>dictation_editing</code></td><td>&ldquo;new line&rdquo;, &ldquo;scratch that&rdquo; and friends while dictating, with no wake word.</td></tr>
+          <tr><td>Answer pickers, number labels and the mouse grid without the wake word<br><code>overlay_without_wake_word</code></td><td>On by default. See <a href="#nowake">above</a>.</td></tr>
+          <tr><td>Ask the AI when a command isn't in the list<br><code>ai_fallback</code></td><td>Sends unmatched commands to the AI. Off by default. Uses the LLM you set up in the AI Assistant tab.</td></tr>
+          <tr><td>Let the AI click buttons and menus<br><code>ai_clicks</code></td><td>On by default (when the AI fallback is on). Risky clicks are always confirmed.</td></tr>
+          <tr><td>Let the AI look at screenshots<br><code>ai_vision</code></td><td>Off by default. Screenshots go to your LLM provider.</td></tr>
+          <tr><td>Commands list</td><td>Untick any command to turn it off.</td></tr>
+          <tr><td><code>max_agent_steps</code></td><td>How many look-and-act rounds the AI may take per request, 1 to 20. Default 6.</td></tr>
+          <tr><td><code>agent_stop_hotkey</code></td><td>The hotkey that stops the AI. Default <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Backspace</kbd>.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="trouble">
+      <span class="label">16</span>
+      <h2>Limits and fixes</h2>
+      <div class="faq-list">
+        <h3>A command doesn't do anything</h3>
+        <p>Check that the phrase starts with the wake word; the pill shows what it heard. If your speech engine often mishears the wake word, try a two-word one like &ldquo;hey computer&rdquo;. If the pill shows a cross, its message says why, for example &ldquo;Nothing called &lsquo;subscribe&rsquo; here&rdquo;.</p>
+        <h3>Nothing happens in Task Manager or an installer</h3>
+        <p>Windows doesn't let a normal app control windows that run as administrator, such as Task Manager, installers, and some game launchers. Voice commands can't click or type into those. If you need to, run Saidcue as administrator.</p>
+        <h3>&ldquo;Click &hellip;&rdquo; can't find a button I can see</h3>
+        <p>The button probably has no name, or a different one than the text suggests. Say <span class="say">show numbers</span> and pick its number. If it doesn't get a number, the app draws its own interface (games, some media apps, remote desktops): use the <a href="#grid">mouse grid</a>, or the AI with vision on.</p>
+        <h3>Scrolling doesn't work in Firefox</h3>
+        <p>Firefox doesn't support Windows UI Automation scrolling, so Saidcue scrolls with the mouse wheel over the middle of the window and puts the pointer back.</p>
+        <h3>The numbers are in the wrong place</h3>
+        <p>That can happen on setups with two monitors at different display scaling. Please report it on <a href="https://github.com/imzodev/stream-animate/issues">GitHub</a> with your scaling settings. The mouse grid still works.</p>
+        <h3>Which languages work?</h3>
+        <p>Commands are in English, with Spanish forms for common ones (&ldquo;abre&rdquo;, &ldquo;cierra&rdquo;, &ldquo;presiona enter&rdquo;, numbers like &ldquo;dos&rdquo; and &ldquo;tres&rdquo;). Dictation works in any language your speech model supports.</p>
+        <h3>Does this work on Linux?</h3>
+        <p>Not yet. Voice commands use Windows UI Automation, so they are Windows only for now. Dictation, voice triggers and the AI assistant work on Linux.</p>
+      </div>
+    </section>
+
+  </article>
+</div>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="brand" href="/"><span class="dot" aria-hidden="true"></span>Saidcue</a>
+        <p>Control your PC with your voice. Speech is transcribed on your own machine.</p>
+      </div>
+      <nav aria-label="Footer"><a href="/">Home</a><a href="/#get">Download</a><a href="/#requirements">Requirements</a><a href="https://github.com/imzodev/stream-animate">GitHub</a><a href="/privacy.html">Privacy</a></nav>
+    </div>
+    <p class="foot-note">&copy; Saidcue. Early build, details may change.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  function all(s) { return [].slice.call(document.querySelectorAll(s)); }
+
+  /* theme toggle, shared with the landing page */
+  var btn = document.getElementById("theme-btn");
+  if (btn) btn.addEventListener("click", function () {
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("saidcue-theme", next); } catch (e) {}
+  });
+
+  /* highlight the section in view in the table of contents */
+  var links = all(".toc a");
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle("on", a.getAttribute("href") === "#" + e.target.id); });
+      });
+    }, { rootMargin: "-30% 0px -60% 0px" });
+    all("article > section").forEach(function (s) { io.observe(s); });
+  }
+
+  /* filter the command reference */
+  var q = document.getElementById("ref-q"), n = document.getElementById("ref-n"), empty = document.getElementById("ref-empty");
+  var rows = all(".ref-group tbody tr"), groups = all(".ref-group");
+  function filter() {
+    var words = (q.value || "").toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+    rows.forEach(function (tr) {
+      var text = (tr.textContent + " " + tr.closest(".ref-group").getAttribute("data-group")).toLowerCase();
+      var hit = words.every(function (w) { return text.indexOf(w) !== -1; });
+      tr.hidden = !hit; if (hit) shown++;
+    });
+    groups.forEach(function (g) { g.hidden = !g.querySelector("tbody tr:not([hidden])"); });
+    n.textContent = shown + " of " + rows.length + " commands";
+    empty.style.display = shown ? "none" : "block";
+  }
+  if (q) { q.addEventListener("input", filter); filter(); }
+})();
+</script>
+</body>
+</html>
